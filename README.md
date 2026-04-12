@@ -232,16 +232,9 @@ AI Lab MId FA24-BCS-008/
 
 ---
 
-## Demo Video
-
-[Link to demo video](https://youtu.be/YOUR_VIDEO_ID)
-
----
-
 ## Author
 
-- **Name:** [Your Name]
-- **Student ID:** FA24-BCS-008
+- **Name:Ahmed Mustafa Khalid
+- **Registration  No:** FA24-BCS-008
 - **Course:** CSC 262 — Artificial Intelligence
 - **Instructor:** Tooba Tehreem
-- **Submission Date:** April 12, 2026
