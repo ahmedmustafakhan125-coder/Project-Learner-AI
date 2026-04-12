@@ -236,5 +236,5 @@ AI Lab MId FA24-BCS-008/
 
 - **Name:Ahmed Mustafa Khalid
 - **Registration  No:** FA24-BCS-008
-- **Course:** CSC 262 — Artificial Intelligence
+- **Course:** Artificial Intelligence
 - **Instructor:** Tooba Tehreem
