@@ -1,5 +1,6 @@
 
-##  Installing & Running the Project (For Users)
+
+## PART B — Installing & Running the Project (For Your Instructor)
 
 ### Prerequisites
 - **Python 3.9 or higher** — download from https://www.python.org/downloads/
@@ -155,8 +156,6 @@ secure-llm-gateway/
 ├── requirements.txt          # Python dependencies
 ├── README.md                 # Project documentation
 ├── INSTALLATION_GUIDE.md     # This file
-├── VIVA_PREPARATION.txt      # Viva questions and answers
-├── report.tex                # IEEE LaTeX report
 ├── main.py                   # FastAPI server entry point
 ├── gateway/
 │   ├── __init__.py
@@ -173,7 +172,7 @@ secure-llm-gateway/
 ---
 
 ## Author
-- **Name:** Ahmed Mustafa Khalid
-- **Registration no:** FA24-BCS-008
-- **Course:** CSC 262 — Artificial Intelligence
+- **Name:** [Ahmed Mustafa Khalid]
+- **Student ID:** FA24-BCS-008
+- **Course:** Artificial Intelligence
 - **Instructor:** Tooba Tehreem
