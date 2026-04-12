@@ -1,6 +1,4 @@
-/* ============================================================
-   Secure LLM Gateway - Frontend Script
-   ============================================================ */
+
 
 const MAX_LENGTH = 2000;
 
@@ -8,14 +6,14 @@ const MAX_LENGTH = 2000;
 
 const textarea = document.getElementById("message-input");
 const charCount = document.getElementById("char-count");
-const sendBtn   = document.getElementById("send-btn");
+const sendBtn = document.getElementById("send-btn");
 
 textarea.addEventListener("input", () => {
   const len = textarea.value.length;
   charCount.textContent = `${len} / ${MAX_LENGTH}`;
   charCount.className = "char-count";
   if (len > MAX_LENGTH * 0.9) charCount.classList.add("warn");
-  if (len >= MAX_LENGTH)       charCount.classList.add("error");
+  if (len >= MAX_LENGTH) charCount.classList.add("error");
 });
 
 textarea.addEventListener("keydown", (e) => {
@@ -82,7 +80,7 @@ function renderResults(data) {
 
 function renderInjection(inj) {
   const score = inj.score;
-  const risk  = inj.risk_level;  // NONE / LOW / MEDIUM / HIGH
+  const risk = inj.risk_level;  // NONE / LOW / MEDIUM / HIGH
 
   // Score number + progress bar
   document.getElementById("injection-score-num").textContent = score;
@@ -179,7 +177,7 @@ function renderPolicy(policy) {
 
 function renderLlm(responseText, error, decision) {
   const responseEl = document.getElementById("llm-response-text");
-  const errorEl    = document.getElementById("llm-error");
+  const errorEl = document.getElementById("llm-error");
 
   errorEl.classList.add("hidden");
   errorEl.textContent = "";
@@ -212,17 +210,17 @@ function renderLlm(responseText, error, decision) {
 function scoreColor(score) {
   if (score >= 60) return "var(--block)";
   if (score >= 30) return "var(--flag)";
-  if (score > 0)   return "var(--mask)";
+  if (score > 0) return "var(--mask)";
   return "var(--allow)";
 }
 
 function entityTagClass(entityType) {
   const map = {
-    "EMAIL_ADDRESS":  "tag-email",
-    "PHONE_NUMBER":   "tag-phone",
-    "PK_PHONE_NUMBER":"tag-pk_phone",
-    "API_KEY":        "tag-apikey",
-    "PERSON":         "tag-person",
+    "EMAIL_ADDRESS": "tag-email",
+    "PHONE_NUMBER": "tag-phone",
+    "PK_PHONE_NUMBER": "tag-pk_phone",
+    "API_KEY": "tag-apikey",
+    "PERSON": "tag-person",
     "COMPOSITE_RISK": "tag-composite",
   };
   return map[entityType] || "tag-default";

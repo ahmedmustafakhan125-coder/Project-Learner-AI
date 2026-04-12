@@ -1,19 +1,3 @@
-"""
-Secure LLM Gateway - Main Application
-======================================
-FastAPI application that implements a security gateway for LLM interactions.
-
-Pipeline per request:
-  User Input → Injection Detection → Presidio PII Analysis → Policy Decision → Gemini API → Output
-
-Security features built-in:
-  - Rate limiting (10 requests/minute per IP)
-  - CORS protection
-  - Input sanitization and length limiting
-  - Safe logging (never logs message content)
-  - Environment-based configuration (no hardcoded secrets)
-"""
-
 import asyncio
 import logging
 import os

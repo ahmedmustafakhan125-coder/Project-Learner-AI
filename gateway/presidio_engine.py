@@ -1,18 +1,4 @@
-"""
-Presidio Engine Module
-======================
-Detects and anonymizes PII (Personally Identifiable Information) using
-Microsoft Presidio with 5 customizations:
 
-  1. ApiKeyRecognizer         - Detects API keys (OpenAI sk-, Google AIza, Bearer tokens)
-  2. PakistaniPhoneRecognizer - Detects Pakistani phone numbers (+92, 03XX formats)
-  3. Context-Aware Scoring    - Presidio boosts confidence when context words appear near PII
-  4. Composite Entity Detection - Flags when PERSON + EMAIL appear together
-  5. Confidence Calibration   - Adjusts scores to reduce false positives
-
-IMPORTANT: The engine is a SINGLETON - initialized once at app startup.
-           Never create a new engine inside a route handler.
-"""
 
 import time
 from typing import List

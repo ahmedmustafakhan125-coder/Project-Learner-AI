@@ -1,10 +1,4 @@
-"""
-Injection Detector Module
-=========================
-Detects prompt injection and jailbreak attempts in user input.
-Uses regex pattern matching with a weighted scoring system (0-100).
-Pure Python - no external dependencies - runs in microseconds.
-"""
+
 
 import re
 import time
@@ -14,7 +8,7 @@ import os
 HIGH_RISK_THRESHOLD = int(os.getenv("HIGH_RISK_THRESHOLD", "60"))
 MEDIUM_RISK_THRESHOLD = int(os.getenv("MEDIUM_RISK_THRESHOLD", "30"))
 
-# --- Pattern list: (compiled_regex, human_readable_name, score_weight) ---
+# Pattern list: (compiled_regex, human_readable_name, score_weight) ---
 # Each pattern matches a known injection/jailbreak technique.
 # Weights reflect severity: higher = more dangerous.
 PATTERNS = [

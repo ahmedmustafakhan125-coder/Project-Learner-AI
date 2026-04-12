@@ -1,16 +1,3 @@
-"""
-LLM Client Module
-=================
-Wraps the Google Gemini API (gemini-1.5-flash model).
-
-Key design decisions:
-- google-generativeai SDK is synchronous, but FastAPI is async.
-  We use asyncio.get_event_loop().run_in_executor() to run Gemini calls
-  in a thread pool so they don't block the FastAPI event loop.
-- All errors are caught and returned in the response dict (never raised).
-- The system prompt informs Gemini it is behind a security gateway.
-"""
-
 import asyncio
 import time
 import google.generativeai as genai

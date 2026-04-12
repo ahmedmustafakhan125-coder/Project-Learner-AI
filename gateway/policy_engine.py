@@ -1,18 +1,4 @@
-"""
-Policy Engine Module
-====================
-Makes the final Allow / Mask / Flag / Block decision based on
-injection analysis and PII analysis results.
 
-Decision order (most severe checked first):
-  1. BLOCK  - injection score is HIGH risk
-  2. BLOCK  - PII found AND injection score is MEDIUM or higher (suspicious intent + data)
-  3. MASK   - PII found (clean injection, but data must be anonymized before sending to LLM)
-  4. FLAG   - injection score is MEDIUM (borderline - warn user but allow through)
-  5. ALLOW  - clean input, no issues
-
-No I/O or external calls in this module - pure decision logic only.
-"""
 
 from enum import Enum
 
