@@ -1,0 +1,32 @@
+# Gateway configuration
+# All thresholds and weights are configurable here so we never hard-code numbers.
+
+# Decision thresholds for the policy engine
+thresholds:
+  allow_max: 0.30   # final_risk <= 0.30 -> ALLOW
+  block_min: 0.70   # final_risk >= 0.70 -> BLOCK
+                    # in between -> FLAG (will be treated as ALLOW with warning)
+                    # if PII found and not BLOCK -> MASK
+
+# Weights used in the risk formula
+# final_risk = max(rule_score, semantic_score)
+#            + pii_weight   * (1 if any PII else 0)
+#            + secret_weight* (1 if API_KEY/PASSWORD/STUDENT_ID etc. else 0)
+# final_risk is clamped to [0, 1]
+weights:
+  pii: 0.20
+  secret: 0.30
+
+# Hard limits
+limits:
+  max_input_length: 2000
+
+# File paths used by the gateway
+paths:
+  audit_log: results/audit_log.jsonl
+  semantic_model: results/semantic_model.pkl
+  training_data: data/train_injection.csv
+  evaluation_data: data/final_eval.csv
+
+# Mock LLM response (we do not call any real LLM, per lab final approval)
+mock_llm_response: "[MOCKED LLM RESPONSE] Received safe prompt."
