@@ -47,3 +47,10 @@ test_gateway.py
 *.bbl
 *.blg
 *.synctex.gz
+
+# Personal / not-for-repo files
+report.tex
+PUSH_STEPS.md
+INSTALLATION_GUIDE.md
+Lab Final.pdf
+*.pdf
