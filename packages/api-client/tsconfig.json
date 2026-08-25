@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "types": [],
+    // DOM is included for the WEB-STANDARD networking types only: fetch,
+    // Response, ReadableStream, TextDecoder, AbortSignal. All of those exist in
+    // browsers, Node 18+, and React Native, so depending on them keeps this
+    // package portable. Reaching for an actual DOM element would not be
+    // portable, so `document`/`window`/`localStorage` are banned by ESLint
+    // (no-restricted-globals) rather than by omitting the lib.
+    "lib": ["ES2023", "DOM"]
+  },
+  "references": [{ "path": "../core" }],
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "test/**"]
+}

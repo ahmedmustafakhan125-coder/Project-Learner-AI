@@ -1,0 +1,319 @@
+import type {
+  AgentKind,
+  Alternative,
+  AttachmentRef,
+  Checkpoint,
+  CompiledQuery,
+  InterviewQuestion,
+  InterviewState,
+  ProjectBlueprint,
+  SkillLevel,
+  SourceFile,
+} from '@ai-edu/core';
+
+import { ApiError, streamSSE } from './sse.js';
+
+/**
+ * The typed client. `apps/web` talks to the API only through this — no bare
+ * `fetch` anywhere in the UI — so the future mobile app reuses the whole
+ * network layer rather than reimplementing it.
+ */
+
+export interface ApiClientOptions {
+  baseUrl: string;
+  /** Called per request so a refreshed session token is always picked up. */
+  getToken: () => string | Promise<string>;
+}
+
+/* ------------------------------------------------------------------ *
+ * Response shapes
+ * ------------------------------------------------------------------ */
+
+export type InterviewResponse =
+  | { status: 'ready'; compiled: CompiledQuery; state?: InterviewState; degraded?: boolean }
+  | { status: 'awaiting_answers'; questions: InterviewQuestion[]; state: InterviewState };
+
+export interface ModelOption {
+  id: string;
+  label: string;
+  vendor: string;
+  blurb: string | null;
+  contextWindow: number;
+  unpriced: boolean;
+}
+
+export interface BudgetStatus {
+  spentUSD: number;
+  limitUSD: number;
+  exceeded: boolean;
+  hasUnpricedUsage: boolean;
+}
+
+/** What the UI consumes. Mirrors the server's per-agent SSE events. */
+export type AgentStreamEvent =
+  | { kind: 'meta'; messageId: string; model: string; agents: readonly AgentKind[] }
+  | { kind: 'start'; agent: AgentKind }
+  | { kind: 'delta'; agent: AgentKind; text: string }
+  | { kind: 'done'; agent: AgentKind }
+  | { kind: 'error'; agent: AgentKind; message: string }
+  | { kind: 'finished'; messageId: string }
+  | { kind: 'fatal'; message: string };
+
+export interface AskOptions {
+  compiled: CompiledQuery;
+  threadId?: string | null;
+  model?: string;
+  signal?: AbortSignal;
+}
+
+
+/* ---- projects ---- */
+
+export interface ProjectSummary {
+  id: string;
+  title: string;
+  summary: string | null;
+  tech_stack: unknown;
+  skill_level: SkillLevel;
+  estimated_hours: number | null;
+  status: string;
+  created_at: string;
+}
+
+export interface ProjectStepRef {
+  id: string;
+  stepIndex: number;
+  title: string;
+  objective: string | null;
+  concepts: string[];
+  estMinutes: number | null;
+  /** False until Phase B has written this step. */
+  expanded: boolean;
+}
+
+export interface ProjectDetail {
+  project: Record<string, unknown> & { id: string; title: string };
+  steps: ProjectStepRef[];
+  currentStepIndex: number;
+}
+
+/** A step as sent to the browser. Solution files are deliberately absent. */
+export interface StepContent {
+  stepIndex: number;
+  title: string;
+  objective: string | null;
+  instructionsMd: string;
+  explanationMd: string;
+  alternatives: Alternative[];
+  starterFiles: SourceFile[];
+  checkpoint: Checkpoint;
+  hintCount: number;
+}
+
+export interface ExpansionPlan {
+  blocking: number | null;
+  background: number[];
+}
+
+/* ------------------------------------------------------------------ *
+ * Client
+ * ------------------------------------------------------------------ */
+
+export class ApiClient {
+  private readonly baseUrl: string;
+  private readonly getToken: ApiClientOptions['getToken'];
+
+  constructor(options: ApiClientOptions) {
+    this.baseUrl = options.baseUrl.replace(/\/$/, '');
+    this.getToken = options.getToken;
+  }
+
+  /* ---- interview ---- */
+
+  async startInterview(input: {
+    query: string;
+    threadId?: string | null;
+    projectId?: string | null;
+    stepId?: string | null;
+    attachments?: AttachmentRef[];
+  }): Promise<InterviewResponse> {
+    return this.post<InterviewResponse>('/api/interview/start', {
+      query: input.query,
+      threadId: input.threadId ?? null,
+      projectId: input.projectId ?? null,
+      stepId: input.stepId ?? null,
+      attachments: input.attachments ?? [],
+    });
+  }
+
+  async continueInterview(input: {
+    state: InterviewState;
+    answers: Record<string, string>;
+    attachments?: AttachmentRef[];
+    skip?: boolean;
+  }): Promise<InterviewResponse> {
+    return this.post<InterviewResponse>('/api/interview/continue', {
+      state: input.state,
+      answers: input.answers,
+      attachments: input.attachments ?? [],
+      skip: input.skip ?? false,
+    });
+  }
+
+  /* ---- fan-out ---- */
+
+  /**
+   * One connection carrying all four agents. Translates the wire events into
+   * the discriminated union above so the UI never parses SSE itself.
+   */
+  async *ask(options: AskOptions): AsyncIterable<AgentStreamEvent> {
+    const token = await this.getToken();
+
+    const stream = streamSSE({
+      url: `${this.baseUrl}/api/agents/ask`,
+      token,
+      body: {
+        compiled: options.compiled,
+        threadId: options.threadId ?? null,
+        ...(options.model ? { model: options.model } : {}),
+      },
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+
+    for await (const message of stream) {
+      const payload = safeParse(message.data);
+      if (!payload) continue;
+
+      switch (message.event) {
+        case 'meta':
+          yield { kind: 'meta', ...(payload as Omit<Extract<AgentStreamEvent, { kind: 'meta' }>, 'kind'>) };
+          break;
+
+        case 'agent': {
+          const event = payload as { agent: AgentKind; type: string; text?: string; message?: string };
+          if (event.type === 'start') yield { kind: 'start', agent: event.agent };
+          else if (event.type === 'delta') yield { kind: 'delta', agent: event.agent, text: event.text ?? '' };
+          else if (event.type === 'done') yield { kind: 'done', agent: event.agent };
+          else if (event.type === 'error')
+            yield { kind: 'error', agent: event.agent, message: event.message ?? 'Agent failed.' };
+          break;
+        }
+
+        case 'done':
+          yield { kind: 'finished', messageId: (payload as { messageId: string }).messageId };
+          break;
+
+        case 'fatal':
+          yield { kind: 'fatal', message: (payload as { message: string }).message };
+          break;
+      }
+    }
+  }
+
+  /* ---- projects ---- */
+
+  /**
+   * Phase A. Returns a plan WITHOUT persisting it — the learner approves or
+   * discards it before anything is stored or further generation is paid for.
+   */
+  async generateBlueprint(input: {
+    compiled: CompiledQuery;
+    model?: string;
+  }): Promise<{ blueprint: ProjectBlueprint; model: string }> {
+    return this.post('/api/projects/blueprint', {
+      compiled: input.compiled,
+      ...(input.model ? { model: input.model } : {}),
+    });
+  }
+
+  async createProject(input: {
+    blueprint: ProjectBlueprint;
+    skillLevel?: SkillLevel;
+    areaOfInterest?: string | null;
+    model?: string;
+  }): Promise<{ id: string }> {
+    return this.post('/api/projects', {
+      blueprint: input.blueprint,
+      skillLevel: input.skillLevel ?? 'beginner',
+      areaOfInterest: input.areaOfInterest ?? null,
+      ...(input.model ? { model: input.model } : {}),
+    });
+  }
+
+  async listProjects(): Promise<ProjectSummary[]> {
+    const { projects } = await this.get<{ projects: ProjectSummary[] }>('/api/projects');
+    return projects;
+  }
+
+  async getProject(id: string): Promise<ProjectDetail> {
+    return this.get<ProjectDetail>(`/api/projects/${id}`);
+  }
+
+  /** Phase B. Idempotent — an already-expanded step is returned from storage. */
+  async expandStep(
+    projectId: string,
+    stepIndex: number,
+  ): Promise<{ step: StepContent; cached: boolean }> {
+    return this.post(`/api/projects/${projectId}/steps/${stepIndex}/expand`, {});
+  }
+
+  /** What to fetch next: what blocks the learner, and what to warm in the background. */
+  async getExpansionPlan(projectId: string): Promise<ExpansionPlan> {
+    return this.get<ExpansionPlan>(`/api/projects/${projectId}/plan`);
+  }
+
+  /* ---- misc ---- */
+
+  async listModels(): Promise<ModelOption[]> {
+    const { models } = await this.get<{ models: ModelOption[] }>('/api/models');
+    return models;
+  }
+
+  async getBudget(): Promise<BudgetStatus> {
+    return this.get<BudgetStatus>('/api/budget');
+  }
+
+  /* ---- plumbing ---- */
+
+  private async request<T>(path: string, init: RequestInit): Promise<T> {
+    const token = await this.getToken();
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        ...(init.headers ?? {}),
+      },
+    });
+
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      const record = (payload ?? {}) as Record<string, unknown>;
+      throw new ApiError(
+        response.status,
+        typeof record['error'] === 'string' ? record['error'] : 'request_failed',
+        typeof record['message'] === 'string' ? record['message'] : response.statusText,
+        payload,
+      );
+    }
+
+    return payload as T;
+  }
+
+  private get<T>(path: string): Promise<T> {
+    return this.request<T>(path, { method: 'GET' });
+  }
+
+  private post<T>(path: string, body: unknown): Promise<T> {
+    return this.request<T>(path, { method: 'POST', body: JSON.stringify(body) });
+  }
+}
+
+function safeParse(data: string): unknown {
+  try {
+    return JSON.parse(data);
+  } catch {
+    return null;
+  }
+}
