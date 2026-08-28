@@ -1,5 +1,5 @@
-import { bufferStream, firstTokenOrTimeout } from '@ai-edu/llm';
-import type { LLMContentPart, LLMMessage, LLMProvider, LLMRequest, LLMUsage } from '@ai-edu/llm';
+import { bufferStream, firstTokenOrTimeout, withRetry } from '@ai-edu/llm';
+import type { LLMContentPart, LLMEvent, LLMMessage, LLMProvider, LLMRequest, LLMUsage } from '@ai-edu/llm';
 
 import type { AbortSignalLike } from '../platform.js';
 import { AGENT_ORDER } from '../schemas/common.js';
@@ -143,39 +143,50 @@ export async function* fanOut(options: FanOutOptions): AsyncIterable<FanOutEvent
     w?.();
   };
 
+  /** User-facing message when a specialist fails after all retries. */
+  const AGENT_UNAVAILABLE_MESSAGE = 'This specialist is temporarily unavailable. Try again shortly.';
+
   /**
    * One agent's lifecycle. Errors are caught per-agent and emitted as events:
    * one specialist failing must never take down the other three, and the
    * learner should still get the angles that worked.
+   *
+   * The stream factory is wrapped in `withRetry` so transient failures (rate
+   * limits, 5xx) are retried with exponential backoff before the agent is
+   * declared failed.
    */
   const consume = async (
     agent: AgentKind,
-    events: AsyncIterable<import('@ai-edu/llm').LLMEvent>,
+    streamFactory: () => AsyncIterable<LLMEvent>,
   ): Promise<void> => {
     const started = Date.now();
     let text = '';
     try {
-      emit({ agent, type: 'start' });
-      for await (const event of events) {
-        if (event.type === 'text_delta') {
-          text += event.text;
-          emit({ agent, type: 'delta', text: event.text });
-        } else if (event.type === 'done') {
-          emit({
-            agent,
-            type: 'done',
-            usage: event.response.usage,
-            latencyMs: Date.now() - started,
-            text,
-          });
+      await withRetry(async () => {
+        text = '';
+        emit({ agent, type: 'start' });
+        const events = streamFactory();
+        for await (const event of events) {
+          if (event.type === 'text_delta') {
+            text += event.text;
+            emit({ agent, type: 'delta', text: event.text });
+          } else if (event.type === 'done') {
+            emit({
+              agent,
+              type: 'done',
+              usage: event.response.usage,
+              latencyMs: Date.now() - started,
+              text,
+            });
+          }
         }
-      }
+      });
     } catch (err) {
       emit({
         agent,
         type: 'error',
-        message: err instanceof Error ? err.message : String(err),
-        retryable: Boolean((err as { retryable?: boolean })?.retryable),
+        message: AGENT_UNAVAILABLE_MESSAGE,
+        retryable: false,
       });
     } finally {
       running -= 1;
@@ -195,7 +206,7 @@ export async function* fanOut(options: FanOutOptions): AsyncIterable<FanOutEvent
 
   // 1. Lead goes out alone and writes the cache entry.
   const lead = bufferStream(streamFor(leadAgent));
-  const tasks = [consume(leadAgent, lead.events)];
+  const tasks = [consume(leadAgent, () => lead.events)];
 
   // 2. Wait for proof the entry is live — bounded, so a stalled lead cannot
   //    hold the other three hostage.
@@ -203,7 +214,7 @@ export async function* fanOut(options: FanOutOptions): AsyncIterable<FanOutEvent
 
   // 3. Followers now read what the lead just wrote.
   for (const agent of followers) {
-    tasks.push(consume(agent, streamFor(agent)));
+    tasks.push(consume(agent, () => streamFor(agent)));
   }
 
   try {
@@ -255,7 +266,9 @@ export async function collectFanOut(
       entry.usage = event.usage;
       entry.latencyMs = event.latencyMs;
       entry.text = event.text;
-    } else if (event.type === 'error') entry.error = event.message;
+    } else if (event.type === 'error') {
+      entry.error = 'This specialist is temporarily unavailable. Try again shortly.';
+    }
   }
 
   return results;

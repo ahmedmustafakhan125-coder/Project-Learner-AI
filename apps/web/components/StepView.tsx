@@ -4,6 +4,9 @@ import { useState } from 'react';
 import type { StepContent } from '@ai-edu/api-client';
 
 import { splitFences } from './AgentTabs';
+import { CodeEditor } from './CodeEditor';
+import { CheckpointRunner } from './CheckpointRunner';
+import { HintDrawer } from './HintDrawer';
 
 /**
  * One tutorial step.
@@ -19,6 +22,12 @@ import { splitFences } from './AgentTabs';
 
 export function StepView({ step, projectId }: { step: StepContent; projectId: string }) {
   const [revealed, setRevealed] = useState(false);
+  const [editorFiles, setEditorFiles] = useState(step.starterFiles);
+  const [passed, setPassed] = useState(false);
+  const [attemptCount, setAttemptCount] = useState(0);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+
+  const hasCheckpoint = step.checkpoint && step.checkpoint.runtime !== undefined;
 
   return (
     <article className="step">
@@ -26,6 +35,12 @@ export function StepView({ step, projectId }: { step: StepContent; projectId: st
         <h2>{step.title}</h2>
         {step.objective && <p className="objective">{step.objective}</p>}
       </header>
+
+      {(step as any).pacingDirective && (step as any).pacingDirective.adjustment !== 'hold' && (
+        <div className="pacing-banner">
+          {(step as any).pacingDirective.reason}
+        </div>
+      )}
 
       <Markdownish text={step.instructionsMd} />
 
@@ -46,22 +61,51 @@ export function StepView({ step, projectId }: { step: StepContent; projectId: st
         </section>
       )}
 
-      {/* P3 replaces this with the in-browser editor and checkpoint runner. */}
-      <section className="notice info">
-        <strong>Write this step yourself.</strong> The in-browser editor and automatic
-        checking arrive in the next phase — for now, build it in your own editor.
-        {step.hintCount > 0 && (
-          <div className="muted" style={{ marginTop: 6 }}>
-            {step.hintCount} hint{step.hintCount === 1 ? '' : 's'} available once checkpoints ship.
-          </div>
-        )}
-      </section>
+      {hasCheckpoint ? (
+        <section className="checkpoint-section">
+          <CodeEditor
+            files={editorFiles}
+            onChange={(files) => {
+              setEditorFiles(files);
+              if (!startedAt) setStartedAt(Date.now());
+            }}
+          />
+          <CheckpointRunner
+            projectId={projectId}
+            stepIndex={step.stepIndex}
+            checkpoint={step.checkpoint}
+            files={editorFiles}
+            onPass={() => {
+              setPassed(true);
+              setAttemptCount((c) => c + 1);
+            }}
+          />
+          <HintDrawer
+            projectId={projectId}
+            stepIndex={step.stepIndex}
+            hintCount={step.hintCount}
+            attemptCount={attemptCount}
+            startedAt={startedAt}
+          />
+        </section>
+      ) : (
+        /* Fallback for steps without checkpoints */
+        <section className="notice info">
+          <strong>Write this step yourself.</strong> Build it in your own editor, then continue.
+        </section>
+      )}
 
       <section className="reveal">
         {!revealed ? (
-          <button className="btn" onClick={() => setRevealed(true)}>
-            I have written it — explain the approach
-          </button>
+          hasCheckpoint && !passed ? (
+            <button className="btn" disabled>
+              Pass the checkpoint to see the explanation
+            </button>
+          ) : (
+            <button className="btn" onClick={() => setRevealed(true)}>
+              I have written it — explain the approach
+            </button>
+          )
         ) : (
           <>
             <h3>Why this approach</h3>

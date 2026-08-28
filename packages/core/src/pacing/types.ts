@@ -71,3 +71,20 @@ export function renderPacingDirective(directive: PacingDirective): string | null
 
   return lines.join('\n');
 }
+
+export const AttemptSummary = z.object({
+  attempts: z.number().int().min(1),
+  durationMs: z.number().int().nonnegative(),
+  hintsUsed: z.number().int().nonnegative(),
+  passed: z.boolean(),
+});
+export type AttemptSummary = z.infer<typeof AttemptSummary>;
+
+export const PaceState = z.object({
+  recentAttemptCounts: z.array(z.number()).default([]),
+  recentDurations: z.array(z.number()).default([]),
+  hintsUsedTotal: z.number().default(0),
+  streakPassed: z.number().default(0),    // consecutive first-try passes
+  streakFailed: z.number().default(0),    // consecutive multi-attempt steps
+});
+export type PaceState = z.infer<typeof PaceState>;

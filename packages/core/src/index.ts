@@ -18,4 +18,4 @@ export * from './generation/blueprint.js';
 export * from './generation/expand.js';
 export * from './generation/prefetch.js';
 
-export * from './pacing/types.js';
+export * from './pacing/index.js';
