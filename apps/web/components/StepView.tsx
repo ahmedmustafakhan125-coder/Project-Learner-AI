@@ -6,6 +6,7 @@ import type { StepContent } from '@ai-edu/api-client';
 import { splitFences } from './AgentTabs';
 import { CodeEditor } from './CodeEditor';
 import { CheckpointRunner } from './CheckpointRunner';
+import { ErrorBoundary } from './ErrorBoundary';
 import { HintDrawer } from './HintDrawer';
 
 /**
@@ -68,16 +69,23 @@ export function StepView({ step, projectId }: { step: StepContent; projectId: st
               if (!startedAt) setStartedAt(Date.now());
             }}
           />
-          <CheckpointRunner
-            projectId={projectId}
-            stepIndex={step.stepIndex}
-            checkpoint={step.checkpoint}
-            files={editorFiles}
-            onPass={() => {
-              setPassed(true);
-              setAttemptCount((c) => c + 1);
-            }}
-          />
+          {/*
+            The boundary exists so a crash in the runner or the sandbox bridge
+            costs the learner the checkpoint, not the whole step — their code is
+            in the editor above it.
+          */}
+          <ErrorBoundary>
+            <CheckpointRunner
+              projectId={projectId}
+              stepIndex={step.stepIndex}
+              checkpoint={step.checkpoint}
+              files={editorFiles}
+              onPass={() => {
+                setPassed(true);
+                setAttemptCount((c) => c + 1);
+              }}
+            />
+          </ErrorBoundary>
           <HintDrawer
             projectId={projectId}
             stepIndex={step.stepIndex}

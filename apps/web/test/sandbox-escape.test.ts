@@ -86,11 +86,24 @@ describe('sandbox delivery', () => {
 
 describe('content security policy', () => {
   it('the app policy allows no CDN in script-src', () => {
-    const csp = appCsp();
+    const csp = appCsp('testnonce');
     expect(csp).not.toContain('cdn.jsdelivr.net');
-    expect(csp).toContain("script-src 'self' 'unsafe-eval' blob:");
     expect(csp).toContain("object-src 'none'");
     expect(csp).toContain("frame-ancestors 'none'");
+  });
+
+  it('the app policy carries a nonce and never falls back to unsafe-inline', () => {
+    // Without a nonce Next's inline hydration scripts are refused and the page
+    // renders but never becomes interactive. 'unsafe-inline' would "fix" that
+    // by reopening the XSS path the no-markdown-renderer rule exists to close.
+    const csp = appCsp('abc123');
+    expect(csp).toContain("'nonce-abc123'");
+    const scriptSrc = csp.split('; ').find((d) => d.startsWith('script-src'))!;
+    expect(scriptSrc).not.toContain("'unsafe-inline'");
+  });
+
+  it('refuses to build an app policy without a nonce', () => {
+    expect(() => appCsp('')).toThrow(/nonce/i);
   });
 
   it('the sandbox policy names the origin explicitly, because self is opaque there', () => {

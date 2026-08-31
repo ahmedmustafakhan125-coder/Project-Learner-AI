@@ -21,12 +21,27 @@
  * explicitly in the sandbox policy.
  */
 
-/** Policy for the application's own pages. */
-export function appCsp() {
+/**
+ * Policy for the application's own pages.
+ *
+ * `nonce` is required. Next.js injects inline <script> tags to carry the
+ * hydration payload, and with neither a nonce nor 'unsafe-inline' the browser
+ * refuses them — the page renders as dead HTML and React never hydrates. The
+ * symptom is a minified React error and a UI that looks fine but does nothing.
+ *
+ * A nonce is used rather than 'unsafe-inline' because 'unsafe-inline' would
+ * re-open the XSS path that the no-markdown-renderer rule exists to close.
+ *
+ * 'strict-dynamic' lets a script we vouched for load the ones it needs — Next's
+ * own chunks, and Monaco's AMD loader pulling in its workers — without listing
+ * every URL. Browsers that honour it ignore the host-source fallbacks; older
+ * ones use them.
+ */
+export function appCsp(nonce) {
+  if (!nonce) throw new Error('appCsp requires a nonce — see proxy.ts');
   return [
     "default-src 'self'",
-    // unsafe-eval: Monaco's workers compile with it.
-    "script-src 'self' 'unsafe-eval' blob:",
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval' blob:`,
     // unsafe-inline: Next.js injects critical CSS inline.
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self' data:",

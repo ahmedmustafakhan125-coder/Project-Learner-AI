@@ -1,5 +1,3 @@
-import { appCsp } from './lib/csp.mjs';
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -8,12 +6,9 @@ const nextConfig = {
 
   async headers() {
     return [
-      {
-        // The sandbox sets its own, much tighter policy in app/sandbox/route.ts.
-        // Matching it here too would override that, so /sandbox is excluded.
-        source: '/((?!sandbox).*)',
-        headers: [{ key: 'Content-Security-Policy', value: appCsp() }],
-      },
+      // The page CSP is NOT set here. It carries a per-request nonce, which a
+      // static header cannot express, so middleware.ts owns it. The sandbox
+      // sets its own in app/sandbox/route.ts.
       {
         // Pyodide's wasm and stdlib are fetched BY the sandbox frame, which has
         // an opaque origin. That makes the request cross-origin even though the

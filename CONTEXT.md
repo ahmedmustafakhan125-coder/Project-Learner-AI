@@ -124,6 +124,19 @@ Both facts were verified in Chrome, against a no-CSP control. If you are ever
 tempted to move this back to `srcdoc` to "simplify" it, the symptom you will get
 is a checkpoint that silently never runs.
 
+The app's own pages have the mirror-image problem. Next delivers its hydration
+payload in **inline** `<script>` tags, so a policy with neither `'unsafe-inline'`
+nor a nonce refuses them and the page renders as dead HTML — it looks completely
+fine and nothing on it works. `apps/web/proxy.ts` mints a per-request nonce and
+sets the CSP on the *request* headers, which is where Next reads it back out to
+stamp its scripts.
+
+That is also why `app/layout.tsx` sets `dynamic = 'force-dynamic'`. A statically
+prerendered page has those inline scripts baked in at build time, and no
+per-request nonce can ever match them. Nothing is lost — every page sits behind
+`AuthGate` and is learner-specific — but removing that export brings the blank
+page straight back.
+
 Monaco and Pyodide are therefore vendored into `public/` at build time by
 `apps/web/scripts/vendor-assets.mjs` rather than loaded from jsDelivr. Both
 default to a CDN, and `script-src` lists none. The copies are gitignored and
@@ -221,7 +234,7 @@ Anthropic API specifics that are easy to get wrong from memory, all verified:
 npm install
 npm run dev            # web :3000, api :3001
 npm run build          # all packages (Turborepo, cached)
-npm test               # 273 tests, no network, browser, or keys needed
+npm test               # 275 tests, no network, browser, or keys needed
 npm run lint           # includes both portability guards
 npm run smoke          # live provider round-trip + cost accounting
 npm run db:start       # Supabase local (vendored CLI at .tools/supabase.exe)
@@ -303,7 +316,7 @@ executing nothing at all.
 | `@ai-edu/api-client` | 13 | SSE framing across chunk boundaries, multi-byte splits, CRLF, errors |
 | `@ai-edu/api` | 47 | attachment allowlist, binary detection, PDF extraction, gateway failure policy, OKF loader |
 | `@ai-edu/runners` | 9 | static verification layering and short-circuiting |
-| `@ai-edu/web` | 12 | sandbox configuration guards, CSP shape |
+| `@ai-edu/web` | 14 | sandbox configuration guards, CSP shape |
 | `@ai-edu/web` (browser) | 4 | **the P3 exit criterion** — real escapes in a real browser, plus a mutation check |
 
 Database behaviour is not unit-tested but was verified directly against
