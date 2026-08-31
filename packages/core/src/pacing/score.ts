@@ -25,6 +25,7 @@ export function scorePacing(state: PaceState, current: AttemptSummary): ScoringR
   // 1. Update rolling window state ────────────────────────────────────────────
   const recentAttemptCounts = [...state.recentAttemptCounts, current.attempts].slice(-WINDOW_SIZE);
   const recentDurations = [...state.recentDurations, current.durationMs].slice(-WINDOW_SIZE);
+  const recentHints = [...(state.recentHints ?? []), current.hintsUsed].slice(-WINDOW_SIZE);
   const hintsUsedTotal = state.hintsUsedTotal + current.hintsUsed;
 
   // 2. Update streaks ─────────────────────────────────────────────────────────
@@ -43,6 +44,7 @@ export function scorePacing(state: PaceState, current: AttemptSummary): ScoringR
   const newState: PaceState = {
     recentAttemptCounts,
     recentDurations,
+    recentHints,
     hintsUsedTotal,
     streakPassed,
     streakFailed,
@@ -63,8 +65,13 @@ export function scorePacing(state: PaceState, current: AttemptSummary): ScoringR
     adjustment = 'scaffold';
     reason =
       'You needed several attempts and hints on this step, so the next one will break things down more.';
-  } else if (streakPassed >= STRETCH_STREAK_THRESHOLD && hintsUsedTotal === 0) {
-    // Stretch requires a clean streak with zero hints across the whole window.
+  } else if (
+    streakPassed >= STRETCH_STREAK_THRESHOLD &&
+    recentHints.every((h) => h === 0)
+  ) {
+    // Stretch requires a clean streak with zero hints across the WINDOW, not
+    // across all time — a learner who needed one hint early is still allowed to
+    // pull ahead later.
     adjustment = 'stretch';
     reason =
       "You're well ahead — the next step will include an optional extension challenge.";

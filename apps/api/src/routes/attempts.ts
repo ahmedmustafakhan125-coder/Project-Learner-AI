@@ -87,7 +87,10 @@ export async function attemptRoutes(app: FastifyInstance): Promise<void> {
 
       let totalBytes = 0;
       for (const file of files) {
-        const size = file.contents.length;
+        // Byte length, not string length. `.length` counts UTF-16 code units, so
+        // a file of non-Latin text or emoji passes a byte cap it actually
+        // exceeds by two or three times.
+        const size = Buffer.byteLength(file.contents, 'utf8');
         if (size > MAX_FILE_BYTES) {
           return reply.code(413).send({
             error: 'payload_too_large',

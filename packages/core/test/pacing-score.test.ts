@@ -103,18 +103,34 @@ describe('scorePacing', () => {
     expect(after3.newState.hintsUsedTotal).toBe(5);
   });
 
-  it('stretch is blocked when hintsUsedTotal > 0', () => {
+  it('stretch is blocked by a hint still inside the window', () => {
     let state = emptyState;
-    // Use a hint on the first step
     const after1 = scorePacing(state, attempt({ hintsUsed: 1 }));
     state = after1.newState;
-    // Two more clean passes → streakPassed = 2 (reset by first step if attempts=1 passed)
-    // Actually first step was attempts=1 passed=true → streakPassed=1, then 2 more → 3
     const after2 = scorePacing(state, attempt());
     state = after2.newState;
     const after3 = scorePacing(state, attempt());
-    // streakPassed = 3 but hintsUsedTotal = 1 → should NOT stretch
+    // streakPassed = 3, but recentHints is still [1, 0, 0].
     expect(after3.directive.adjustment).not.toBe('stretch');
+  });
+
+  it('stretch becomes available again once the hint ages out of the window', () => {
+    // The regression this guards: hints were tracked as a LIFETIME total, so a
+    // single hint on step 1 disabled stretching for the rest of the project. A
+    // learner who needed help once and then pulled ahead could never be
+    // stretched again, and nothing about that was visible.
+    let state = emptyState;
+    state = scorePacing(state, attempt({ hintsUsed: 1 })).newState;
+
+    let last = scorePacing(state, attempt());
+    for (let i = 0; i < 3; i++) {
+      state = last.newState;
+      last = scorePacing(state, attempt());
+    }
+
+    expect(last.newState.recentHints).toEqual([0, 0, 0]);
+    expect(last.newState.hintsUsedTotal).toBe(1);
+    expect(last.directive.adjustment).toBe('stretch');
   });
 
   it('insert_micro_step takes priority over scaffold', () => {
