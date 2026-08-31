@@ -33,6 +33,15 @@ export const SANDBOX_TIMEOUT_MS = 10_000;
 /*  Sandbox HTML generators                                           */
 /* ------------------------------------------------------------------ */
 
+/*
+ * These documents are served by app/sandbox/route.ts, NOT inlined as a srcdoc
+ * attribute. A srcdoc frame inherits the parent's CSP, and the app policy has
+ * no 'unsafe-inline', so the bootstrap script below is refused and the frame
+ * silently never reports ready. Serving over http gives the document its own
+ * policy. Containment is unchanged: the opaque origin comes from the iframe's
+ * `sandbox="allow-scripts"`, not from how the document was delivered.
+ */
+
 function webSandboxHTML(): string {
   return /* html */ `<!DOCTYPE html>
 <html>
@@ -98,7 +107,7 @@ function pythonSandboxHTML(): string {
 <html>
 <head><meta charset="utf-8"></head>
 <body>
-<script src="https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide.js"><\/script>
+<script src="/pyodide/pyodide.js"><\/script>
 <script>
 (function () {
   "use strict";
@@ -109,7 +118,7 @@ function pythonSandboxHTML(): string {
 
   post({ type: 'progress', message: 'Loading Python runtime\\u2026' });
 
-  loadPyodide().then(function (pyodide) {
+  loadPyodide({ indexURL: '/pyodide/' }).then(function (pyodide) {
     post({ type: 'progress', message: 'Python ready' });
 
     window.addEventListener('message', function (ev) {

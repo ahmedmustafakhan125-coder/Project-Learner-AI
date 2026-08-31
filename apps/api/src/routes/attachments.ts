@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
+import { extractText } from 'unpdf';
 
 import { requireAuth, userOf } from '../auth.js';
+import { gatewayErrorReply, screen } from '../gateway.js';
 import { db } from '../db.js';
 
 /**
@@ -90,6 +92,29 @@ export function decodeText(bytes: Buffer): string | null {
   return text.slice(0, MAX_EXTRACTED_CHARS);
 }
 
+/**
+ * Pull the text layer out of a PDF.
+ *
+ * A PDF has always been *accepted* — `classify` returns 'pdf' — but nothing ever
+ * read it, so `extracted_text` stayed null and an uploaded PDF contributed
+ * exactly nothing to the prompt. The learner saw their file attached and got an
+ * answer that had never seen it.
+ *
+ * Returns null rather than throwing when there is no usable text: a scanned PDF
+ * is images with no text layer, which is a legitimate outcome to report, not an
+ * error. OCR is out of scope.
+ */
+export async function decodePdf(bytes: Buffer): Promise<string | null> {
+  try {
+    const { text } = await extractText(new Uint8Array(bytes), { mergePages: true });
+    const merged = (Array.isArray(text) ? text.join(String.fromCharCode(10)) : text).trim();
+    if (!merged) return null;
+    return merged.slice(0, MAX_EXTRACTED_CHARS);
+  } catch {
+    return null;
+  }
+}
+
 export async function attachmentRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/attachments', { preHandler: requireAuth }, async (request, reply) => {
     const user = userOf(request);
@@ -128,6 +153,49 @@ export async function attachmentRoutes(app: FastifyInstance): Promise<void> {
           error: 'not_text',
           message: `"${file.filename}" looks like binary data, not text.`,
         });
+      }
+    } else if (kind === 'pdf') {
+      extractedText = await decodePdf(bytes);
+      if (extractedText === null) {
+        return reply.code(422).send({
+          error: 'no_text_layer',
+          message:
+            `Could not read any text from "${file.filename}". If it is a scanned ` +
+            `document, the pages are images — paste the relevant part instead.`,
+        });
+      }
+    }
+
+    /*
+     * Screen the extracted text once, here, and store the safe version.
+     *
+     * An uploaded file is the likeliest injection carrier in the whole system —
+     * it is attacker-controlled content that ends up inside a prompt. Screening
+     * at upload rather than per question means the cost is paid once instead of
+     * on every fan-out, and nothing downstream can read an unscreened copy out
+     * of the database later.
+     *
+     * A refusal here is reported as a bad upload, not a server error: the
+     * learner picked the file and can pick a different one.
+     */
+    if (extractedText) {
+      try {
+        const verdict = await screen(extractedText, `attachment:${user.id}`, 'model-bound');
+        if (verdict.decision === 'BLOCK') {
+          return reply.code(422).send({
+            error: 'attachment_blocked',
+            message:
+              `"${file.filename}" was blocked by the safety filter — it contains ` +
+              `content that looks like instructions aimed at the assistant.`,
+            reasonCodes: verdict.reasonCodes,
+          });
+        }
+        extractedText = verdict.safeText;
+      } catch (err) {
+        const refusal = gatewayErrorReply(err);
+        if (!refusal) throw err;
+        request.log.warn({ userId: user.id, ...refusal.body }, 'attachment screening failed');
+        return reply.code(refusal.status).send(refusal.body);
       }
     }
 

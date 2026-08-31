@@ -42,6 +42,10 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/.turbo/**',
       '**/coverage/**',
+      // Vendored third-party runtimes, copied out of node_modules at build time
+      // by apps/web/scripts/vendor-assets.mjs. Not our source, and minified.
+      'apps/web/public/monaco/**',
+      'apps/web/public/pyodide/**',
     ],
   },
   ...tseslint.configs.recommended,

@@ -6,11 +6,19 @@ import rateLimit from '@fastify/rate-limit';
  *
  * Registered globally with a generous default (100 req/min) that covers read
  * endpoints. Generation and attempt endpoints opt into tighter limits via
- * route-level `config.rateLimit` overrides — see `registerRateLimit` below.
+ * route-level `config.rateLimit` overrides — see `rateLimitConfig` below.
  *
  * Keyed on the authenticated user ID when present, falling back to the remote
  * IP for unauthenticated probes (health check, pre-flight). This prevents one
  * learner's burst from counting against another's quota.
+ *
+ * The `hook` option is load-bearing. @fastify/rate-limit defaults to running at
+ * `onRequest`, which is BEFORE the `requireAuth` preHandler that populates
+ * `request.user` — so a user-aware `keyGenerator` reads `undefined` there and
+ * silently degrades to keying every authenticated request by IP. Running at
+ * `preHandler` puts the check after auth has resolved. The cost is that the
+ * body has already been parsed by the time a request is rejected; that is the
+ * right trade for limits that are supposed to be per-user.
  */
 
 const MINUTE = 60_000;
@@ -28,13 +36,14 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
   await app.register(rateLimit, {
     max: READ_LIMIT,
     timeWindow: MINUTE,
+    // After `requireAuth`, so `request.user` is actually populated.
+    hook: 'preHandler',
     keyGenerator(request) {
-      // Attempt synchronous user extraction from the already-resolved auth.
-      // When `requireAuth` has already run, `request.user` is populated.
-      if (request.user?.id) return request.user.id;
-
-      // Fall back to IP for unauthenticated routes (e.g. /health).
-      return request.ip;
+      // Authenticated requests get their own bucket. Unauthenticated ones
+      // (health, pre-flight) fall back to IP, which is why `trustProxy` is set
+      // on the server — behind a proxy every request otherwise shares one IP
+      // and the whole app collapses into a single bucket.
+      return request.user?.id ?? request.ip;
     },
     // Return a structured 429 rather than the default plain text.
     errorResponseBuilder(_request, _reply) {
@@ -44,40 +53,13 @@ export async function registerRateLimit(app: FastifyInstance): Promise<void> {
       };
     },
   });
-
-  // ---- Route-level overrides -----------------------------------------------
-  //
-  // Fastify rate-limit allows per-route overrides via `app.route()` config.
-  // We register them here as decorated route options that the route files can
-  // reference, but the simplest approach is to register additional scoped
-  // rate-limit instances on the prefix patterns that need tighter limits.
-
-  // Generation endpoints: 10 req/min
-  await app.register(
-    async (scope) => {
-      await scope.register(rateLimit, {
-        max: GENERATION_LIMIT,
-        timeWindow: MINUTE,
-        keyGenerator(request) {
-          return request.user?.id ?? request.ip;
-        },
-      });
-    },
-    // These are POST endpoints, so prefix matching covers them exactly.
-    // /api/projects/blueprint and /api/projects/:id/steps/:index/expand
-  );
-
-  // Attempt endpoints: 30 req/min
-  // Registered at the app level with a keyGenerator override.
-  // Since we cannot easily prefix-match dynamic segments, we use the
-  // `addHook` approach below for attempt routes specifically.
 }
 
 /**
  * Route-level rate-limit config objects.
  *
- * These are exported so route files can attach them to individual route
- * definitions via the `config` key, which @fastify/rate-limit reads.
+ * Attached to individual routes via the `config` key, which @fastify/rate-limit
+ * reads to override the global ceiling for that route.
  */
 export const rateLimitConfig = {
   /** Generation endpoints (blueprint, expand): 10 req/min. */

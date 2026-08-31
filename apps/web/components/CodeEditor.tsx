@@ -4,8 +4,16 @@ import dynamic from 'next/dynamic';
 import { useState } from 'react';
 
 // Lazy-load Monaco - keeps ~2MB out of initial bundle
+// @monaco-editor/react fetches Monaco from jsDelivr by default. The app CSP
+// lists no CDN in script-src, so that request is refused and the editor sits on
+// "Loading editor…" forever. Point the loader at the copy vendored into public/
+// by scripts/vendor-assets.mjs before the component can trigger a fetch.
 const MonacoEditor = dynamic(
-  () => import('@monaco-editor/react').then(m => ({ default: m.default })),
+  () =>
+    import('@monaco-editor/react').then((m) => {
+      m.loader.config({ paths: { vs: '/monaco/vs' } });
+      return { default: m.default };
+    }),
   {
     ssr: false,
     loading: () => <div className="editor-loading">Loading editor…</div>,

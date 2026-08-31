@@ -14,6 +14,7 @@ import {
 import { createProviderForTask } from '@ai-edu/llm';
 
 import { requireAuth, userOf } from '../auth.js';
+import { gatewayErrorReply, screenOrThrow } from '../gateway.js';
 import { checkBudget, db, recordUsage } from '../db.js';
 import { rateLimitConfig } from '../rateLimit.js';
 
@@ -55,6 +56,25 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: 'bad_request', issues: parsed.error.issues });
     }
 
+    /*
+     * Like /api/agents/ask, this route takes a client-supplied CompiledQuery,
+     * so it is a second way to hand the model a prompt that never passed
+     * through the interview. It gets the same screening, before the budget
+     * check and before a provider exists.
+     */
+    let safeCompiled;
+    try {
+      safeCompiled = {
+        ...parsed.data.compiled,
+        text: await screenOrThrow(parsed.data.compiled.text, `blueprint:${user.id}`),
+      };
+    } catch (err) {
+      const refusal = gatewayErrorReply(err);
+      if (!refusal) throw err;
+      request.log.warn({ userId: user.id, ...refusal.body }, 'blueprint prompt refused');
+      return reply.code(refusal.status).send(refusal.body);
+    }
+
     const budget = await checkBudget(user.id);
     if (budget.exceeded) {
       return reply.code(429).send({
@@ -74,7 +94,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
 
     const started = Date.now();
     try {
-      const blueprint = await generateBlueprint({ provider, compiled: parsed.data.compiled });
+      const blueprint = await generateBlueprint({ provider, compiled: safeCompiled });
 
       void recordUsage({
         userId: user.id,
@@ -438,5 +458,9 @@ function toExpansionPayload(step: Record<string, unknown>) {
     starterFiles: step['starter_files'],
     checkpoint,
     hintCount: hints.length,
+    // Persisted by the expand route but previously never returned, so the
+    // learner-facing pacing banner had nothing to render and silently never
+    // appeared.
+    pacingDirective: step['pacing_directive'] ?? null,
   };
 }

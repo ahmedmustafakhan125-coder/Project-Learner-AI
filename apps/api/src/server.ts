@@ -21,6 +21,10 @@ export async function buildServer() {
     // SSE responses are written directly to the raw socket, so Fastify's own
     // request timeout must not cut a long fan-out short.
     connectionTimeout: 0,
+    // Rate limiting falls back to `request.ip` for unauthenticated routes.
+    // Without this, every request behind a proxy or load balancer reports the
+    // proxy's address and they all share one bucket.
+    trustProxy: true,
   });
 
   await app.register(cors, { origin: env.WEB_ORIGIN, credentials: true });

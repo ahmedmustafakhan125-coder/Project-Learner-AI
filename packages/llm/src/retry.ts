@@ -17,6 +17,15 @@ export interface RetryOptions {
   maxRetries?: number;
   /** Initial backoff delay in ms. Default: 1000. */
   baseDelayMs?: number;
+  /**
+   * Extra veto applied on top of the error's own `retryable` flag.
+   *
+   * Retrying is only safe when the previous attempt had no observable effect.
+   * A streaming caller that has already handed tokens to the client cannot
+   * retry without replaying text the reader can already see, so it vetoes here
+   * rather than silently duplicating output.
+   */
+  shouldRetry?: (err: unknown) => boolean;
 }
 
 const DEFAULT_MAX_RETRIES = 2;
@@ -37,9 +46,11 @@ export async function withRetry<T>(
     } catch (err) {
       lastError = err;
 
-      // Only retry on errors explicitly marked as retryable.
+      // Only retry on errors explicitly marked as retryable, and only when the
+      // caller agrees the previous attempt left nothing behind.
       const retryable = (err as { retryable?: boolean })?.retryable;
-      if (!retryable || attempt >= maxRetries) {
+      const vetoed = options.shouldRetry ? !options.shouldRetry(err) : false;
+      if (!retryable || vetoed || attempt >= maxRetries) {
         throw err;
       }
 

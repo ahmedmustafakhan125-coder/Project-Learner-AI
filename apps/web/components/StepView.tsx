@@ -36,10 +36,8 @@ export function StepView({ step, projectId }: { step: StepContent; projectId: st
         {step.objective && <p className="objective">{step.objective}</p>}
       </header>
 
-      {(step as any).pacingDirective && (step as any).pacingDirective.adjustment !== 'hold' && (
-        <div className="pacing-banner">
-          {(step as any).pacingDirective.reason}
-        </div>
+      {step.pacingDirective && step.pacingDirective.adjustment !== 'hold' && (
+        <div className="pacing-banner">{step.pacingDirective.reason}</div>
       )}
 
       <Markdownish text={step.instructionsMd} />

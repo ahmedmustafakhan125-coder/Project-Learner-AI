@@ -161,16 +161,19 @@ export function CheckpointRunner({
           setStatus('failed');
         }
       } catch {
-        // If the API call fails, still reflect local verification outcome.
-        if (allPassed) {
-          setStatus('passed');
-          onPass();
-        } else {
-          setStatus('failed');
-        }
+        // The server is the authority on whether a checkpoint passed: it re-runs
+        // the static layers and owns the attempt record. If that call fails we
+        // do not know the outcome, so the checkpoint does NOT advance — passing
+        // a learner on a 500, a 429, or a dropped connection would let them skip
+        // steps by going offline.
+        setStatus('failed');
+        updateLayer(2, {
+          status: 'failed',
+          message: 'Could not reach the server to record this attempt. Try again.',
+        });
       }
     },
-    [projectId, stepIndex, files, onPass],
+    [projectId, stepIndex, files, onPass, updateLayer],
   );
 
   /* ---- sandbox callbacks ---- */
@@ -214,10 +217,12 @@ export function CheckpointRunner({
     startedAtRef.current = Date.now();
     setStatus('running');
     setLayers([...INITIAL_LAYERS]);
-    setShowSandbox(false);
-    setSandboxTrigger(0);
     setSandboxProgress(null);
     setAttempts((a) => a + 1);
+    // Deliberately NOT reset to 0 here. React batches this with the increment
+    // below, so resetting first left the trigger on its previous value and the
+    // sandbox effect never re-fired — the second run hung on "Running tests".
+    // The trigger is monotonic; only ever increment it.
 
     try {
       /* Layer 1 + 2 via verify generator */

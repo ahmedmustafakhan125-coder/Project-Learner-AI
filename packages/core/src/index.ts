@@ -8,6 +8,9 @@ export * from './interview/classify.js';
 export * from './interview/questions.js';
 export * from './interview/run.js';
 
+export * from './knowledge/types.js';
+export * from './knowledge/select.js';
+
 export * from './agents/prompts.js';
 export * from './agents/fanOut.js';
 

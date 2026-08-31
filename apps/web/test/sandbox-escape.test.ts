@@ -1,221 +1,156 @@
 /**
- * Sandbox security conformance tests.
+ * Sandbox configuration guards.
  *
- * These tests statically verify that the sandbox iframe configuration and
- * generated HTML enforce browser-level containment guarantees. The actual
- * enforcement is a browser spec guarantee — if the `sandbox` attribute is
- * correct, containment is guaranteed without needing a live browser.
+ * These are cheap static checks that the sandbox is still *spelled* correctly —
+ * they run with no browser and no build, so they catch an accidental edit fast.
  *
- * Satisfies the P3 exit criterion from CONTEXT.md.
+ * They are NOT the P3 exit criterion, and they cannot be. Reading the source and
+ * matching a regex proves nothing about what a browser does: this file would
+ * still pass if the attribute were widened at runtime via `setAttribute`. The
+ * criterion — reaching `window.parent`, calling `fetch`, an infinite loop — is
+ * proven by executing real escapes in a real browser in
+ * `sandbox-containment.browser.test.ts`, which includes a mutation check
+ * demonstrating those tests can actually fail.
+ *
+ * A note on what contains what, because it is easy to get backwards:
+ *
+ *   - `sandbox="allow-scripts"` without `allow-same-origin` gives the frame an
+ *     OPAQUE ORIGIN. That is what blocks reaching the parent's DOM, cookies and
+ *     storage.
+ *   - An opaque origin does NOT block `fetch`. Such a frame can still issue
+ *     requests; they simply carry `Origin: null`, and anything answering
+ *     `Access-Control-Allow-Origin: *` is readable. Network containment comes
+ *     from the sandbox document's `connect-src`, not from the sandbox attribute.
+ *   - The sandbox is served from a route rather than `srcdoc` because a srcdoc
+ *     frame inherits the parent CSP, which has no 'unsafe-inline' and therefore
+ *     refuses the sandbox's own bootstrap script.
  */
 
-import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import {
-  createSandboxHTML,
-  SANDBOX_TIMEOUT_MS,
-} from '../lib/sandbox-protocol';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+import { describe, expect, it } from 'vitest';
 
-/** Read the SandboxFrame component source for static attribute inspection. */
-function readSandboxFrameSource(): string {
-  const componentPath = resolve(
-    __dirname,
-    '..',
-    'components',
-    'SandboxFrame.tsx',
-  );
-  return readFileSync(componentPath, 'utf-8');
+import { createSandboxHTML, SANDBOX_TIMEOUT_MS } from '../lib/sandbox-protocol';
+import { appCsp, sandboxCsp } from '../lib/csp.mjs';
+
+const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+function read(relativePath: string): string {
+  return readFileSync(resolve(webRoot, relativePath), 'utf-8');
 }
 
-// ---------------------------------------------------------------------------
-// Test 1 — window.parent access is blocked by opaque origin
-// ---------------------------------------------------------------------------
+/**
+ * Strip comments before asserting a call is absent — otherwise a comment
+ * explaining why the call was removed reads as the call still being there.
+ */
+function codeOnly(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+}
 
-describe('Sandbox containment: window.parent blocked by opaque origin', () => {
-  const frameSource = readSandboxFrameSource();
+const frameSource = read('components/SandboxFrame.tsx');
 
-  it('iframe uses sandbox="allow-scripts" WITHOUT allow-same-origin', () => {
-    // The JSX must contain sandbox="allow-scripts" and the attribute value
-    // must NOT include allow-same-origin.
-    expect(frameSource).toMatch(/sandbox="allow-scripts"/);
-    // Verify no sandbox attribute value contains allow-same-origin.
-    const sandboxAttrs = [...frameSource.matchAll(/sandbox="([^"]*)"/g)].map(
-      (m) => m[1],
-    );
-    expect(sandboxAttrs.length).toBeGreaterThan(0);
-    for (const attr of sandboxAttrs) {
-      expect(attr).not.toContain('allow-same-origin');
-    }
-  });
-
-  it('createSandboxHTML("web") output contains no allow-same-origin escape hatch', () => {
-    const html = createSandboxHTML('web');
-    expect(html).not.toContain('allow-same-origin');
-  });
-
-  it('createSandboxHTML("python") output contains no allow-same-origin escape hatch', () => {
-    const html = createSandboxHTML('python');
-    expect(html).not.toContain('allow-same-origin');
-  });
-
-  it('opaque origin guarantees window.parent access throws SecurityError in a real browser', () => {
-    // Specification reference:
-    // Per the HTML spec, an iframe with `sandbox="allow-scripts"` but WITHOUT
-    // `allow-same-origin` is assigned an opaque origin (a unique, globally
-    // isolated origin). Any attempt by the iframe to access `window.parent`
-    // properties crosses an origin boundary and the browser MUST throw a
-    // DOMException (SecurityError). This is not something user code can
-    // override — it is enforced at the browser engine level.
-    //
-    // We assert the attribute is correct; the browser enforces the rest.
-    const sandboxAttrs = [...frameSource.matchAll(/sandbox="([^"]*)"/g)].map(
-      (m) => m[1],
-    );
-    expect(sandboxAttrs.length).toBeGreaterThan(0);
-    for (const attr of sandboxAttrs) {
+describe('sandbox attribute', () => {
+  it('uses allow-scripts and never allow-same-origin', () => {
+    const attrs = [...frameSource.matchAll(/sandbox="([^"]*)"/g)].map((m) => m[1]);
+    expect(attrs.length).toBeGreaterThan(0);
+    for (const attr of attrs) {
       expect(attr).toContain('allow-scripts');
+      // The two together are equivalent to no sandbox at all: a frame with both
+      // can reach in and remove its own sandbox attribute.
       expect(attr).not.toContain('allow-same-origin');
+      expect(attr).not.toContain('allow-top-navigation');
+      expect(attr).not.toContain('allow-popups');
     }
   });
+
+  it('never widens the sandbox attribute at runtime', () => {
+    expect(frameSource).not.toMatch(/setAttribute\(\s*['"]sandbox['"]/);
+  });
 });
 
-// ---------------------------------------------------------------------------
-// Test 2 — fetch() / network access is blocked by opaque origin
-// ---------------------------------------------------------------------------
-
-describe('Sandbox containment: network access blocked by opaque origin', () => {
-  const frameSource = readSandboxFrameSource();
-
-  it('sandbox attribute does NOT include allow-same-origin, blocking network requests', () => {
-    // Per the Fetch spec, a request initiated from an opaque origin with no
-    // `allow-same-origin` flag fails the CORS check and the network layer
-    // returns a network error. The iframe cannot make credentialed requests,
-    // read cookies, access localStorage, or exfiltrate data via fetch/XHR.
-    //
-    // We verify the attribute is configured to enforce this.
-    const sandboxAttrMatch = frameSource.match(/sandbox="([^"]*)"/);
-    expect(sandboxAttrMatch).not.toBeNull();
-
-    const sandboxValue = sandboxAttrMatch![1];
-    expect(sandboxValue).toContain('allow-scripts');
-    expect(sandboxValue).not.toContain('allow-same-origin');
-    // Also ensure no other dangerous flags are present.
-    expect(sandboxValue).not.toContain('allow-forms');
-    expect(sandboxValue).not.toContain('allow-popups');
-    expect(sandboxValue).not.toContain('allow-top-navigation');
+describe('sandbox delivery', () => {
+  it('is served from a route, not srcdoc, so it does not inherit the app CSP', () => {
+    expect(frameSource).toMatch(/src=\{`\/sandbox\?runtime=/);
+    expect(frameSource).not.toContain('srcDoc');
   });
 
-  it('createSandboxHTML("web") does not grant any network-enabling sandbox flags', () => {
-    const html = createSandboxHTML('web');
-    // The HTML itself must never embed a meta tag or script that sets
-    // allow-same-origin or other network-enabling flags.
-    expect(html).not.toContain('allow-same-origin');
-    expect(html).not.toContain('allow-forms');
-    expect(html).not.toContain('allow-popups');
+  it('remounts the frame via key rather than removing a React-owned node', () => {
+    // Calling frame.remove() detaches a node React still believes it owns; the
+    // ref is then never reattached and every later run silently does nothing.
+    expect(codeOnly(frameSource)).not.toContain('frame.remove()');
+    expect(frameSource).toMatch(/key=\{`\$\{runtime\}-\$\{generation\}`\}/);
+  });
+});
+
+describe('content security policy', () => {
+  it('the app policy allows no CDN in script-src', () => {
+    const csp = appCsp();
+    expect(csp).not.toContain('cdn.jsdelivr.net');
+    expect(csp).toContain("script-src 'self' 'unsafe-eval' blob:");
+    expect(csp).toContain("object-src 'none'");
+    expect(csp).toContain("frame-ancestors 'none'");
   });
 
-  it('createSandboxHTML("python") does not grant any network-enabling sandbox flags', () => {
+  it('the sandbox policy names the origin explicitly, because self is opaque there', () => {
+    const csp = sandboxCsp('https://app.example');
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).toContain('connect-src https://app.example');
+    // 'self' would resolve against the frame's opaque origin and match nothing.
+    expect(csp).not.toMatch(/connect-src[^;]*'self'/);
+  });
+
+  it('the sandbox cannot reach an arbitrary external origin', () => {
+    const csp = sandboxCsp('https://app.example');
+    const connect = csp.split('; ').find((d) => d.startsWith('connect-src'));
+    expect(connect).toBe('connect-src https://app.example');
+  });
+});
+
+describe('sandbox runtime assets', () => {
+  it('loads Pyodide from our own origin, not a CDN', () => {
     const html = createSandboxHTML('python');
-    expect(html).not.toContain('allow-same-origin');
-    expect(html).not.toContain('allow-forms');
-    expect(html).not.toContain('allow-popups');
+    expect(html).not.toContain('cdn.jsdelivr.net');
+    expect(html).toContain('/pyodide/pyodide.js');
+    // Without indexURL, Pyodide resolves its wasm and stdlib back to the CDN.
+    expect(html).toContain("indexURL: '/pyodide/'");
+  });
+
+  it('loads Monaco from our own origin, not a CDN', () => {
+    const editor = read('components/CodeEditor.tsx');
+    expect(editor).toContain("paths: { vs: '/monaco/vs' }");
   });
 });
 
-// ---------------------------------------------------------------------------
-// Test 3 — Infinite loop is terminated within SANDBOX_TIMEOUT_MS
-// ---------------------------------------------------------------------------
-
-describe('Sandbox containment: infinite loop terminated within timeout', () => {
-  const frameSource = readSandboxFrameSource();
-
-  it('SANDBOX_TIMEOUT_MS is defined and set to 10 000 ms (10 s ceiling)', () => {
-    expect(SANDBOX_TIMEOUT_MS).toBeDefined();
-    expect(typeof SANDBOX_TIMEOUT_MS).toBe('number');
+describe('execution timeout', () => {
+  it('is a fixed 10s ceiling the sandbox cannot influence', () => {
     expect(SANDBOX_TIMEOUT_MS).toBe(10_000);
-  });
-
-  it('SandboxFrame component starts a timer using SANDBOX_TIMEOUT_MS on every exec', () => {
-    // The component must call setTimeout with SANDBOX_TIMEOUT_MS so that an
-    // unresponsive sandbox (e.g. stuck in an infinite loop) is killed.
-    expect(frameSource).toContain('SANDBOX_TIMEOUT_MS');
     expect(frameSource).toMatch(/setTimeout\([^,]+,\s*SANDBOX_TIMEOUT_MS\)/);
-  });
-
-  it('timeout handler kills the iframe by navigating to about:blank and removing it', () => {
-    // When the timer fires, the component must destroy the iframe so the
-    // infinite loop cannot continue consuming resources.
-    expect(frameSource).toContain("frame.src = 'about:blank'");
-    expect(frameSource).toContain('frame.remove()');
-  });
-
-  it('timeout fires an onError callback informing the user', () => {
-    // The user must receive feedback that execution was killed.
-    expect(frameSource).toMatch(
-      /onError\(['"].*timed out.*['"]\)/i,
-    );
-  });
-
-  it('createSandboxHTML output contains no mechanism to disable or extend the timeout', () => {
-    // The generated sandbox HTML must not contain any code that could
-    // intercept, clear, or extend the parent-imposed timeout.
-    const webHtml = createSandboxHTML('web');
-    const pyHtml = createSandboxHTML('python');
-
-    // No setTimeout/clearTimeout inside sandbox — parent controls timing.
-    for (const html of [webHtml, pyHtml]) {
+    // The timer lives in the parent; nothing inside the frame can clear it.
+    for (const html of [createSandboxHTML('web'), createSandboxHTML('python')]) {
       expect(html).not.toContain('clearTimeout');
       expect(html).not.toContain('SANDBOX_TIMEOUT');
     }
   });
+
+  it('tells the learner when execution was killed', () => {
+    expect(frameSource).toMatch(/onError\(['"].*timed out.*['"]\)/i);
+  });
 });
 
-// ---------------------------------------------------------------------------
-// Additional: sandbox HTML wraps execution in try/catch
-// ---------------------------------------------------------------------------
+describe('error containment in generated HTML', () => {
+  it('wraps learner code and each test so one failure cannot crash the sandbox', () => {
+    const web = createSandboxHTML('web');
+    expect(web).toMatch(/try\s*\{[\s\S]*?new Function\(code\)[\s\S]*?\}\s*catch/);
+    expect(web).toMatch(/try\s*\{[\s\S]*?new Function\(t\.code\)[\s\S]*?\}\s*catch/);
 
-describe('Sandbox HTML error containment', () => {
-  it('web sandbox wraps learner code execution in try/catch', () => {
-    const html = createSandboxHTML('web');
-    // Learner code is executed inside a try block so runtime errors don't
-    // crash the sandbox or silently swallow failures.
-    expect(html).toMatch(/try\s*\{[\s\S]*?new Function\(code\)[\s\S]*?\}\s*catch/);
-  });
+    const py = createSandboxHTML('python');
+    expect(py).toMatch(/try\s*\{[\s\S]*?pyodide\.runPython\(code\)[\s\S]*?\}\s*catch/);
+    expect(py).toMatch(/try\s*\{[\s\S]*?pyodide\.runPython\(t\.code\)[\s\S]*?\}\s*catch/);
 
-  it('python sandbox wraps learner code execution in try/catch', () => {
-    const html = createSandboxHTML('python');
-    expect(html).toMatch(/try\s*\{[\s\S]*?pyodide\.runPython\(code\)[\s\S]*?\}\s*catch/);
-  });
-
-  it('web sandbox wraps each test case in try/catch', () => {
-    const html = createSandboxHTML('web');
-    // Individual test failures must be captured, not propagated as uncaught.
-    expect(html).toMatch(/try\s*\{[\s\S]*?new Function\(t\.code\)[\s\S]*?\}\s*catch/);
-  });
-
-  it('python sandbox wraps each test case in try/catch', () => {
-    const html = createSandboxHTML('python');
-    expect(html).toMatch(/try\s*\{[\s\S]*?pyodide\.runPython\(t\.code\)[\s\S]*?\}\s*catch/);
-  });
-
-  it('web sandbox posts an error message instead of crashing silently', () => {
-    const html = createSandboxHTML('web');
-    // When learner code throws, the sandbox must post an 'error' message
-    // back to the parent so the UI can display it.
-    expect(html).toMatch(
-      /catch[\s\S]*?post\(\{\s*type:\s*'error'/,
-    );
-  });
-
-  it('python sandbox posts an error message instead of crashing silently', () => {
-    const html = createSandboxHTML('python');
-    expect(html).toMatch(
-      /catch[\s\S]*?post\(\{\s*type:\s*'error'/,
-    );
+    for (const html of [web, py]) {
+      expect(html).toMatch(/catch[\s\S]*?post\(\{\s*type:\s*'error'/);
+    }
   });
 });

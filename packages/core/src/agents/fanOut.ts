@@ -5,6 +5,8 @@ import type { AbortSignalLike } from '../platform.js';
 import { AGENT_ORDER } from '../schemas/common.js';
 import type { AgentKind } from '../schemas/common.js';
 import type { CompiledQuery } from '../schemas/interview.js';
+import type { KnowledgeBundle } from '../knowledge/types.js';
+import { renderKnowledge } from '../knowledge/select.js';
 import { AGENT_INSTRUCTION, PEDAGOGY_CORE } from './prompts.js';
 
 /**
@@ -69,6 +71,12 @@ export interface BuildRequestOptions {
   provider: LLMProvider;
   compiled: CompiledQuery;
   history?: LLMMessage[];
+  /**
+   * The curated OKF bundle. Selection happens in here rather than at the call
+   * site so all four agents cannot be handed different concepts: identical
+   * bytes across the four is what makes the shared cache entry work at all.
+   */
+  knowledge?: KnowledgeBundle;
 }
 
 /**
@@ -78,9 +86,17 @@ export interface BuildRequestOptions {
  */
 export function buildAgentRequest(
   kind: AgentKind,
-  { provider, compiled, history = [] }: BuildRequestOptions,
+  { provider, compiled, history = [], knowledge }: BuildRequestOptions,
 ): LLMRequest {
   const parts: LLMContentPart[] = [];
+
+  // Curated knowledge goes ahead of the attachments and the question, inside the
+  // block the cache boundary already covers. Deterministic selection keeps these
+  // bytes stable, so the three followers read what the lead wrote.
+  const knowledgeText = knowledge ? renderKnowledge(knowledge, compiled) : null;
+  if (knowledgeText) {
+    parts.push({ type: 'text', text: knowledgeText });
+  }
 
   for (const file of compiled.attachments) {
     if (file.providerFileId && provider.capabilities.supportsFileUpload) {
@@ -143,9 +159,6 @@ export async function* fanOut(options: FanOutOptions): AsyncIterable<FanOutEvent
     w?.();
   };
 
-  /** User-facing message when a specialist fails after all retries. */
-  const AGENT_UNAVAILABLE_MESSAGE = 'This specialist is temporarily unavailable. Try again shortly.';
-
   /**
    * One agent's lifecycle. Errors are caught per-agent and emitted as events:
    * one specialist failing must never take down the other three, and the
@@ -153,7 +166,13 @@ export async function* fanOut(options: FanOutOptions): AsyncIterable<FanOutEvent
    *
    * The stream factory is wrapped in `withRetry` so transient failures (rate
    * limits, 5xx) are retried with exponential backoff before the agent is
-   * declared failed.
+   * declared failed. Retrying is vetoed once any delta has been emitted: the
+   * consumer has already been handed those tokens, and a second attempt would
+   * replay text the learner can see rather than replacing it.
+   *
+   * The real provider message and `retryable` flag are carried on the event.
+   * They are diagnostics, not copy — `apps/api` decides what a learner sees and
+   * persists the underlying error separately.
    */
   const consume = async (
     agent: AgentKind,
@@ -161,32 +180,41 @@ export async function* fanOut(options: FanOutOptions): AsyncIterable<FanOutEvent
   ): Promise<void> => {
     const started = Date.now();
     let text = '';
+    let emittedDelta = false;
+
+    // Emitted once, outside the retry loop: `start` marks the agent appearing
+    // in the UI, and a retry is meant to be invisible, not a second beginning.
+    emit({ agent, type: 'start' });
+
     try {
-      await withRetry(async () => {
-        text = '';
-        emit({ agent, type: 'start' });
-        const events = streamFactory();
-        for await (const event of events) {
-          if (event.type === 'text_delta') {
-            text += event.text;
-            emit({ agent, type: 'delta', text: event.text });
-          } else if (event.type === 'done') {
-            emit({
-              agent,
-              type: 'done',
-              usage: event.response.usage,
-              latencyMs: Date.now() - started,
-              text,
-            });
+      await withRetry(
+        async () => {
+          text = '';
+          const events = streamFactory();
+          for await (const event of events) {
+            if (event.type === 'text_delta') {
+              text += event.text;
+              emittedDelta = true;
+              emit({ agent, type: 'delta', text: event.text });
+            } else if (event.type === 'done') {
+              emit({
+                agent,
+                type: 'done',
+                usage: event.response.usage,
+                latencyMs: Date.now() - started,
+                text,
+              });
+            }
           }
-        }
-      });
+        },
+        { shouldRetry: () => !emittedDelta },
+      );
     } catch (err) {
       emit({
         agent,
         type: 'error',
-        message: AGENT_UNAVAILABLE_MESSAGE,
-        retryable: false,
+        message: err instanceof Error ? err.message : String(err),
+        retryable: Boolean((err as { retryable?: boolean })?.retryable),
       });
     } finally {
       running -= 1;
@@ -205,8 +233,21 @@ export async function* fanOut(options: FanOutOptions): AsyncIterable<FanOutEvent
     });
 
   // 1. Lead goes out alone and writes the cache entry.
+  //
+  // The buffered stream is already in flight before `consume` runs — that is
+  // what makes the stagger work. It can only be drained once, so a retry has to
+  // issue a genuinely new request instead of re-reading a queue that has
+  // already ended or latched its failure.
   const lead = bufferStream(streamFor(leadAgent));
-  const tasks = [consume(leadAgent, () => lead.events)];
+  let leadStreamTaken = false;
+  const leadFactory = (): AsyncIterable<LLMEvent> => {
+    if (!leadStreamTaken) {
+      leadStreamTaken = true;
+      return lead.events;
+    }
+    return streamFor(leadAgent);
+  };
+  const tasks = [consume(leadAgent, leadFactory)];
 
   // 2. Wait for proof the entry is live — bounded, so a stalled lead cannot
   //    hold the other three hostage.
@@ -266,9 +307,7 @@ export async function collectFanOut(
       entry.usage = event.usage;
       entry.latencyMs = event.latencyMs;
       entry.text = event.text;
-    } else if (event.type === 'error') {
-      entry.error = 'This specialist is temporarily unavailable. Try again shortly.';
-    }
+    } else if (event.type === 'error') entry.error = event.message;
   }
 
   return results;

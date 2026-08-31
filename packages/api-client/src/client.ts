@@ -108,6 +108,20 @@ export interface StepContent {
   starterFiles: SourceFile[];
   checkpoint: Checkpoint;
   hintCount: number;
+  /**
+   * Why this step was reshaped, when adaptive pacing changed it.
+   *
+   * Null on a step the blueprint produced unchanged. Surfaced to the learner on
+   * purpose: pacing that silently rewrites the work is a black box, and a
+   * learner who cannot see why the difficulty moved cannot argue with it.
+   */
+  pacingDirective: PacingDirective | null;
+}
+
+export interface PacingDirective {
+  adjustment: 'scaffold' | 'insert_micro_step' | 'hold' | 'compress' | 'stretch';
+  reason: string;
+  notes: string[];
 }
 
 export interface ExpansionPlan {
