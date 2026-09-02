@@ -246,10 +246,36 @@ const BUILTIN_MODELS: ModelEntry[] = [
     verifiedOn: null,
   },
   {
+    id: 'gemini-3.6-flash',
+    label: 'Gemini 3.6 Flash',
+    vendor: 'gemini',
+    providerModel: 'gemini-3.6-flash',
+    pricing: null,
+    capabilities: OPENAI_COMPATIBLE_CAPS({
+      maxContext: 1_048_576,
+      maxOutputTokens: 65_536,
+    }),
+    verifiedOn: null,
+    blurb: 'Fast and affordable. Great for everyday tasks.',
+  },
+  {
+    id: 'gemini-3.6-pro',
+    label: 'Gemini 3.6 Pro',
+    vendor: 'gemini',
+    providerModel: 'gemini-3.6-pro',
+    pricing: null,
+    capabilities: OPENAI_COMPATIBLE_CAPS({
+      maxContext: 1_048_576,
+      maxOutputTokens: 65_536,
+    }),
+    verifiedOn: null,
+    blurb: 'Strongest Gemini model. Best for complex reasoning.',
+  },
+  {
     id: 'gemini-2.5-flash',
     label: 'Gemini 2.5 Flash',
     vendor: 'gemini',
-    providerModel: 'gemini-2.5-flash',
+    providerModel: 'gemini-3.6-flash',
     pricing: null,
     capabilities: OPENAI_COMPATIBLE_CAPS({
       maxContext: 1_048_576,
@@ -262,7 +288,7 @@ const BUILTIN_MODELS: ModelEntry[] = [
     id: 'gemini-2.5-pro',
     label: 'Gemini 2.5 Pro',
     vendor: 'gemini',
-    providerModel: 'gemini-2.5-pro',
+    providerModel: 'gemini-3.6-pro',
     pricing: null,
     capabilities: OPENAI_COMPATIBLE_CAPS({
       maxContext: 1_048_576,
