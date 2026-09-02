@@ -22,16 +22,24 @@ export function NavHeader() {
     await supabase.auth.signOut();
   };
 
-  const navItems = [
-    { href: '/ask', label: '4-Agent Workspace', icon: '✨' },
-    { href: '/projects', label: 'Projects Library', icon: '📂' },
-    { href: '/projects/new', label: 'New Blueprint', icon: '⚡' },
+  const publicNavItems = [
+    { href: '/', label: 'Home' },
+    { href: '/about', label: 'About' },
   ];
+
+  const authNavItems = [
+    { href: '/', label: 'Home' },
+    { href: '/ask', label: 'Workspace' },
+    { href: '/projects', label: 'Projects' },
+    { href: '/about', label: 'About' },
+  ];
+
+  const currentNavItems = session ? authNavItems : publicNavItems;
 
   return (
     <header className="lumina-navbar">
       <div className="lumina-nav-container">
-        <Link href="/ask" className="lumina-brand">
+        <Link href="/" className="lumina-brand">
           <div className="lumina-logo-icon">
             <span className="logo-spark">✦</span>
           </div>
@@ -42,15 +50,17 @@ export function NavHeader() {
         </Link>
 
         <nav className="lumina-nav-links">
-          {navItems.map((item) => {
-            const isActive = pathname === item.href || (item.href !== '/ask' && pathname?.startsWith(item.href));
+          {currentNavItems.map((item) => {
+            const isActive =
+              item.href === '/'
+                ? pathname === '/'
+                : pathname === item.href || (item.href !== '/' && pathname?.startsWith(item.href));
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={`lumina-nav-link ${isActive ? 'active' : ''}`}
               >
-                <span className="nav-icon">{item.icon}</span>
                 <span>{item.label}</span>
                 {isActive && <span className="active-pill" />}
               </Link>
@@ -74,9 +84,13 @@ export function NavHeader() {
               </button>
             </div>
           ) : (
-            <div className="user-indicator guest">
-              <span className="status-dot" />
-              <span>Guest</span>
+            <div className="guest-nav-actions">
+              <Link href="/login?mode=signin" className="btn-nav-signin">
+                Sign In
+              </Link>
+              <Link href="/login?mode=signup&next=/ask" className="btn-nav-getstarted">
+                Get Started
+              </Link>
             </div>
           )}
         </div>

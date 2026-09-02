@@ -37,7 +37,7 @@ function Projects() {
           <div className="sub">Hands-on coding blueprints with live in-browser execution, test runners, and hints.</div>
         </div>
         <Link className="btn primary" href="/projects/new">
-          <span>⚡ Generate New Blueprint</span>
+          <span>Generate New Blueprint</span>
         </Link>
       </header>
 
@@ -49,8 +49,10 @@ function Projects() {
       )}
 
       {projects?.length === 0 && !error && (
-        <div className="empty" style={{ background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--border)', padding: '60px 24px' }}>
-          <div style={{ fontSize: '36px', marginBottom: '12px' }}>🚀</div>
+        <div className="empty" style={{ background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--border)', padding: '60px 24px', textAlign: 'center' }}>
+          <div className="auth-logo-badge" style={{ margin: '0 auto 16px' }}>
+            <span className="logo-spark">✦</span>
+          </div>
           <h2 style={{ fontSize: '20px', margin: '0 0 8px' }}>No projects generated yet</h2>
           <p className="muted" style={{ maxWidth: '440px', margin: '0 auto 24px' }}>
             Tell Project Learner what technology, game, or tool you want to build and it will create a tailored blueprint.
@@ -95,7 +97,7 @@ function Projects() {
                     color: 'var(--text-dim)',
                   }}
                 >
-                  🎓 {project.skill_level}
+                  Skill Level: {project.skill_level}
                 </span>
                 {project.estimated_hours !== null && (
                   <span
@@ -108,7 +110,7 @@ function Projects() {
                       color: 'var(--text-dim)',
                     }}
                   >
-                    ⏱️ ~{project.estimated_hours}h
+                    ~{project.estimated_hours}h est.
                   </span>
                 )}
                 <span style={{ marginLeft: 'auto', fontSize: '13px', color: 'var(--primary)', fontWeight: 600 }}>

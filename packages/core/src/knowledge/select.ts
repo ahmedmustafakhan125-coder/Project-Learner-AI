@@ -56,12 +56,14 @@ function tokenise(text: string): string[] {
 
 function termsFrom(compiled: CompiledQuery): string[] {
   const raw: string[] = [];
+  const slots = compiled.slots ?? {};
 
   for (const key of MATCHED_SLOTS) {
-    const value = compiled.slots[key]?.value;
+    const value = slots[key]?.value;
     if (value) raw.push(value);
   }
-  raw.push(compiled.originalQuery);
+  if (compiled.originalQuery) raw.push(compiled.originalQuery);
+  if (compiled.text) raw.push(compiled.text);
 
   // Sorted and deduplicated so the result cannot depend on the order slots
   // happened to be filled in.
@@ -90,19 +92,23 @@ function scoreConcept(concept: KnowledgeConcept, terms: readonly string[]): numb
  * cannot vary between two runs on the same input.
  */
 export function selectConcepts(
-  bundle: KnowledgeBundle,
+  bundle: KnowledgeBundle | KnowledgeConcept[] | null | undefined,
   compiled: CompiledQuery,
   maxConcepts: number = MAX_CONCEPTS,
 ): KnowledgeConcept[] {
+  if (!bundle) return [];
+  const concepts = Array.isArray(bundle) ? bundle : (bundle.concepts ?? []);
+  if (concepts.length === 0) return [];
+
   const terms = termsFrom(compiled);
 
-  return bundle.concepts
+  return concepts
     // Deprecated concepts stay in the bundle for their links and history, but
     // must never be presented to a learner as current.
-    .filter((concept) => concept.status !== 'deprecated')
+    .filter((concept) => concept && concept.status !== 'deprecated')
     .map((concept) => ({ concept, score: scoreConcept(concept, terms) }))
     .filter((scored) => scored.score > 0)
-    .sort((a, b) => b.score - a.score || a.concept.path.localeCompare(b.concept.path))
+    .sort((a, b) => b.score - a.score || (a.concept.path ?? '').localeCompare(b.concept.path ?? ''))
     .slice(0, maxConcepts)
     .map((scored) => scored.concept);
 }
@@ -120,16 +126,17 @@ export function selectConcepts(
  * one as the other.
  */
 export function renderKnowledge(
-  bundle: KnowledgeBundle,
+  bundle: KnowledgeBundle | KnowledgeConcept[] | null | undefined,
   compiled: CompiledQuery,
   maxConcepts: number = MAX_CONCEPTS,
 ): string | null {
+  if (!bundle) return null;
   const selected = selectConcepts(bundle, compiled, maxConcepts);
   if (selected.length === 0) return null;
 
   const lines: string[] = ['<knowledge>'];
 
-  if (bundle.index) {
+  if (!Array.isArray(bundle) && bundle.index) {
     lines.push('<index>');
     lines.push(bundle.index.trim());
     lines.push('</index>');

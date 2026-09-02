@@ -207,7 +207,7 @@ export async function* fanOut(options: FanOutOptions): AsyncIterable<FanOutEvent
             }
           }
         },
-        { shouldRetry: () => !emittedDelta },
+        { shouldRetry: () => !emittedDelta, maxRetries: 2, baseDelayMs: 250 },
       );
     } catch (err) {
       emit({

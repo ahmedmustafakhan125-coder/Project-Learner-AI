@@ -29,7 +29,7 @@ const AGENT_METADATA: Record<
   }
 > = {
   simple: {
-    icon: '💡',
+    icon: '✦',
     title: 'Conceptual Guide',
     role: 'Intuitive Theory & Mechanism',
     borderClass: 'border-gradient-primary',
@@ -37,7 +37,7 @@ const AGENT_METADATA: Record<
     accentColor: 'var(--primary)',
   },
   industry: {
-    icon: '🛠️',
+    icon: '✦',
     title: 'Practical Engineer',
     role: 'Production Systems & Real Code',
     borderClass: 'border-gradient-tertiary',
@@ -45,7 +45,7 @@ const AGENT_METADATA: Record<
     accentColor: 'var(--tertiary)',
   },
   practice: {
-    icon: '🎮',
+    icon: '✦',
     title: 'Interactive Sandbox',
     role: 'Hands-on Runnable Exercise',
     borderClass: 'border-gradient-secondary',
@@ -53,7 +53,7 @@ const AGENT_METADATA: Record<
     accentColor: 'var(--secondary)',
   },
   concepts: {
-    icon: '📋',
+    icon: '✦',
     title: 'Key Takeaways',
     role: 'Core Facts & Gotchas',
     borderClass: 'border-gradient-warning',
@@ -75,14 +75,14 @@ export function AgentTabs({ panes }: { panes: AgentPanes }) {
             className={`view-mode-btn ${viewMode === 'grid' ? 'active' : ''}`}
             onClick={() => setViewMode('grid')}
           >
-            ❖ 4-Agent Grid
+            Grid View
           </button>
           <button
             type="button"
             className={`view-mode-btn ${viewMode === 'tabbed' ? 'active' : ''}`}
             onClick={() => setViewMode('tabbed')}
           >
-            ☷ Focused Tabs
+            Tabbed View
           </button>
         </div>
       </div>
@@ -344,7 +344,7 @@ function Exercise({ markdown }: { markdown: string }) {
     <div className="exercise" style={{ marginTop: '16px', borderRadius: '12px', overflow: 'hidden' }}>
       <div style={{ padding: '8px 14px', background: 'rgba(0,0,0,0.6)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
         <span style={{ fontSize: '11.5px', color: 'var(--secondary)' }}>
-          ⚡ Isolated Sandbox Preview
+          Isolated Sandbox Preview
         </span>
       </div>
       <iframe

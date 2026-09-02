@@ -225,7 +225,7 @@ function Ask() {
                 onClick={() => void start()}
                 disabled={busy || !query.trim()}
               >
-                {phase === 'interviewing' ? 'Analyzing…' : phase === 'streaming' ? 'Streaming 4 Agents…' : '⚡ Run Query'}
+                {phase === 'interviewing' ? 'Analyzing…' : phase === 'streaming' ? 'Streaming 4 Agents…' : 'Run Query'}
               </button>
             </div>
           </div>

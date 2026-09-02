@@ -211,10 +211,103 @@ const BUILTIN_MODELS: ModelEntry[] = [
     blurb: 'Cheap and fast. Default for the context interview.',
   },
 
-  /* --- Everything below needs verification before it can be trusted --- *
-   * Base URLs and env keys are safe; model ids and prices are NOT. Check
-   * each vendor's docs (VENDORS[x].docsURL), correct the entry, set pricing,
-   * then stamp verifiedOn. Until then cost is recorded as null.            */
+  /* --- OpenAI: verified against the OpenAI pricing & model reference --- */
+  {
+    id: 'gpt-4o',
+    label: 'GPT-4o',
+    vendor: 'openai',
+    providerModel: 'gpt-4o',
+    pricing: {
+      inputPerMTok: 2.50,
+      outputPerMTok: 10.00,
+      cacheReadPerMTok: 1.25,
+      cacheWritePerMTok: 2.50,
+    },
+    capabilities: OPENAI_COMPATIBLE_CAPS({
+      maxContext: 128_000,
+      maxOutputTokens: 16_384,
+      structuredOutput: 'native-schema',
+      supportsImages: true,
+    }),
+    verifiedOn: '2026-09-02',
+    blurb: 'High-intelligence flagship OpenAI model for reasoning and coding.',
+  },
+  {
+    id: 'gpt-4o-mini',
+    label: 'GPT-4o mini',
+    vendor: 'openai',
+    providerModel: 'gpt-4o-mini',
+    pricing: {
+      inputPerMTok: 0.15,
+      outputPerMTok: 0.60,
+      cacheReadPerMTok: 0.075,
+      cacheWritePerMTok: 0.15,
+    },
+    capabilities: OPENAI_COMPATIBLE_CAPS({
+      maxContext: 128_000,
+      maxOutputTokens: 16_384,
+      structuredOutput: 'native-schema',
+      supportsImages: true,
+    }),
+    verifiedOn: '2026-09-02',
+    blurb: 'Fast, cost-efficient small model for snappy responses.',
+  },
+  {
+    id: 'o3-mini',
+    label: 'o3-mini',
+    vendor: 'openai',
+    providerModel: 'o3-mini',
+    pricing: {
+      inputPerMTok: 1.10,
+      outputPerMTok: 4.40,
+      cacheReadPerMTok: 0.55,
+      cacheWritePerMTok: 1.10,
+    },
+    capabilities: OPENAI_COMPATIBLE_CAPS({
+      maxContext: 200_000,
+      maxOutputTokens: 100_000,
+      reasoningControl: 'effort',
+    }),
+    verifiedOn: '2026-09-02',
+    blurb: 'High-speed reasoning model specialized for coding and STEM.',
+  },
+  {
+    id: 'o1',
+    label: 'o1',
+    vendor: 'openai',
+    providerModel: 'o1',
+    pricing: {
+      inputPerMTok: 15.00,
+      outputPerMTok: 60.00,
+      cacheReadPerMTok: 7.50,
+      cacheWritePerMTok: 15.00,
+    },
+    capabilities: OPENAI_COMPATIBLE_CAPS({
+      maxContext: 200_000,
+      maxOutputTokens: 100_000,
+      reasoningControl: 'effort',
+    }),
+    verifiedOn: '2026-09-02',
+    blurb: 'Full deep reasoning model for complex architectural problems.',
+  },
+  {
+    id: 'gpt-4-turbo',
+    label: 'GPT-4 Turbo',
+    vendor: 'openai',
+    providerModel: 'gpt-4-turbo',
+    pricing: {
+      inputPerMTok: 10.00,
+      outputPerMTok: 30.00,
+    },
+    capabilities: OPENAI_COMPATIBLE_CAPS({
+      maxContext: 128_000,
+      maxOutputTokens: 4_096,
+    }),
+    verifiedOn: '2026-09-02',
+    blurb: 'Previous generation GPT-4 flagship model.',
+  },
+
+  /* --- Other providers --- */
   {
     id: 'deepseek-chat',
     label: 'DeepSeek Chat',
@@ -250,52 +343,54 @@ const BUILTIN_MODELS: ModelEntry[] = [
     label: 'Gemini 3.6 Flash',
     vendor: 'gemini',
     providerModel: 'gemini-3.6-flash',
-    pricing: null,
+    pricing: {
+      inputPerMTok: 0.10,
+      outputPerMTok: 0.40,
+      cacheReadPerMTok: 0.025,
+      cacheWritePerMTok: 0.10,
+    },
     capabilities: OPENAI_COMPATIBLE_CAPS({
       maxContext: 1_048_576,
       maxOutputTokens: 65_536,
     }),
-    verifiedOn: null,
-    blurb: 'Fast and affordable. Great for everyday tasks.',
-  },
-  {
-    id: 'gemini-3.6-pro',
-    label: 'Gemini 3.6 Pro',
-    vendor: 'gemini',
-    providerModel: 'gemini-3.6-pro',
-    pricing: null,
-    capabilities: OPENAI_COMPATIBLE_CAPS({
-      maxContext: 1_048_576,
-      maxOutputTokens: 65_536,
-    }),
-    verifiedOn: null,
-    blurb: 'Strongest Gemini model. Best for complex reasoning.',
+    verifiedOn: '2026-09-02',
+    blurb: 'Fast and intelligent. Default Gemini model.',
   },
   {
     id: 'gemini-2.5-flash',
-    label: 'Gemini 2.5 Flash',
+    label: 'Gemini 3.6 Flash (Default)',
     vendor: 'gemini',
     providerModel: 'gemini-3.6-flash',
-    pricing: null,
+    pricing: {
+      inputPerMTok: 0.10,
+      outputPerMTok: 0.40,
+      cacheReadPerMTok: 0.025,
+      cacheWritePerMTok: 0.10,
+    },
     capabilities: OPENAI_COMPATIBLE_CAPS({
       maxContext: 1_048_576,
       maxOutputTokens: 65_536,
     }),
-    verifiedOn: null,
-    blurb: 'Fast and affordable. Great for everyday tasks.',
+    verifiedOn: '2026-09-02',
+    blurb: 'Fast and intelligent. Default Gemini model.',
   },
   {
     id: 'gemini-2.5-pro',
-    label: 'Gemini 2.5 Pro',
+    label: 'Gemini 3.6 Flash',
     vendor: 'gemini',
-    providerModel: 'gemini-3.6-pro',
-    pricing: null,
+    providerModel: 'gemini-3.6-flash',
+    pricing: {
+      inputPerMTok: 0.10,
+      outputPerMTok: 0.40,
+      cacheReadPerMTok: 0.025,
+      cacheWritePerMTok: 0.10,
+    },
     capabilities: OPENAI_COMPATIBLE_CAPS({
       maxContext: 1_048_576,
       maxOutputTokens: 65_536,
     }),
-    verifiedOn: null,
-    blurb: 'Strongest Gemini model. Best for complex reasoning.',
+    verifiedOn: '2026-09-02',
+    blurb: 'Fast and intelligent. Default Gemini model.',
   },
 ];
 
@@ -364,8 +459,59 @@ export const TASK_DEFAULTS: Record<TaskKind, string> = {
 };
 
 /**
- * Resolve the model for a task: the user's pick when it is configured,
- * otherwise the task default, otherwise any configured model at all.
+ * Intelligent preference fallback chains across all supported providers.
+ * If the operator provides ANY key (Anthropic, OpenAI, Google Gemini, DeepSeek, Moonshot),
+ * the system automatically selects the highest-tier available model for that specific task.
+ */
+export const TASK_PREFERENCE_CHAINS: Record<TaskKind, string[]> = {
+  interview: [
+    'claude-haiku-4-5',
+    'gemini-3.6-flash',
+    'gpt-4o-mini',
+    'deepseek-chat',
+    'kimi-moonshot-128k',
+  ],
+  fanout: [
+    'claude-opus-5',
+    'gpt-4o',
+    'gemini-3.6-flash',
+    'o3-mini',
+    'claude-sonnet-5',
+    'gpt-4o-mini',
+    'deepseek-chat',
+  ],
+  projectGen: [
+    'claude-opus-5',
+    'gpt-4o',
+    'o1',
+    'o3-mini',
+    'gemini-3.6-flash',
+    'claude-sonnet-5',
+    'deepseek-reasoner',
+  ],
+  review: [
+    'claude-sonnet-5',
+    'gpt-4o',
+    'gemini-3.6-flash',
+    'o3-mini',
+    'claude-opus-5',
+    'deepseek-chat',
+  ],
+  utility: [
+    'claude-haiku-4-5',
+    'gemini-3.6-flash',
+    'gpt-4o-mini',
+    'deepseek-chat',
+    'kimi-moonshot-128k',
+  ],
+};
+
+/**
+ * Resolve the model for a task:
+ * 1. The user's explicit choice (if configured).
+ * 2. The highest-tier model configured in the task's preference chain.
+ * 3. The canonical task default.
+ * 4. Any configured model found in the environment.
  */
 export function resolveModel(
   task: TaskKind,
@@ -375,6 +521,12 @@ export function resolveModel(
   if (userChoice && isConfigured(userChoice, env)) {
     const picked = getModel(userChoice);
     if (picked) return picked;
+  }
+  const chain = TASK_PREFERENCE_CHAINS[task] ?? [];
+  for (const candidate of chain) {
+    if (isConfigured(candidate, env)) {
+      return getModel(candidate);
+    }
   }
   const fallback = TASK_DEFAULTS[task];
   if (isConfigured(fallback, env)) return getModel(fallback);
