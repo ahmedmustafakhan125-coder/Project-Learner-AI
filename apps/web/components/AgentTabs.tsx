@@ -279,13 +279,13 @@ function CodeBlock({ content, lang }: { content: string; lang: string }) {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          background: 'rgba(0, 0, 0, 0.7)',
-          border: '1px solid rgba(255,255,255,0.1)',
+          background: 'var(--surface-3)',
+          border: '1px solid var(--border-strong)',
           borderBottom: 'none',
           padding: '6px 14px',
           borderRadius: '10px 10px 0 0',
           fontSize: '11px',
-          color: '#94a3b8',
+          color: 'var(--text-dim)',
           fontFamily: 'var(--mono)',
         }}
       >

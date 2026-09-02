@@ -73,8 +73,8 @@ function Projects() {
                     padding: '2px 8px',
                     borderRadius: '999px',
                     fontFamily: 'var(--mono)',
-                    background: project.status === 'completed' ? 'var(--success-soft)' : 'var(--accent-soft)',
-                    color: project.status === 'completed' ? 'var(--success)' : '#a5b4fc',
+                    background: project.status === 'completed' ? 'var(--success-soft)' : 'var(--agent-conceptual-bg)',
+                    color: project.status === 'completed' ? 'var(--success)' : 'var(--primary)',
                     border: '1px solid currentColor',
                   }}
                 >

@@ -216,7 +216,7 @@ function Ask() {
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <span className="muted" style={{ fontSize: '12px' }}>
-                <kbd style={{ background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <kbd style={{ background: 'var(--surface-2)', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)', color: 'var(--text)' }}>
                   Ctrl/⌘ + Enter
                 </kbd>
               </span>

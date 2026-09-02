@@ -1,6 +1,5 @@
 /* ------------------------------------------------------------------ *\
- * Lumina AI — Premium Glassmorphism & High-Fidelity Design System
- * Inspired by Stitch MCP Figma/HTML generation
+ * Project Learner — High-Fidelity Futuristic Obsidian Glass Design
 \* ------------------------------------------------------------------ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Sora:wght@300;400;500;600;700;800;900&display=swap');
@@ -13,21 +12,24 @@
                  radial-gradient(circle at 50% 50%, rgba(76, 215, 246, 0.03) 0%, transparent 70%);
   
   /* Glass Surfaces */
-  --surface: rgba(19, 19, 20, 0.7);
+  --surface: rgba(19, 19, 20, 0.75);
   --surface-hover: rgba(28, 30, 42, 0.85);
   --surface-2: #141620;
   --surface-3: #1c1f2e;
+  --nav-bg: rgba(5, 5, 6, 0.75);
   
   /* Borders & Glows */
   --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.15);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --border-focus: rgba(173, 198, 255, 0.4);
   --outline-variant: #8c909f;
   
   /* Text */
-  --text: #f3f4f6;
-  --text-dim: #9ca3af;
-  --text-faint: #6b7280;
-  --on-surface-variant: #c2c6d6;
+  --text: #f8fafc;
+  --text-heading: #ffffff;
+  --text-dim: #94a3b8;
+  --text-faint: #64748b;
+  --on-surface-variant: #cbd5e1;
   --font: 'Inter', system-ui, -apple-system, sans-serif;
   --font-heading: 'Sora', system-ui, -apple-system, sans-serif;
   --mono: 'JetBrains Mono', monospace;
@@ -69,6 +71,10 @@
   --radius-sm: 0.25rem;
   --radius-full: 9999px;
   --shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+
+  --heading-gradient: linear-gradient(135deg, #ffffff 40%, #adc6ff 100%);
+  --card-glass: linear-gradient(135deg, rgba(255, 255, 255, 0.025) 0%, rgba(255, 255, 255, 0.005) 100%);
+  --card-glass-hover: linear-gradient(135deg, rgba(255, 255, 255, 0.045) 0%, rgba(255, 255, 255, 0.015) 100%);
 }
 
 /* ------------------------------------------------------------------ */
@@ -81,6 +87,7 @@
 
 html,
 body {
+  color-scheme: dark;
   margin: 0;
   padding: 0;
   background-color: var(--bg);
@@ -106,25 +113,24 @@ a {
 }
 
 /* ------------------------------------------------------------------ */
-/* Glass Panels & Border Gradients (From Stitch Spec)                */
+/* Glass Panels & Border Gradients                                    */
 /* ------------------------------------------------------------------ */
 
 .glass-panel {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.025) 0%, rgba(255, 255, 255, 0.005) 100%);
+  background: var(--card-glass);
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
   border-radius: var(--radius-3xl);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06),
-              0 8px 32px -8px rgba(0, 0, 0, 0.5);
-  transition: all 400ms cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: var(--shadow);
+  transition: all 300ms cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
   overflow: hidden;
+  border: 1px solid var(--border);
 }
 
 .glass-panel:hover, .glass-panel-active {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.045) 0%, rgba(255, 255, 255, 0.015) 100%);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12),
-              0 14px 48px -10px rgba(0, 0, 0, 0.7);
+  background: var(--card-glass-hover);
+  box-shadow: 0 16px 48px -12px rgba(0, 0, 0, 0.6), inset 0 0 0 1px var(--border-strong);
   transform: translateY(-2px);
 }
 
@@ -175,17 +181,13 @@ a {
 
 /* Glow Effects */
 .search-glow {
-  box-shadow: 0 0 30px -5px rgba(173, 198, 255, 0.15),
-              inset 0 0 0 1px rgba(173, 198, 255, 0.1);
+  box-shadow: 0 0 30px -5px var(--primary-glow),
+              inset 0 0 0 1px var(--border);
 }
 
 .search-glow:focus-within {
-  box-shadow: 0 0 45px -5px rgba(173, 198, 255, 0.35),
-              inset 0 0 0 1px rgba(173, 198, 255, 0.25);
-}
-
-.text-glow {
-  text-shadow: 0 0 15px rgba(173, 198, 255, 0.5);
+  box-shadow: 0 0 45px -5px var(--primary-glow),
+              inset 0 0 0 1px var(--border-focus);
 }
 
 /* Ping Streaming Indicator */
@@ -213,17 +215,17 @@ a {
 }
 
 /* ------------------------------------------------------------------ */
-/* Navigation Bar (Lumina Navbar)                                     */
+/* Navigation Bar                                                     */
 /* ------------------------------------------------------------------ */
 
 .lumina-navbar {
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgba(5, 5, 6, 0.65);
+  background: var(--nav-bg);
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--border);
   box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
   padding: 0 24px;
 }
@@ -248,11 +250,11 @@ a {
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  background: var(--primary-gradient);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.35);
+  box-shadow: 0 0 20px var(--primary-glow);
 }
 
 .logo-spark {
@@ -277,7 +279,7 @@ a {
 
 .brand-title span {
   color: var(--primary);
-  font-weight: 300;
+  font-weight: 400;
 }
 
 .brand-badge {
@@ -286,7 +288,7 @@ a {
   font-weight: 700;
   padding: 2px 6px;
   border-radius: var(--radius-full);
-  background: linear-gradient(90deg, #4d8eff, #571bc1);
+  background: var(--primary-gradient);
   color: #ffffff;
   letter-spacing: 0.08em;
   margin-left: 4px;
@@ -407,7 +409,7 @@ a {
   font-weight: 700;
   letter-spacing: -0.02em;
   margin: 0;
-  background: linear-gradient(135deg, #ffffff 40%, #adc6ff 100%);
+  background: var(--heading-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -421,7 +423,7 @@ a {
 }
 
 /* ------------------------------------------------------------------ */
-/* Lumina Command Bar (Query Box)                                     */
+/* Command Bar (Query Box)                                            */
 /* ------------------------------------------------------------------ */
 
 .lumina-command-bar {
@@ -436,7 +438,7 @@ a {
   -webkit-backdrop-filter: blur(24px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-3xl);
-  padding: 16px 20px;
+  padding: 18px 22px;
   transition: all 300ms ease;
 }
 
@@ -557,15 +559,22 @@ select.control {
   font-size: 13px;
   padding: 6px 14px;
   border-radius: var(--radius-full);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: #141620;
   color: #ffffff;
   outline: none;
   cursor: pointer;
+  color-scheme: dark;
+}
+
+select.control option {
+  background-color: #141620;
+  color: #ffffff;
+  padding: 8px 12px;
 }
 
 /* ------------------------------------------------------------------ */
-/* 4-Agent Parallel Grid Layout (From Stitch Spec)                    */
+/* 4-Agent Parallel Grid Layout                                       */
 /* ------------------------------------------------------------------ */
 
 .parallel-grid {
@@ -639,6 +648,7 @@ select.control {
   font-weight: 700;
   letter-spacing: -0.01em;
   margin: 0;
+  color: #ffffff;
 }
 
 .agent-card-status-pill {
@@ -699,7 +709,7 @@ select.control {
 }
 
 .view-mode-btn {
-  padding: 4px 12px;
+  padding: 4px 14px;
   border-radius: var(--radius-full);
   font-size: 12px;
   color: var(--text-dim);
@@ -925,6 +935,43 @@ select.control {
   border-radius: var(--radius-3xl);
   padding: 40px 36px;
   box-shadow: var(--shadow), 0 0 50px -10px rgba(59, 130, 246, 0.25);
+}
+
+/* ------------------------------------------------------------------ */
+/* Project Library & Cards                                            */
+/* ------------------------------------------------------------------ */
+
+.project-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.project-card {
+  display: block;
+  text-decoration: none;
+  background: var(--surface);
+  backdrop-filter: blur(40px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+  padding: 24px;
+  box-shadow: var(--shadow);
+  transition: all 200ms ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.project-card:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 40px -10px rgba(0, 0, 0, 0.6);
+}
+
+.project-card h3 {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 600;
+  color: #ffffff;
 }
 
 /* ------------------------------------------------------------------ */
