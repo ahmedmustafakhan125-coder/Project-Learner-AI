@@ -31,31 +31,43 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (!supabaseConfigured) {
     return (
       <div className="auth">
-        <h1>Supabase is not configured</h1>
-        <p className="muted">
-          Run <code>npm run db:start</code>, then copy the printed URL and anon key into{' '}
-          <code>.env</code> as <code>NEXT_PUBLIC_SUPABASE_URL</code> and{' '}
-          <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>.
-        </p>
+        <div className="auth-header">
+          <div className="auth-logo-badge">
+            <span className="logo-spark">✦</span>
+          </div>
+          <h1>Configuration Required</h1>
+          <p className="muted">
+            Run <code>npm run db:start</code>, then configure your Supabase URL and anon key.
+          </p>
+        </div>
       </div>
     );
   }
 
-  if (!ready) return <div className="shell"><p className="skeleton">Loading…</p></div>;
+  if (!ready) {
+    return (
+      <div className="shell" style={{ textAlign: 'center', marginTop: '120px' }}>
+        <p className="skeleton">Initializing secure session…</p>
+      </div>
+    );
+  }
+
   if (!session) return <SignIn />;
 
   return <>{children}</>;
 }
 
 function SignIn() {
+  const [mode, setMode] = useState<'in' | 'up'>('in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  const submit = async (mode: 'in' | 'up') => {
-    if (!supabase) return;
+  const submit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!supabase || !email || !password) return;
     setBusy(true);
     setError(null);
     setMessage(null);
@@ -65,48 +77,75 @@ function SignIn() {
         ? await supabase.auth.signInWithPassword({ email, password })
         : await supabase.auth.signUp({ email, password });
 
-    if (result.error) setError(result.error.message);
-    else if (mode === 'up' && !result.data.session) {
-      setMessage('Check your email to confirm the account, then sign in.');
+    if (result.error) {
+      setError(result.error.message);
+    } else if (mode === 'up' && !result.data.session) {
+      setMessage('Account created! Sign in with your credentials.');
+      setMode('in');
     }
     setBusy(false);
   };
 
   return (
     <div className="auth">
-      <h1>Sign in</h1>
-      <p className="muted">Your projects and progress are tied to your account.</p>
+      <div className="auth-header">
+        <div className="auth-logo-badge">
+          <span className="logo-spark">✦</span>
+        </div>
+        <h1>{mode === 'in' ? 'Welcome to Lumina AI' : 'Create an Account'}</h1>
+        <p className="muted">Your projects, code sandboxes, and learning progress stay synced.</p>
+      </div>
 
-      <label htmlFor="email">Email</label>
-      <input
-        id="email"
-        className="textinput"
-        type="email"
-        autoComplete="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-      />
+      <form onSubmit={(e) => void submit(e)}>
+        <label htmlFor="email">Email Address</label>
+        <input
+          id="email"
+          className="textinput"
+          type="email"
+          autoComplete="email"
+          placeholder="name@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
 
-      <label htmlFor="password">Password</label>
-      <input
-        id="password"
-        className="textinput"
-        type="password"
-        autoComplete="current-password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
+        <label htmlFor="password">Password</label>
+        <input
+          id="password"
+          className="textinput"
+          type="password"
+          autoComplete={mode === 'in' ? 'current-password' : 'new-password'}
+          placeholder="Min 6 characters"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
 
-      {error && <div className="notice error">{error}</div>}
-      {message && <div className="notice info">{message}</div>}
+        {error && <div className="notice error">{error}</div>}
+        {message && <div className="notice info">{message}</div>}
 
-      <button className="btn primary" disabled={busy || !email || !password} onClick={() => void submit('in')}>
-        {busy ? 'Working…' : 'Sign in'}
-      </button>
-      <button className="btn ghost" disabled={busy || !email || !password} onClick={() => void submit('up')}
-        style={{ width: '100%', marginTop: 8 }}>
-        Create an account
-      </button>
+        <button
+          type="submit"
+          className="btn primary"
+          style={{ width: '100%', marginTop: '20px' }}
+          disabled={busy || !email || !password}
+        >
+          {busy ? 'Connecting…' : mode === 'in' ? 'Sign in to Workspace' : 'Create Account'}
+        </button>
+
+        <div style={{ textAlign: 'center', marginTop: '16px' }}>
+          <button
+            type="button"
+            className="btn ghost"
+            style={{ fontSize: '13px' }}
+            onClick={() => {
+              setMode(mode === 'in' ? 'up' : 'in');
+              setError(null);
+              setMessage(null);
+            }}
+          >
+            {mode === 'in' ? "Don't have an account? Create one" : 'Already have an account? Sign in'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

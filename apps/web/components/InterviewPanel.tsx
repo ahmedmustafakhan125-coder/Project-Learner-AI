@@ -29,12 +29,15 @@ export function InterviewPanel({ questions, busy, onSubmit, onSkip }: InterviewP
 
   return (
     <section className="interview" aria-label="A few quick questions">
-      <h2>A few quick questions</h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+        <span style={{ fontSize: '18px' }}>🎯</span>
+        <h2>Context Alignment</h2>
+      </div>
       <p className="lede">
         {questions.length === 1
-          ? 'One thing would help me answer this properly.'
-          : `${questions.length} things would help me answer this properly.`}{' '}
-        Answer what you like — you can skip any of them.
+          ? 'One detail will help tailor the four specialist answers.'
+          : `${questions.length} quick details will help tailor the answers.`}{' '}
+        Select what fits or skip directly to generation.
       </p>
 
       {questions.map((question) => (
@@ -48,7 +51,7 @@ export function InterviewPanel({ questions, busy, onSubmit, onSkip }: InterviewP
               type="text"
               value={answers[question.slot] ?? ''}
               onChange={(e) => set(question.slot, e.target.value)}
-              placeholder="Type your answer…"
+              placeholder="Type your context here…"
               disabled={busy}
             />
           ) : (
@@ -64,13 +67,13 @@ export function InterviewPanel({ questions, busy, onSubmit, onSkip }: InterviewP
 
       <div className="actions">
         <button className="btn primary" onClick={() => onSubmit(answers)} disabled={busy}>
-          {busy ? 'Working…' : 'Continue'}
+          {busy ? 'Working…' : 'Continue to Specialist Answers →'}
         </button>
         <button className="btn ghost" onClick={onSkip} disabled={busy}>
-          Skip &amp; answer anyway
+          Skip &amp; Answer Anyway
         </button>
         {answeredCount > 0 && (
-          <span className="muted">
+          <span className="muted" style={{ marginLeft: 'auto', fontSize: '12.5px' }}>
             {answeredCount} of {questions.length} answered
           </span>
         )}
@@ -125,7 +128,7 @@ function ChipRow({
           className="chip-input"
           type="text"
           value={other}
-          placeholder="Something else…"
+          placeholder="Custom specification…"
           disabled={disabled}
           onChange={(e) => {
             setOther(e.target.value);

@@ -6,7 +6,7 @@
   "main": "./dist/server.js",
   "scripts": {
     "build": "tsc -b",
-    "dev": "node --env-file-if-exists=../../.env --watch src/server.ts",
+    "dev": "tsc -b && node --env-file-if-exists=../../.env --watch dist/server.js",
     "start": "node --env-file-if-exists=../../.env dist/server.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",

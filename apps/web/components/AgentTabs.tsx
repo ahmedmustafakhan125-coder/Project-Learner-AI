@@ -26,26 +26,44 @@ export function emptyPanes(): AgentPanes {
   ) as AgentPanes;
 }
 
+const AGENT_METADATA: Record<
+  AgentKind,
+  { icon: string; role: string; badgeClass: string }
+> = {
+  simple: { icon: '💡', role: 'Intuitive & Plain Language', badgeClass: 'conceptual' },
+  industry: { icon: '🛠️', role: 'Real-World Systems & Code', badgeClass: 'practical' },
+  practice: { icon: '🎮', role: 'Interactive Sandbox Exercise', badgeClass: 'interactive' },
+  concepts: { icon: '📋', role: 'Core Takeaways & Traps', badgeClass: 'takeaways' },
+};
+
 export function AgentTabs({ panes }: { panes: AgentPanes }) {
   const [active, setActive] = useState<AgentKind>('simple');
 
   return (
     <div className="tabs">
-      <div className="tablist" role="tablist" aria-label="Answers">
-        {AGENT_ORDER.map((agent) => (
-          <button
-            key={agent}
-            role="tab"
-            className="tab"
-            aria-selected={active === agent}
-            aria-controls={`panel-${agent}`}
-            id={`tab-${agent}`}
-            onClick={() => setActive(agent)}
-          >
-            <span className={`dot ${panes[agent].status}`} aria-hidden="true" />
-            {AGENT_LABELS[agent]}
-          </button>
-        ))}
+      <div className="tablist" role="tablist" aria-label="Specialist Answers">
+        {AGENT_ORDER.map((agent) => {
+          const meta = AGENT_METADATA[agent];
+          const isSelected = active === agent;
+          return (
+            <button
+              key={agent}
+              role="tab"
+              className="tab"
+              aria-selected={isSelected}
+              aria-controls={`panel-${agent}`}
+              id={`tab-${agent}`}
+              onClick={() => setActive(agent)}
+            >
+              <span className={`dot ${panes[agent].status}`} aria-hidden="true" />
+              <span className="agent-icon">{meta.icon}</span>
+              <div className="agent-name">
+                <span className="agent-title">{AGENT_LABELS[agent]}</span>
+                <span className="agent-role">{meta.role}</span>
+              </div>
+            </button>
+          );
+        })}
       </div>
 
       <div
@@ -61,34 +79,46 @@ export function AgentTabs({ panes }: { panes: AgentPanes }) {
 }
 
 function Pane({ agent, pane }: { agent: AgentKind; pane: AgentPane }) {
-  if (pane.status === 'error') {
-    return (
-      <div className="notice error">
-        <strong>This angle failed.</strong> {pane.error}
-        <div className="muted" style={{ marginTop: 6 }}>
-          The other answers are unaffected — check the remaining tabs.
-        </div>
-      </div>
-    );
-  }
-
-  if (pane.status === 'pending') {
-    return <p className="skeleton">Waiting to start…</p>;
-  }
-
-  if (!pane.text) {
-    return (
-      <p className="skeleton">
-        Thinking<span className="caret" />
-      </p>
-    );
-  }
+  const meta = AGENT_METADATA[agent];
 
   return (
-    <>
-      <Answer text={pane.text} streaming={pane.status === 'streaming'} />
-      {agent === 'practice' && pane.status === 'complete' && <Exercise markdown={pane.text} />}
-    </>
+    <div>
+      <div className="pane-header">
+        <div className={`pane-badge ${meta.badgeClass}`}>
+          <span>{meta.icon}</span>
+          <span>{AGENT_LABELS[agent]} Specialist</span>
+        </div>
+        <div className="muted" style={{ fontSize: '12px' }}>
+          {pane.status === 'streaming' && '⚡ Generating stream…'}
+          {pane.status === 'complete' && '✓ Ready'}
+          {pane.status === 'pending' && '⏳ Waiting for queue…'}
+        </div>
+      </div>
+
+      {pane.status === 'error' && (
+        <div className="notice error">
+          <strong>This angle failed:</strong> {pane.error}
+          <div className="muted" style={{ marginTop: 6 }}>
+            The other answers are unaffected — check the remaining tabs.
+          </div>
+        </div>
+      )}
+
+      {pane.status === 'pending' && <p className="skeleton">Waiting to start parallel reasoning…</p>}
+
+      {pane.status !== 'pending' && !pane.text && (
+        <p className="skeleton">
+          Formulating perspective<span className="caret" />
+        </p>
+      )}
+
+      {pane.text && (
+        <>
+          <Answer text={pane.text} streaming={pane.status === 'streaming'} />
+          {agent === 'practice' && pane.status === 'complete' && <Exercise markdown={pane.text} />}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -110,14 +140,58 @@ function Answer({ text, streaming }: { text: string; streaming: boolean }) {
     <div className="answer">
       {blocks.map((block, i) =>
         block.type === 'code' ? (
-          <pre key={i}>
-            <code>{block.content}</code>
-          </pre>
+          <CodeBlock key={i} content={block.content} lang={block.lang} />
         ) : (
           <span key={i}>{block.content}</span>
         ),
       )}
       {streaming && <span className="caret" aria-hidden="true" />}
+    </div>
+  );
+}
+
+function CodeBlock({ content, lang }: { content: string; lang: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore clipboard error
+    }
+  };
+
+  return (
+    <div style={{ position: 'relative', margin: '14px 0' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          background: '#161822',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderBottom: 'none',
+          padding: '6px 14px',
+          borderRadius: '8px 8px 0 0',
+          fontSize: '11.5px',
+          color: '#94a3b8',
+          fontFamily: 'var(--mono)',
+        }}
+      >
+        <span>{lang || 'code'}</span>
+        <button
+          onClick={() => void copy()}
+          className="btn ghost"
+          style={{ padding: '2px 8px', fontSize: '11px', height: '22px' }}
+        >
+          {copied ? '✓ Copied' : 'Copy'}
+        </button>
+      </div>
+      <pre style={{ margin: 0, borderRadius: '0 0 8px 8px' }}>
+        <code>{content}</code>
+      </pre>
     </div>
   );
 }
@@ -172,15 +246,18 @@ function Exercise({ markdown }: { markdown: string }) {
   if (!html) return null;
 
   return (
-    <div className="exercise">
-      <div className="bar">
-        <span>Runs in an isolated sandbox — it cannot reach this page or the network.</span>
+    <div className="exercise" style={{ marginTop: '20px', borderRadius: '12px', overflow: 'hidden' }}>
+      <div className="bar" style={{ padding: '8px 16px', background: '#181a24' }}>
+        <span style={{ fontSize: '12px', color: '#a5b4fc' }}>
+          ⚡ Isolated Sandbox Preview (Safe Execution Environment)
+        </span>
       </div>
       <iframe
         title="Practice exercise"
         sandbox="allow-scripts"
         srcDoc={html}
         referrerPolicy="no-referrer"
+        style={{ width: '100%', height: '460px', border: 'none', background: '#ffffff' }}
       />
     </div>
   );

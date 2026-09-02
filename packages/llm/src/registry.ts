@@ -71,6 +71,14 @@ export const VENDORS: Record<string, Vendor> = {
     envKey: 'MOONSHOT_API_KEY',
     docsURL: 'https://platform.moonshot.cn/docs/pricing',
   },
+  gemini: {
+    id: 'gemini',
+    label: 'Google Gemini',
+    adapter: 'openai-compatible',
+    baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+    envKey: 'GEMINI_API_KEY',
+    docsURL: 'https://ai.google.dev/pricing',
+  },
 };
 
 /* ------------------------------------------------------------------ *
@@ -236,6 +244,32 @@ const BUILTIN_MODELS: ModelEntry[] = [
     pricing: null,
     capabilities: OPENAI_COMPATIBLE_CAPS({ maxContext: 128_000 }),
     verifiedOn: null,
+  },
+  {
+    id: 'gemini-2.5-flash',
+    label: 'Gemini 2.5 Flash',
+    vendor: 'gemini',
+    providerModel: 'gemini-2.5-flash',
+    pricing: null,
+    capabilities: OPENAI_COMPATIBLE_CAPS({
+      maxContext: 1_048_576,
+      maxOutputTokens: 65_536,
+    }),
+    verifiedOn: null,
+    blurb: 'Fast and affordable. Great for everyday tasks.',
+  },
+  {
+    id: 'gemini-2.5-pro',
+    label: 'Gemini 2.5 Pro',
+    vendor: 'gemini',
+    providerModel: 'gemini-2.5-pro',
+    pricing: null,
+    capabilities: OPENAI_COMPATIBLE_CAPS({
+      maxContext: 1_048_576,
+      maxOutputTokens: 65_536,
+    }),
+    verifiedOn: null,
+    blurb: 'Strongest Gemini model. Best for complex reasoning.',
   },
 ];
 

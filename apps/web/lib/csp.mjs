@@ -47,7 +47,7 @@ export function appCsp(nonce) {
     "font-src 'self' data:",
     // The execution sandbox is same-origin (/sandbox), so 'self' covers it.
     "frame-src 'self' blob:",
-    "connect-src 'self' https://*.supabase.co",
+    "connect-src 'self' https://*.supabase.co http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*",
     "img-src 'self' data:",
     "object-src 'none'",
     "base-uri 'self'",

@@ -20,6 +20,13 @@ import { api } from '../../lib/api';
 
 type Phase = 'idle' | 'interviewing' | 'awaiting_answers' | 'streaming' | 'done';
 
+const QUICK_SUGGESTIONS = [
+  'How do closures work in JavaScript and how do they impact memory?',
+  'Explain async/await vs Promises with practical examples',
+  'How to build a rate limiter in Node.js?',
+  'Why do we use useEffect cleanup functions in React?',
+];
+
 export default function AskPage() {
   return (
     <AuthGate>
@@ -107,8 +114,11 @@ function Ask() {
     }
   }, [model]);
 
-  const start = useCallback(async () => {
-    if (!query.trim()) return;
+  const start = useCallback(async (customQuery?: string) => {
+    const promptToUse = (customQuery ?? query).trim();
+    if (!promptToUse) return;
+    if (customQuery) setQuery(customQuery);
+    
     setError(null);
     setNotice(null);
     setQuestions([]);
@@ -116,7 +126,7 @@ function Ask() {
     setPhase('interviewing');
 
     try {
-      const result = await api.startInterview({ query });
+      const result = await api.startInterview({ query: promptToUse });
 
       if (result.status === 'awaiting_answers') {
         setQuestions(result.questions);
@@ -166,13 +176,15 @@ function Ask() {
     <main className="shell">
       <header className="masthead">
         <div>
-          <h1>Ask anything</h1>
-          <div className="sub">Four specialists answer at once — plain, practical, hands-on, and the takeaways.</div>
+          <h1>Ask Anything</h1>
+          <div className="sub">
+            Four AI specialists answer simultaneously — conceptual intuition, practical architecture, interactive code, and executive takeaways.
+          </div>
         </div>
 
         {models.length > 0 && (
-          <label className="muted">
-            Model{' '}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span className="muted" style={{ fontSize: '13px' }}>Model:</span>
             <select
               className="control"
               value={model}
@@ -182,11 +194,11 @@ function Ask() {
               {models.map((option) => (
                 <option key={option.id} value={option.id}>
                   {option.label}
-                  {option.unpriced ? ' (cost not metered)' : ''}
+                  {option.unpriced ? ' (unmetered)' : ''}
                 </option>
               ))}
             </select>
-          </label>
+          </div>
         )}
       </header>
 
@@ -194,19 +206,45 @@ function Ask() {
         <textarea
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="What do you want to understand or build?"
+          placeholder="What programming concept or system do you want to understand or build?"
           disabled={busy}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void start();
           }}
         />
         <div className="row">
-          <span className="muted">Ctrl/⌘ + Enter to send</span>
-          <button className="btn primary" onClick={() => void start()} disabled={busy || !query.trim()}>
-            {phase === 'interviewing' ? 'Reading your question…' : 'Ask'}
+          <span className="muted" style={{ fontSize: '12.5px' }}>
+            Press <kbd style={{ background: 'var(--surface-2)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--border)' }}>Ctrl/⌘ + Enter</kbd> to launch 4 agents
+          </span>
+          <button
+            className="btn primary"
+            onClick={() => void start()}
+            disabled={busy || !query.trim()}
+          >
+            {phase === 'interviewing' ? 'Analyzing Context…' : phase === 'streaming' ? 'Streaming Agents…' : '⚡ Run Query'}
           </button>
         </div>
       </div>
+
+      {phase === 'idle' && (
+        <div style={{ marginTop: '16px' }}>
+          <div className="muted" style={{ fontSize: '12.5px', marginBottom: '8px' }}>
+            Suggested topics:
+          </div>
+          <div className="quick-prompts">
+            {QUICK_SUGGESTIONS.map((suggestion) => (
+              <button
+                key={suggestion}
+                type="button"
+                className="quick-prompt-chip"
+                onClick={() => void start(suggestion)}
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {error && <div className="notice error">{error}</div>}
       {notice && <div className="notice warn">{notice}</div>}

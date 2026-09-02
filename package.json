@@ -19,9 +19,9 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean && rimraf node_modules",
-    "db:start": "./.tools/supabase.exe start",
-    "db:stop": "./.tools/supabase.exe stop",
-    "db:reset": "./.tools/supabase.exe db reset",
+    "db:start": ".\\.tools\\supabase.exe start",
+    "db:stop": ".\\.tools\\supabase.exe stop",
+    "db:reset": ".\\.tools\\supabase.exe db reset",
     "smoke": "node --env-file-if-exists=.env scripts/smoke-providers.mjs"
   },
   "devDependencies": {
