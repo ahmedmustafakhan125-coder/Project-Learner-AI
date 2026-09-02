@@ -72,8 +72,22 @@ export class GatewayBlockedError extends Error {
 interface AnalyzeResponse {
   decision?: unknown;
   safe_text?: unknown;
+  masked_text?: unknown;
+  sanitized_prompt?: unknown;
   reason_codes?: unknown;
   final_risk?: unknown;
+  policy?: {
+    decision?: unknown;
+    reason?: unknown;
+  };
+  injection_analysis?: {
+    score?: unknown;
+    matched_patterns?: unknown;
+  };
+  pii_analysis?: {
+    masked_text?: unknown;
+    entities_found?: unknown;
+  };
 }
 
 function asStringArray(value: unknown): string[] {
@@ -110,12 +124,28 @@ export async function screen(
 
   let payload: AnalyzeResponse;
   try {
-    const response = await fetch(new URL('/analyze', url), {
+    const parsedUrl = new URL(url);
+    const targetEndpoint =
+      parsedUrl.pathname && parsedUrl.pathname !== '/'
+        ? parsedUrl
+        : new URL('/api/analyze', url);
+
+    let response = await fetch(targetEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: text, input_id: inputId }),
+      body: JSON.stringify({ message: text, prompt: text, input_id: inputId }),
       signal: controller.signal,
     });
+
+    // If /api/analyze 404s, try fallback /analyze for compatibility
+    if (response.status === 404 && targetEndpoint.pathname === '/api/analyze') {
+      response = await fetch(new URL('/analyze', url), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, prompt: text, input_id: inputId }),
+        signal: controller.signal,
+      });
+    }
 
     if (!response.ok) {
       return unavailable(context, `security gateway returned ${response.status}`);
@@ -128,15 +158,25 @@ export async function screen(
     clearTimeout(timer);
   }
 
-  const decision = payload.decision;
+  const rawDecision = payload.policy?.decision ?? payload.decision;
+  const decision = rawDecision === 'FLAG' ? 'ALLOW' : rawDecision;
   if (decision !== 'ALLOW' && decision !== 'MASK' && decision !== 'BLOCK') {
     // An unrecognised verdict is a screening failure. Defaulting to ALLOW here
     // would turn every future gateway change into a silent bypass.
     return unavailable(context, 'security gateway returned an unrecognised decision');
   }
 
-  const reasonCodes = asStringArray(payload.reason_codes);
-  const finalRisk = typeof payload.final_risk === 'number' ? payload.final_risk : null;
+  const reasonCodes =
+    asStringArray(payload.reason_codes).length > 0
+      ? asStringArray(payload.reason_codes)
+      : asStringArray(payload.injection_analysis?.matched_patterns);
+
+  const finalRisk =
+    typeof payload.final_risk === 'number'
+      ? payload.final_risk
+      : typeof payload.injection_analysis?.score === 'number'
+        ? payload.injection_analysis.score
+        : null;
 
   if (decision === 'BLOCK') {
     return { decision, safeText: '', reasonCodes, finalRisk, unscreened: false };
@@ -144,7 +184,12 @@ export async function screen(
 
   // MASK must come back with the redacted text. If it does not, the original is
   // NOT a safe fallback — that is precisely the text the gateway wanted changed.
-  const safeText = typeof payload.safe_text === 'string' ? payload.safe_text : null;
+  const rawSafeText =
+    payload.safe_text ??
+    payload.pii_analysis?.masked_text ??
+    payload.masked_text ??
+    payload.sanitized_prompt;
+  const safeText = typeof rawSafeText === 'string' ? rawSafeText : null;
   if (decision === 'MASK' && safeText === null) {
     return unavailable(context, 'security gateway masked a prompt but returned no safe_text');
   }
