@@ -92,7 +92,7 @@ function SignIn() {
         <div className="auth-logo-badge">
           <span className="logo-spark">✦</span>
         </div>
-        <h1>{mode === 'in' ? 'Welcome to Lumina AI' : 'Create an Account'}</h1>
+        <h1>{mode === 'in' ? 'Welcome to Project Learner' : 'Create an Account'}</h1>
         <p className="muted">Your projects, code sandboxes, and learning progress stay synced.</p>
       </div>
 

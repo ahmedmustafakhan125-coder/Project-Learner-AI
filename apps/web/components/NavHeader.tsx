@@ -36,8 +36,8 @@ export function NavHeader() {
             <span className="logo-spark">✦</span>
           </div>
           <div className="lumina-brand-text">
-            <span className="brand-title">Lumina AI</span>
-            <span className="brand-badge">EDU</span>
+            <span className="brand-title">Project <span>Learner</span></span>
+            <span className="brand-badge">AI</span>
           </div>
         </Link>
 

@@ -14,7 +14,7 @@ import { NavHeader } from '../components/NavHeader';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Lumina AI — Education Platform',
+  title: 'Project Learner — AI Education Platform',
   description: 'Learn programming by building real projects, with four AI specialists answering every question in parallel.',
 };
 

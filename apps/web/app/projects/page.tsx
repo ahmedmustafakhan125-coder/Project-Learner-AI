@@ -53,7 +53,7 @@ function Projects() {
           <div style={{ fontSize: '36px', marginBottom: '12px' }}>🚀</div>
           <h2 style={{ fontSize: '20px', margin: '0 0 8px' }}>No projects generated yet</h2>
           <p className="muted" style={{ maxWidth: '440px', margin: '0 auto 24px' }}>
-            Tell Lumina AI what technology, game, or tool you want to build and it will create a tailored blueprint.
+            Tell Project Learner what technology, game, or tool you want to build and it will create a tailored blueprint.
           </p>
           <Link href="/projects/new" className="btn primary">
             Create Your First Project
