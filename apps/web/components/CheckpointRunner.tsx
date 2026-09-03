@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { verify } from '@ai-edu/runners';
 import type { LayerResult } from '@ai-edu/runners';
+import type { CheckpointRun } from '@ai-edu/api-client';
 import { SandboxFrame } from './SandboxFrame';
 import { api } from '@/lib/api';
 
@@ -20,7 +21,18 @@ export interface CheckpointRunnerProps {
     runtime: 'web' | 'python' | 'none';
   };
   files: Array<{ path: string; contents: string }>;
+  /**
+   * Attempts made on this step, owned by the parent because the hint gate is
+   * driven by the same number. Displayed here; counted there.
+   */
+  attemptCount: number;
+  /** Fired once per checkpoint run, pass or fail. */
+  onAttempt: () => void;
   onPass: (solutionFiles?: Array<{ path: string; contents: string }>) => void;
+  /** The last run on this step, from a previous visit. Restored into the panel. */
+  initialRun?: CheckpointRun | null;
+  /** Fired when a run reaches a verdict, so it can outlive the page. */
+  onRunComplete?: (run: CheckpointRun) => void;
 }
 
 type Status = 'idle' | 'running' | 'passed' | 'failed';
@@ -42,6 +54,26 @@ const INITIAL_LAYERS: [LayerState, LayerState, LayerState] = [
 
 const LAYER_LABELS = ['Checking files…', 'Checking symbols…', 'Running tests…'] as const;
 const PASS_LABELS = ['Files found', 'Symbols found', 'Tests passed'] as const;
+
+/**
+ * Rebuilds the three layer rows from a stored run.
+ *
+ * Anything mid-flight in the stored record is treated as pending: a run that
+ * was interrupted by a closed tab never reached a verdict, and showing it as
+ * still "running" would be a spinner that never resolves.
+ */
+function restoreLayers(run: CheckpointRun | null | undefined): [LayerState, LayerState, LayerState] {
+  const restored = [...INITIAL_LAYERS] as [LayerState, LayerState, LayerState];
+  if (!run) return restored;
+
+  run.layers.slice(0, 3).forEach((layer, i) => {
+    restored[i] = {
+      status: layer.status === 'running' ? 'pending' : layer.status,
+      message: layer.message,
+    };
+  });
+  return restored;
+}
 
 /* ------------------------------------------------------------------ */
 /* Status icons                                                        */
@@ -118,13 +150,18 @@ export function CheckpointRunner({
   stepIndex,
   checkpoint,
   files,
+  attemptCount,
+  onAttempt,
   onPass,
+  initialRun,
+  onRunComplete,
 }: CheckpointRunnerProps) {
-  const [status, setStatus] = useState<Status>('idle');
-  const [layers, setLayers] = useState<[LayerState, LayerState, LayerState]>([
-    ...INITIAL_LAYERS,
-  ]);
-  const [attempts, setAttempts] = useState(0);
+  // Seeded from the last run, so a step the learner already worked on reopens
+  // showing what happened rather than an untouched "Run Checkpoint".
+  const [status, setStatus] = useState<Status>(initialRun?.status ?? 'idle');
+  const [layers, setLayers] = useState<[LayerState, LayerState, LayerState]>(
+    () => restoreLayers(initialRun),
+  );
   const [sandboxTrigger, setSandboxTrigger] = useState(0);
   const [showSandbox, setShowSandbox] = useState(false);
   const [sandboxProgress, setSandboxProgress] = useState<string | null>(null);
@@ -132,33 +169,57 @@ export function CheckpointRunner({
 
   /* helpers ---- */
 
-  const updateLayer = useCallback(
-    (index: number, patch: Partial<LayerState>) => {
-      setLayers((prev) => {
-        const next = [...prev] as [LayerState, LayerState, LayerState];
-        next[index] = { ...next[index], ...patch };
-        return next;
+  // The layers are also tracked in a ref. A verdict has to be reported together
+  // with the rows the learner is looking at, and reading them out of state at
+  // that moment would give the values from before the last update.
+  const layersRef = useRef<[LayerState, LayerState, LayerState]>(restoreLayers(initialRun));
+
+  const updateLayer = useCallback((index: number, patch: Partial<LayerState>) => {
+    const next = [...layersRef.current] as [LayerState, LayerState, LayerState];
+    next[index] = { ...next[index], ...patch };
+    layersRef.current = next;
+    setLayers(next);
+  }, []);
+
+  const resetLayers = useCallback(() => {
+    layersRef.current = [...INITIAL_LAYERS] as [LayerState, LayerState, LayerState];
+    setLayers(layersRef.current);
+  }, []);
+
+  /** Ends a run: records the verdict on screen and hands it up to be saved. */
+  const settle = useCallback(
+    (verdict: 'passed' | 'failed') => {
+      setStatus(verdict);
+      onRunComplete?.({
+        status: verdict,
+        layers: layersRef.current.map((l) => ({ status: l.status, message: l.message })),
+        at: new Date().toISOString(),
       });
     },
-    [],
+    [onRunComplete],
   );
 
   /* ---- record attempt via API (stable, reads refs/latest via params) ---- */
 
   const recordAttempt = useCallback(
-    async (allPassed: boolean, durationMs: number) => {
+    async (
+      allPassed: boolean,
+      durationMs: number,
+      testResults?: Array<{ name: string; passed: boolean; message: string }>,
+    ) => {
       try {
         const result = await api.submitAttempt(
           projectId,
           stepIndex,
           files,
           durationMs,
+          testResults,
         );
         if (allPassed && result.passed) {
-          setStatus('passed');
+          settle('passed');
           onPass(result.solutionFiles);
         } else {
-          setStatus('failed');
+          settle('failed');
         }
       } catch {
         // The server is the authority on whether a checkpoint passed: it re-runs
@@ -166,14 +227,14 @@ export function CheckpointRunner({
         // do not know the outcome, so the checkpoint does NOT advance — passing
         // a learner on a 500, a 429, or a dropped connection would let them skip
         // steps by going offline.
-        setStatus('failed');
         updateLayer(2, {
           status: 'failed',
           message: 'Could not reach the server to record this attempt. Try again.',
         });
+        settle('failed');
       }
     },
-    [projectId, stepIndex, files, onPass, updateLayer],
+    [projectId, stepIndex, files, onPass, updateLayer, settle],
   );
 
   /* ---- sandbox callbacks ---- */
@@ -184,14 +245,16 @@ export function CheckpointRunner({
       results: Array<{ name: string; passed: boolean; message: string }>;
     }) => {
       const durationMs = Date.now() - startedAtRef.current;
+      // The results travel to the server either way: it cannot run these tests
+      // itself, so without them it would record a failing attempt as a pass.
       if (result.passed) {
         updateLayer(2, { status: 'passed', message: PASS_LABELS[2] });
-        recordAttempt(true, durationMs);
+        recordAttempt(true, durationMs, result.results);
       } else {
         const failedTests = result.results.filter((r) => !r.passed);
         const msg = failedTests.map((t) => t.message).join('; ');
         updateLayer(2, { status: 'failed', message: msg });
-        recordAttempt(false, durationMs);
+        recordAttempt(false, durationMs, result.results);
       }
     },
     [updateLayer, recordAttempt],
@@ -201,7 +264,11 @@ export function CheckpointRunner({
     (message: string) => {
       const durationMs = Date.now() - startedAtRef.current;
       updateLayer(2, { status: 'failed', message });
-      recordAttempt(false, durationMs);
+      // A sandbox that could not run the tests is a failed run, and reported as
+      // one rather than as an empty (and therefore passing) result set.
+      recordAttempt(false, durationMs, [
+        { name: 'sandbox', passed: false, message },
+      ]);
     },
     [updateLayer, recordAttempt],
   );
@@ -216,9 +283,9 @@ export function CheckpointRunner({
   const run = useCallback(async () => {
     startedAtRef.current = Date.now();
     setStatus('running');
-    setLayers([...INITIAL_LAYERS]);
+    resetLayers();
     setSandboxProgress(null);
-    setAttempts((a) => a + 1);
+    onAttempt();
     // Deliberately NOT reset to 0 here. React batches this with the increment
     // below, so resetting first left the trigger on its previous value and the
     // sandbox effect never re-fired — the second run hung on "Running tests".
@@ -238,7 +305,11 @@ export function CheckpointRunner({
         message: layer1.message,
       });
       if (!layer1.passed) {
-        setStatus('failed');
+        // Recorded like any other failure. The server owns the attempt history
+        // that the hint gate and the pacing model read, so a static failure
+        // that never reaches it does not count towards unlocking a hint —
+        // which is precisely when the learner needs one.
+        await recordAttempt(false, Date.now() - startedAtRef.current);
         return;
       }
 
@@ -252,7 +323,8 @@ export function CheckpointRunner({
         message: layer2.message,
       });
       if (!layer2.passed) {
-        setStatus('failed');
+        // See layer 1: a failed run is a failed run, wherever it fails.
+        await recordAttempt(false, Date.now() - startedAtRef.current);
         return;
       }
 
@@ -272,23 +344,21 @@ export function CheckpointRunner({
       setShowSandbox(true);
       setSandboxTrigger((t) => t + 1);
     } catch (err) {
-      setStatus('failed');
       const msg =
         err instanceof Error ? err.message : 'Unexpected error during verification.';
-      setLayers((prev) => {
-        const next = [...prev] as [LayerState, LayerState, LayerState];
-        const idx = next.findIndex(
-          (l) => l.status === 'running' || l.status === 'pending',
-        );
-        if (idx >= 0) next[idx] = { status: 'failed', message: msg };
-        return next;
-      });
+      const idx = layersRef.current.findIndex(
+        (l) => l.status === 'running' || l.status === 'pending',
+      );
+      if (idx >= 0) updateLayer(idx, { status: 'failed', message: msg });
+      settle('failed');
     }
-  }, [files, checkpoint, updateLayer, recordAttempt]);
+  }, [files, checkpoint, updateLayer, resetLayers, recordAttempt, onAttempt, settle]);
 
-  /* ---- combined code for sandbox ---- */
-
-  const combinedCode = files.map((f) => f.contents).join('\n');
+  /* ---- sandbox input ----
+     The files go over whole. Concatenating them into one string and handing
+     that to the interpreter made every non-source file in the project — a
+     requirements.txt, an index.html — a syntax error in the language of the
+     step, which failed the checkpoint before a single test ran. */
 
   /* ---- render ---- */
 
@@ -364,8 +434,8 @@ export function CheckpointRunner({
           <button type="button" onClick={run}>
             Retry
           </button>
-          {attempts > 0 && (
-            <span style={{ fontSize: 12, color: '#999' }}>Attempt {attempts}</span>
+          {attemptCount > 0 && (
+            <span style={{ fontSize: 12, color: '#999' }}>Attempt {attemptCount}</span>
           )}
         </div>
       )}
@@ -374,7 +444,7 @@ export function CheckpointRunner({
       {showSandbox && checkpoint.runtime !== 'none' && (
         <SandboxFrame
           runtime={checkpoint.runtime}
-          code={combinedCode}
+          files={files}
           tests={checkpoint.tests}
           onProgress={handleSandboxProgress}
           onResult={handleSandboxResult}

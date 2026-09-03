@@ -29,6 +29,11 @@ export interface ApiClientOptions {
  * Response shapes
  * ------------------------------------------------------------------ */
 
+// Re-exported because it appears in the shapes below: a UI holding a
+// StepContent should not have to reach past this package for the type of the
+// files inside it.
+export type { SourceFile };
+
 export type InterviewResponse =
   | { status: 'ready'; compiled: CompiledQuery; state?: InterviewState; degraded?: boolean }
   | { status: 'awaiting_answers'; questions: InterviewQuestion[]; state: InterviewState };
@@ -108,6 +113,23 @@ export interface StepContent {
   starterFiles: SourceFile[];
   checkpoint: Checkpoint;
   hintCount: number;
+  /** Attempts already recorded on this step. Drives the hint gate on mount. */
+  attemptCount: number;
+  /** ISO timestamp of the first attempt — what the hint gate's clock runs from. */
+  firstAttemptAt: string | null;
+  /**
+   * The editor as the learner last left it, or null if they have not started.
+   * What the step opens with, in place of the starter files.
+   */
+  draftFiles: SourceFile[] | null;
+  /** True once any attempt on this step has passed. */
+  passed: boolean;
+  /** True once the learner has chosen to see the explanation. */
+  revealed: boolean;
+  /** The checkpoint panel as they last saw it, restored on reopen. */
+  lastRun: CheckpointRun | null;
+  /** Hint tiers already opened, reopened as they were. */
+  hintsOpened: number[];
   /**
    * Why this step was reshaped, when adaptive pacing changed it.
    *
@@ -122,6 +144,27 @@ export interface PacingDirective {
   adjustment: 'scaffold' | 'insert_micro_step' | 'hold' | 'compress' | 'stretch';
   reason: string;
   notes: string[];
+}
+
+/**
+ * A finished checkpoint run, as the learner saw it.
+ *
+ * Stored so a revisited step shows its result instead of presenting itself as
+ * never attempted.
+ */
+export interface CheckpointRun {
+  status: 'passed' | 'failed';
+  layers: Array<{ status: 'pending' | 'running' | 'passed' | 'failed'; message: string | null }>;
+  /** ISO timestamp of the run. */
+  at: string;
+}
+
+/** A partial update of the learner's state on one step. */
+export interface StepProgressPatch {
+  files?: SourceFile[];
+  revealed?: boolean;
+  lastRun?: CheckpointRun | null;
+  hintsOpened?: number[];
 }
 
 export interface ExpansionPlan {
@@ -300,10 +343,38 @@ export class ApiClient {
     stepIndex: number,
     files: Array<{ path: string; contents: string }>,
     durationMs?: number,
+    /**
+     * Sandbox test outcomes. Only the browser can run them, so the server
+     * cannot grade an attempt honestly without being told.
+     */
+    testResults?: Array<{ name: string; passed: boolean; message: string }>,
   ): Promise<AttemptResult> {
     return this.post<AttemptResult>(
       `/api/projects/${projectId}/steps/${stepIndex}/attempt`,
-      { submittedFiles: files, ...(durationMs != null ? { durationMs } : {}) },
+      {
+        submittedFiles: files,
+        ...(durationMs != null ? { durationMs } : {}),
+        ...(testResults ? { testResults } : {}),
+      },
+    );
+  }
+
+  /**
+   * Save part of the learner's state on this step.
+   *
+   * Partial on purpose: the editor autosaves files on a debounce while
+   * revealing an explanation or opening a hint is a single immediate fact, and
+   * neither should overwrite the other. Idempotent — it replaces the one
+   * progress row rather than appending.
+   */
+  async saveProgress(
+    projectId: string,
+    stepIndex: number,
+    patch: StepProgressPatch,
+  ): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>(
+      `/api/projects/${projectId}/steps/${stepIndex}/progress`,
+      { method: 'PUT', body: JSON.stringify(patch) },
     );
   }
 

@@ -3,15 +3,6 @@
 import { useMemo, useState } from 'react';
 import { AGENT_LABELS, AGENT_ORDER, type AgentKind } from '@ai-edu/core';
 
-/**
- * The four answers, one tab each.
- *
- * All four stream concurrently, so the tab strip carries a status dot per agent
- * — a learner reading the plain explanation can see the other three filling in
- * behind it and switch when one is ready. Hiding that would make three of the
- * four look broken until they finished.
- */
-
 export interface AgentPane {
   status: 'pending' | 'streaming' | 'complete' | 'error';
   text: string;
@@ -26,69 +17,224 @@ export function emptyPanes(): AgentPanes {
   ) as AgentPanes;
 }
 
+const AGENT_METADATA: Record<
+  AgentKind,
+  {
+    icon: string;
+    title: string;
+    role: string;
+    borderClass: string;
+    ambientBg: string;
+    accentColor: string;
+  }
+> = {
+  simple: {
+    icon: '✦',
+    title: 'Conceptual Guide',
+    role: 'Intuitive Theory & Mechanism',
+    borderClass: 'border-gradient-primary',
+    ambientBg: 'rgba(59, 130, 246, 0.25)',
+    accentColor: 'var(--primary)',
+  },
+  industry: {
+    icon: '✦',
+    title: 'Practical Engineer',
+    role: 'Production Systems & Real Code',
+    borderClass: 'border-gradient-tertiary',
+    ambientBg: 'rgba(76, 215, 246, 0.25)',
+    accentColor: 'var(--tertiary)',
+  },
+  practice: {
+    icon: '✦',
+    title: 'Interactive Sandbox',
+    role: 'Hands-on Runnable Exercise',
+    borderClass: 'border-gradient-secondary',
+    ambientBg: 'rgba(208, 188, 255, 0.25)',
+    accentColor: 'var(--secondary)',
+  },
+  concepts: {
+    icon: '✦',
+    title: 'Key Takeaways',
+    role: 'Core Facts & Gotchas',
+    borderClass: 'border-gradient-warning',
+    ambientBg: 'rgba(251, 191, 36, 0.25)',
+    accentColor: 'var(--warning)',
+  },
+};
+
 export function AgentTabs({ panes }: { panes: AgentPanes }) {
-  const [active, setActive] = useState<AgentKind>('simple');
+  const [viewMode, setViewMode] = useState<'grid' | 'tabbed'>('grid');
+  const [activeTab, setActiveTab] = useState<AgentKind>('simple');
 
   return (
-    <div className="tabs">
-      <div className="tablist" role="tablist" aria-label="Answers">
-        {AGENT_ORDER.map((agent) => (
+    <div style={{ marginTop: '36px' }}>
+      <div className="view-mode-bar">
+        <div className="view-mode-toggle">
           <button
-            key={agent}
-            role="tab"
-            className="tab"
-            aria-selected={active === agent}
-            aria-controls={`panel-${agent}`}
-            id={`tab-${agent}`}
-            onClick={() => setActive(agent)}
+            type="button"
+            className={`view-mode-btn ${viewMode === 'grid' ? 'active' : ''}`}
+            onClick={() => setViewMode('grid')}
           >
-            <span className={`dot ${panes[agent].status}`} aria-hidden="true" />
-            {AGENT_LABELS[agent]}
+            Grid View
           </button>
-        ))}
+          <button
+            type="button"
+            className={`view-mode-btn ${viewMode === 'tabbed' ? 'active' : ''}`}
+            onClick={() => setViewMode('tabbed')}
+          >
+            Tabbed View
+          </button>
+        </div>
       </div>
 
-      <div
-        className="panel"
-        role="tabpanel"
-        id={`panel-${active}`}
-        aria-labelledby={`tab-${active}`}
-      >
-        <Pane agent={active} pane={panes[active]} />
-      </div>
+      {viewMode === 'grid' ? (
+        <div className="parallel-grid">
+          {AGENT_ORDER.map((agent) => (
+            <AgentCard key={agent} agent={agent} pane={panes[agent]} />
+          ))}
+        </div>
+      ) : (
+        <div className="tabs">
+          <div className="tablist" role="tablist" aria-label="Specialist Answers">
+            {AGENT_ORDER.map((agent) => {
+              const meta = AGENT_METADATA[agent];
+              const isSelected = activeTab === agent;
+              return (
+                <button
+                  key={agent}
+                  role="tab"
+                  className="tab"
+                  aria-selected={isSelected}
+                  aria-controls={`panel-${agent}`}
+                  id={`tab-${agent}`}
+                  onClick={() => setActiveTab(agent)}
+                >
+                  <span className={`ping-indicator`} style={{ backgroundColor: meta.accentColor, color: meta.accentColor }} />
+                  <span className="agent-icon">{meta.icon}</span>
+                  <div className="agent-name">
+                    <span className="agent-title">{meta.title}</span>
+                    <span className="agent-role">{meta.role}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div
+            className="panel"
+            role="tabpanel"
+            id={`panel-${activeTab}`}
+            aria-labelledby={`tab-${activeTab}`}
+          >
+            <Pane agent={activeTab} pane={panes[activeTab]} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function Pane({ agent, pane }: { agent: AgentKind; pane: AgentPane }) {
-  if (pane.status === 'error') {
-    return (
-      <div className="notice error">
-        <strong>This angle failed.</strong> {pane.error}
-        <div className="muted" style={{ marginTop: 6 }}>
-          The other answers are unaffected — check the remaining tabs.
-        </div>
-      </div>
-    );
-  }
-
-  if (pane.status === 'pending') {
-    return <p className="skeleton">Waiting to start…</p>;
-  }
-
-  if (!pane.text) {
-    return (
-      <p className="skeleton">
-        Thinking<span className="caret" />
-      </p>
-    );
-  }
+function AgentCard({ agent, pane }: { agent: AgentKind; pane: AgentPane }) {
+  const meta = AGENT_METADATA[agent];
 
   return (
-    <>
-      <Answer text={pane.text} streaming={pane.status === 'streaming'} />
-      {agent === 'practice' && pane.status === 'complete' && <Exercise markdown={pane.text} />}
-    </>
+    <article className={`glass-panel ${meta.borderClass} agent-card`}>
+      <div
+        className="agent-card-ambient"
+        style={{
+          background: meta.ambientBg,
+          top: agent === 'simple' || agent === 'concepts' ? '-40px' : 'auto',
+          bottom: agent === 'industry' ? '-40px' : 'auto',
+          right: agent === 'simple' ? '-40px' : 'auto',
+          left: agent === 'industry' ? '-40px' : 'auto',
+        }}
+      />
+
+      <header className="agent-card-header">
+        <div className="agent-card-title-group">
+          <span className="agent-card-icon">{meta.icon}</span>
+          <h2 className="agent-card-title">{meta.title}</h2>
+          <span style={{ fontSize: '11px', color: 'var(--text-faint)' }}>{meta.role}</span>
+        </div>
+
+        <div className="agent-card-status-pill">
+          <span
+            className="ping-indicator"
+            style={{
+              backgroundColor: pane.status === 'error' ? 'var(--danger)' : pane.status === 'complete' ? 'var(--success)' : meta.accentColor,
+              color: pane.status === 'error' ? 'var(--danger)' : pane.status === 'complete' ? 'var(--success)' : meta.accentColor,
+            }}
+          />
+          <span style={{ color: meta.accentColor }}>{pane.status}</span>
+        </div>
+      </header>
+
+      <div className="agent-card-body">
+        {pane.status === 'error' && (
+          <div className="notice error" style={{ margin: 0 }}>
+            {pane.error}
+          </div>
+        )}
+
+        {pane.status === 'pending' && (
+          <p className="skeleton">Waiting to start parallel reasoning…</p>
+        )}
+
+        {pane.status !== 'pending' && !pane.text && (
+          <p className="skeleton">
+            Generating stream<span className="caret" />
+          </p>
+        )}
+
+        {pane.text && (
+          <>
+            <Answer text={pane.text} streaming={pane.status === 'streaming'} />
+            {agent === 'practice' && pane.status === 'complete' && <Exercise markdown={pane.text} />}
+          </>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function Pane({ agent, pane }: { agent: AgentKind; pane: AgentPane }) {
+  const meta = AGENT_METADATA[agent];
+
+  return (
+    <div>
+      <div className="pane-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '14px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '20px' }}>{meta.icon}</span>
+          <h2 style={{ fontSize: '18px', margin: 0, color: meta.accentColor }}>{meta.title}</h2>
+          <span className="muted" style={{ fontSize: '12px' }}>({meta.role})</span>
+        </div>
+        <div className="agent-card-status-pill">
+          <span className="ping-indicator" style={{ backgroundColor: meta.accentColor, color: meta.accentColor }} />
+          <span style={{ color: meta.accentColor }}>{pane.status}</span>
+        </div>
+      </div>
+
+      {pane.status === 'error' && (
+        <div className="notice error">
+          <strong>This angle failed:</strong> {pane.error}
+        </div>
+      )}
+
+      {pane.status === 'pending' && <p className="skeleton">Waiting to start parallel reasoning…</p>}
+
+      {pane.status !== 'pending' && !pane.text && (
+        <p className="skeleton">
+          Generating perspective<span className="caret" />
+        </p>
+      )}
+
+      {pane.text && (
+        <>
+          <Answer text={pane.text} streaming={pane.status === 'streaming'} />
+          {agent === 'practice' && pane.status === 'complete' && <Exercise markdown={pane.text} />}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -96,13 +242,6 @@ function Pane({ agent, pane }: { agent: AgentKind; pane: AgentPane }) {
  * Rendering
  * ------------------------------------------------------------------ */
 
-/**
- * Deliberately NOT a markdown library.
- *
- * Model output is untrusted text, and a full markdown renderer with raw-HTML
- * support is a direct XSS path. This splits fenced code from prose and renders
- * both as plain text nodes, so nothing in an answer can become live markup.
- */
 function Answer({ text, streaming }: { text: string; streaming: boolean }) {
   const blocks = useMemo(() => splitFences(text), [text]);
 
@@ -110,14 +249,58 @@ function Answer({ text, streaming }: { text: string; streaming: boolean }) {
     <div className="answer">
       {blocks.map((block, i) =>
         block.type === 'code' ? (
-          <pre key={i}>
-            <code>{block.content}</code>
-          </pre>
+          <CodeBlock key={i} content={block.content} lang={block.lang} />
         ) : (
           <span key={i}>{block.content}</span>
         ),
       )}
       {streaming && <span className="caret" aria-hidden="true" />}
+    </div>
+  );
+}
+
+function CodeBlock({ content, lang }: { content: string; lang: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore clipboard error
+    }
+  };
+
+  return (
+    <div style={{ position: 'relative', margin: '14px 0' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          background: 'var(--surface-3)',
+          border: '1px solid var(--border-strong)',
+          borderBottom: 'none',
+          padding: '6px 14px',
+          borderRadius: '10px 10px 0 0',
+          fontSize: '11px',
+          color: 'var(--text-dim)',
+          fontFamily: 'var(--mono)',
+        }}
+      >
+        <span>{lang || 'code'}</span>
+        <button
+          onClick={() => void copy()}
+          className="btn ghost"
+          style={{ padding: '2px 8px', fontSize: '11px', height: '22px' }}
+        >
+          {copied ? '✓ Copied' : 'Copy'}
+        </button>
+      </div>
+      <pre style={{ margin: 0, borderRadius: '0 0 10px 10px' }}>
+        <code>{content}</code>
+      </pre>
     </div>
   );
 }
@@ -149,20 +332,6 @@ export function splitFences(text: string): Block[] {
   return blocks;
 }
 
-/* ------------------------------------------------------------------ *
- * Exercise sandbox
- * ------------------------------------------------------------------ */
-
-/**
- * Runs the practice agent's generated HTML.
- *
- * `sandbox="allow-scripts"` WITHOUT `allow-same-origin` is the load-bearing
- * detail: that combination gives the frame an opaque origin, so its scripts run
- * but cannot reach this page's DOM, cookies, or storage. Adding
- * `allow-same-origin` alongside `allow-scripts` would let the frame remove its
- * own sandbox attribute entirely — the two together are equivalent to no
- * sandbox at all.
- */
 function Exercise({ markdown }: { markdown: string }) {
   const html = useMemo(() => {
     const block = splitFences(markdown).find((b) => b.type === 'code' && /^html?$/i.test(b.lang));
@@ -172,15 +341,18 @@ function Exercise({ markdown }: { markdown: string }) {
   if (!html) return null;
 
   return (
-    <div className="exercise">
-      <div className="bar">
-        <span>Runs in an isolated sandbox — it cannot reach this page or the network.</span>
+    <div className="exercise" style={{ marginTop: '16px', borderRadius: '12px', overflow: 'hidden' }}>
+      <div style={{ padding: '8px 14px', background: 'rgba(0,0,0,0.6)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        <span style={{ fontSize: '11.5px', color: 'var(--secondary)' }}>
+          Isolated Sandbox Preview
+        </span>
       </div>
       <iframe
         title="Practice exercise"
         sandbox="allow-scripts"
         srcDoc={html}
         referrerPolicy="no-referrer"
+        style={{ width: '100%', height: '360px', border: 'none', background: '#ffffff' }}
       />
     </div>
   );

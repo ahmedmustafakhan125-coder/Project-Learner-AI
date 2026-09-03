@@ -110,6 +110,15 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
     /* ---- open the SSE stream ---- */
 
+    // Plugin-set headers — CORS above all — live on the Fastify reply object and
+    // are only flushed by `reply.send()`. This route writes to the raw socket
+    // instead, so they have to be carried across by hand: without them the
+    // browser blocks the cross-origin stream and `fetch` rejects with
+    // "Failed to fetch" before a single token arrives.
+    for (const [name, value] of Object.entries(reply.getHeaders())) {
+      if (value !== undefined) reply.raw.setHeader(name, value);
+    }
+
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
@@ -229,7 +238,7 @@ async function persistQuestion(
     resolvedThreadId = data?.id ?? null;
   }
 
-  const { data: message } = await db()
+  const { data: message, error: messageErr } = await db()
     .from('messages')
     .insert({
       thread_id: resolvedThreadId,
@@ -240,20 +249,29 @@ async function persistQuestion(
     .select('id')
     .single();
 
-  const messageId = message?.id as string;
+  if (messageErr) {
+    console.error('[agents] failed to persist user message:', messageErr.message);
+  }
 
-  // Four placeholder rows up front, so a page reloaded mid-stream shows four
-  // pending tabs rather than an empty screen.
-  await db()
-    .from('agent_responses')
-    .insert(
-      AGENT_ORDER.map((agent) => ({
-        message_id: messageId,
-        user_id: userId,
-        agent,
-        status: 'pending' as const,
-      })),
-    );
+  const messageId = message?.id ?? crypto.randomUUID();
+
+  if (message?.id) {
+    // Four placeholder rows up front, so a page reloaded mid-stream shows four
+    // pending tabs rather than an empty screen.
+    const { error: placeholderErr } = await db()
+      .from('agent_responses')
+      .insert(
+        AGENT_ORDER.map((agent) => ({
+          message_id: messageId,
+          user_id: userId,
+          agent,
+          status: 'pending' as const,
+        })),
+      );
+    if (placeholderErr) {
+      console.error('[agents] failed to persist placeholder agent responses:', placeholderErr.message);
+    }
+  }
 
   return messageId;
 }
@@ -268,10 +286,12 @@ interface FinaliseArgs {
 }
 
 async function finaliseAgent(
-  messageId: string,
+  messageId: string | undefined,
   agent: string,
   args: FinaliseArgs,
 ): Promise<void> {
+  if (!messageId || messageId === 'undefined') return;
+
   const { error } = await db()
     .from('agent_responses')
     .update({

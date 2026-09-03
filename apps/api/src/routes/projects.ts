@@ -1,15 +1,18 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
+  Checkpoint,
   CompiledQuery,
   ProjectBlueprint,
   SkillLevel,
   expandStep,
   generateBlueprint,
+  groundCheckpoint,
   planExpansion,
   scorePacing,
   type PaceState,
   type AttemptSummary,
+  type SourceFile,
 } from '@ai-edu/core';
 import { createProviderForTask } from '@ai-edu/llm';
 
@@ -275,7 +278,42 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
 
       // Already done — return it rather than paying to generate it twice.
       if (step.expanded_at) {
-        return reply.send({ step: toExpansionPayload(step), cached: true });
+        // The attempt history travels with the step. The hint gate is enforced
+        // here against these rows, so a client that cannot see them counts from
+        // zero after every reload and re-locks hints the learner has earned.
+        const [{ data: attempts }, { data: progress }] = await Promise.all([
+          db()
+            .from('step_attempts')
+            .select('created_at, passed')
+            .eq('step_id', step.id)
+            .eq('user_id', user.id)
+            .order('attempt_no', { ascending: true }),
+          // Everything the learner has already done here. Absent means they
+          // have not started, and the step opens as written.
+          db()
+            .from('step_progress')
+            .select('files, revealed_at, last_run, hints_opened')
+            .eq('step_id', step.id)
+            .eq('user_id', user.id)
+            .maybeSingle(),
+        ]);
+
+        return reply.send({
+          step: {
+            ...toExpansionPayload(step),
+            attemptCount: attempts?.length ?? 0,
+            firstAttemptAt: attempts?.[0]?.created_at ?? null,
+            draftFiles:
+              Array.isArray(progress?.files) && progress.files.length > 0 ? progress.files : null,
+            // Passing is the attempts table's business, not the progress row's:
+            // it is a graded event, and deriving it keeps one source of truth.
+            passed: (attempts ?? []).some((attempt) => attempt.passed),
+            revealed: progress?.revealed_at != null,
+            lastRun: progress?.last_run ?? null,
+            hintsOpened: Array.isArray(progress?.hints_opened) ? progress.hints_opened : [],
+          },
+          cached: true,
+        });
       }
 
       const budget = await checkBudget(user.id);
@@ -390,6 +428,13 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
             starterFiles: expansion.starterFiles,
             checkpoint: expansion.checkpoint,
             hintCount: expansion.hints.length,
+            attemptCount: 0,
+            firstAttemptAt: null,
+            draftFiles: null,
+            passed: false,
+            revealed: false,
+            lastRun: null,
+            hintsOpened: [],
           },
           cached: false,
         });
@@ -445,8 +490,27 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
  * the answer to a step they have not attempted.
  */
 function toExpansionPayload(step: Record<string, unknown>) {
-  const checkpoint = (step['checkpoint'] ?? {}) as Record<string, unknown>;
-  const hints = Array.isArray(checkpoint['hints']) ? checkpoint['hints'] : [];
+  const stored = (step['checkpoint'] ?? {}) as Record<string, unknown>;
+  const hints = Array.isArray(stored['hints']) ? stored['hints'] : [];
+
+  /*
+   * Two things happen on the way out.
+   *
+   * The hints are dropped. They live inside the checkpoint JSON, so returning
+   * it verbatim shipped all three tiers to the browser and made the gated
+   * hints endpoint decorative — the ladder was readable in devtools.
+   *
+   * And the checkpoint is grounded against what the sandbox can run. Steps
+   * written before that rule existed can still carry tests for packages the
+   * browser cannot install; grounding on read repairs them in place instead of
+   * charging the learner for a regeneration.
+   */
+  const parsed = Checkpoint.safeParse(stored);
+  const files = [
+    ...(Array.isArray(step['starter_files']) ? step['starter_files'] : []),
+    ...(Array.isArray(step['solution_files']) ? step['solution_files'] : []),
+  ] as SourceFile[];
+  const checkpoint = parsed.success ? groundCheckpoint(parsed.data, files) : stored;
 
   return {
     stepIndex: step['step_index'],

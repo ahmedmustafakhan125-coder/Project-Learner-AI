@@ -27,7 +27,18 @@ export async function buildServer() {
     trustProxy: true,
   });
 
-  await app.register(cors, { origin: env.WEB_ORIGIN, credentials: true });
+  await app.register(cors, {
+    origin: (origin, cb) => {
+      if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        cb(null, true);
+        return;
+      }
+      cb(null, origin === env.WEB_ORIGIN);
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Cache-Control'],
+  });
   await registerRateLimit(app);
 
   app.get('/health', async () => ({ ok: true }));

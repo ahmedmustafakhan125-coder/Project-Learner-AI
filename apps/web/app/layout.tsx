@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { NavHeader } from '../components/NavHeader';
 
 /**
  * Rendered per request so the CSP nonce can be stamped onto Next's inline
@@ -13,14 +14,25 @@ import './globals.css';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'AI Education Platform',
-  description: 'Learn programming by building real projects, with four specialists answering every question.',
+  title: 'Project Learner — AI Education Platform',
+  description: 'Learn programming by building real projects, with four AI specialists answering every question in parallel.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700;800&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body>
+        <NavHeader />
+        {children}
+      </body>
     </html>
   );
 }

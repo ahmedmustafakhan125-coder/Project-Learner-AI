@@ -56,7 +56,7 @@ export function createProviderForTask(
   if (!model) {
     throw new LLMConfigError(
       'No LLM provider is configured. Set at least one of ANTHROPIC_API_KEY, ' +
-        'OPENAI_API_KEY, DEEPSEEK_API_KEY, or MOONSHOT_API_KEY.',
+        'OPENAI_API_KEY, OPENROUTER_API_KEY, GEMINI_API_KEY, DEEPSEEK_API_KEY, or MOONSHOT_API_KEY.',
     );
   }
   return createProvider(model.id, { env });

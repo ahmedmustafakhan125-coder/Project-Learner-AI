@@ -20,6 +20,45 @@ const AttemptBody = z.object({
     contents: z.string(),
   })),
   durationMs: z.number().int().nonnegative().optional(),
+  /**
+   * Outcome of the sandbox tests, which only the browser can run. Absent when
+   * the step has no executable checkpoint — that is not a failure, it is a step
+   * the static layers alone decide.
+   */
+  testResults: z
+    .array(z.object({ name: z.string(), passed: z.boolean(), message: z.string() }))
+    .optional(),
+});
+
+/**
+ * A partial update of the learner's state on one step.
+ *
+ * Every field is optional and only what is sent is written: the editor
+ * autosaves files on a debounce, while revealing an explanation or opening a
+ * hint is a single immediate fact. One row, one endpoint, several writers.
+ */
+const ProgressBody = z.object({
+  files: z
+    .array(z.object({ path: z.string(), contents: z.string() }))
+    .optional(),
+  /** True once the learner has chosen to see the explanation. Never unset. */
+  revealed: z.boolean().optional(),
+  /** The checkpoint panel as they last saw it. */
+  lastRun: z
+    .object({
+      status: z.enum(['passed', 'failed']),
+      layers: z.array(
+        z.object({
+          status: z.enum(['pending', 'running', 'passed', 'failed']),
+          message: z.string().nullable(),
+        }),
+      ),
+      at: z.string(),
+    })
+    .nullable()
+    .optional(),
+  /** Hint tiers the learner has opened. */
+  hintsOpened: z.array(z.number().int().min(1).max(3)).optional(),
 });
 
 const HintsQuery = z.object({
@@ -56,6 +95,37 @@ const MAX_FILES = 20;
 const MAX_FILE_BYTES = 102_400; // 100 KB per file
 const MAX_TOTAL_BYTES = 1_048_576; // 1 MB total
 
+/**
+ * Why this file set is too big to accept, or null when it is fine.
+ *
+ * Shared by attempts and drafts: a draft is written far more often than an
+ * attempt, so it is the more attractive of the two for storing arbitrary blobs
+ * and needs the same ceiling.
+ */
+function oversizeReason(files: Array<{ path: string; contents: string }>): string | null {
+  if (files.length > MAX_FILES) {
+    return `Too many files. Maximum is ${MAX_FILES}, received ${files.length}.`;
+  }
+
+  let totalBytes = 0;
+  for (const file of files) {
+    // Byte length, not string length. `.length` counts UTF-16 code units, so a
+    // file of non-Latin text or emoji passes a byte cap it actually exceeds by
+    // two or three times.
+    const size = Buffer.byteLength(file.contents, 'utf8');
+    if (size > MAX_FILE_BYTES) {
+      return `File "${file.path}" exceeds the ${MAX_FILE_BYTES / 1024} KB limit.`;
+    }
+    totalBytes += size;
+  }
+
+  if (totalBytes > MAX_TOTAL_BYTES) {
+    return `Total submission size exceeds the ${MAX_TOTAL_BYTES / 1048576} MB limit.`;
+  }
+
+  return null;
+}
+
 export async function attemptRoutes(app: FastifyInstance): Promise<void> {
   /* --------------- POST /api/projects/:id/steps/:index/attempt --------------- */
 
@@ -75,38 +145,11 @@ export async function attemptRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ error: 'bad_request', issues: parsed.error.issues });
       }
 
-      // ---- Input size limits ------------------------------------------------
       const files = parsed.data.submittedFiles;
-
-      if (files.length > MAX_FILES) {
-        return reply.code(413).send({
-          error: 'payload_too_large',
-          message: `Too many files. Maximum is ${MAX_FILES}, received ${files.length}.`,
-        });
+      const oversize = oversizeReason(files);
+      if (oversize) {
+        return reply.code(413).send({ error: 'payload_too_large', message: oversize });
       }
-
-      let totalBytes = 0;
-      for (const file of files) {
-        // Byte length, not string length. `.length` counts UTF-16 code units, so
-        // a file of non-Latin text or emoji passes a byte cap it actually
-        // exceeds by two or three times.
-        const size = Buffer.byteLength(file.contents, 'utf8');
-        if (size > MAX_FILE_BYTES) {
-          return reply.code(413).send({
-            error: 'payload_too_large',
-            message: `File "${file.path}" exceeds the ${MAX_FILE_BYTES / 1024} KB limit.`,
-          });
-        }
-        totalBytes += size;
-      }
-
-      if (totalBytes > MAX_TOTAL_BYTES) {
-        return reply.code(413).send({
-          error: 'payload_too_large',
-          message: `Total submission size exceeds the ${MAX_TOTAL_BYTES / 1048576} MB limit.`,
-        });
-      }
-      // -----------------------------------------------------------------------
 
       // 1. Verify project ownership
       const { data: project } = await db()
@@ -143,7 +186,19 @@ export async function attemptRoutes(app: FastifyInstance): Promise<void> {
         ? checkRequiredSymbols(checkpoint.requiredSymbols, parsed.data.submittedFiles)
         : { ok: false, missing: [] }; // skip symbols when files already fail
 
-      const passed = fileCheck.ok && symbolCheck.ok;
+      /*
+       * Layer 3 is reported, not re-run. The sandbox tests execute in the
+       * browser and the server never runs learner code, so their outcome can
+       * only arrive here as a report.
+       *
+       * Recording it matters even so. Grading on the static layers alone marked
+       * an attempt passed while the learner was looking at failing tests, which
+       * let `advance` wave them past a step they had not finished and fed the
+       * pacing model a stream of successes that never happened.
+       */
+      const testResults = parsed.data.testResults;
+      const failingTest = testResults?.find((t) => !t.passed);
+      const passed = fileCheck.ok && symbolCheck.ok && !failingTest;
 
       let failedLayer: string | undefined;
       let message: string | undefined;
@@ -153,18 +208,32 @@ export async function attemptRoutes(app: FastifyInstance): Promise<void> {
       } else if (!symbolCheck.ok) {
         failedLayer = 'symbol_check';
         message = `Missing required symbols: ${symbolCheck.missing.join(', ')}`;
+      } else if (failingTest) {
+        failedLayer = 'tests';
+        message = failingTest.message;
       }
 
-      // 4. Count existing attempts to derive attempt_no and hints_used
-      const { data: existingAttempts } = await db()
-        .from('step_attempts')
-        .select('id, hints_used')
-        .eq('step_id', step.id)
-        .eq('user_id', user.id)
-        .order('attempt_no', { ascending: false });
+      // 4. Count existing attempts for attempt_no, and read what the hints cost
+      const [{ data: existingAttempts }, { data: progress }] = await Promise.all([
+        db()
+          .from('step_attempts')
+          .select('id')
+          .eq('step_id', step.id)
+          .eq('user_id', user.id)
+          .order('attempt_no', { ascending: false }),
+        db()
+          .from('step_progress')
+          .select('hints_opened')
+          .eq('step_id', step.id)
+          .eq('user_id', user.id)
+          .maybeSingle(),
+      ]);
 
       const attemptNo = (existingAttempts?.length ?? 0) + 1;
-      const hintsUsed = existingAttempts?.[0]?.hints_used ?? 0;
+      // Previously copied from the previous attempt, which started at zero and
+      // therefore stayed at zero forever — the pacing model has never once seen
+      // a learner use a hint.
+      const hintsUsed = Array.isArray(progress?.hints_opened) ? progress.hints_opened.length : 0;
 
       // 5. Insert the attempt
       const { error: insertError } = await db()
@@ -178,7 +247,7 @@ export async function attemptRoutes(app: FastifyInstance): Promise<void> {
           hints_used: hintsUsed,
           duration_ms: parsed.data.durationMs ?? null,
           run_output: null,
-          test_results: null,
+          test_results: testResults ?? null,
           ai_review: null,
         });
 
@@ -193,6 +262,86 @@ export async function attemptRoutes(app: FastifyInstance): Promise<void> {
       }
 
       return reply.send({ passed: false, failedLayer, message });
+    },
+  );
+
+  /* --------------- PUT /api/projects/:id/steps/:index/progress --------------- */
+
+  /*
+   * What the learner has already done on this step.
+   *
+   * Idempotent by design: one row per learner per step, overwritten. The editor
+   * autosaves through here far more often than anything is submitted, and a
+   * POST that appended would turn an afternoon of typing into thousands of rows.
+   *
+   * None of it is graded. It exists so that reopening a project resumes where
+   * the learner stopped rather than presenting the step as untouched.
+   */
+  app.put<{ Params: { id: string; index: string } }>(
+    '/api/projects/:id/steps/:index/progress',
+    { preHandler: requireAuth, config: rateLimitConfig.draft },
+    async (request, reply) => {
+      const user = userOf(request);
+      const stepIndex = Number(request.params.index);
+
+      if (!Number.isInteger(stepIndex) || stepIndex < 0) {
+        return reply.code(400).send({ error: 'bad_request', message: 'Invalid step index.' });
+      }
+
+      const parsed = ProgressBody.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'bad_request', issues: parsed.error.issues });
+      }
+
+      if (parsed.data.files) {
+        const oversize = oversizeReason(parsed.data.files);
+        if (oversize) {
+          return reply.code(413).send({ error: 'payload_too_large', message: oversize });
+        }
+      }
+
+      const { data: project } = await db()
+        .from('projects')
+        .select('id')
+        .eq('id', request.params.id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (!project) return reply.code(404).send({ error: 'not_found' });
+
+      const { data: step } = await db()
+        .from('project_steps')
+        .select('id')
+        .eq('project_id', project.id)
+        .eq('step_index', stepIndex)
+        .maybeSingle();
+
+      if (!step) return reply.code(404).send({ error: 'not_found', message: 'No such step.' });
+
+      // Only the fields that were sent are written. Anything absent keeps the
+      // value already in the row, so an editor autosave cannot wipe out the
+      // hints the learner opened a moment earlier.
+      const patch: Record<string, unknown> = {
+        user_id: user.id,
+        step_id: step.id,
+        updated_at: new Date().toISOString(),
+      };
+      if (parsed.data.files) patch['files'] = parsed.data.files;
+      if (parsed.data.lastRun !== undefined) patch['last_run'] = parsed.data.lastRun;
+      if (parsed.data.hintsOpened) patch['hints_opened'] = [...new Set(parsed.data.hintsOpened)].sort();
+      // Revealing is one-way. A client that sends `false` is not asking for the
+      // explanation to be taken back; it is reporting a state it has not loaded.
+      if (parsed.data.revealed) patch['revealed_at'] = new Date().toISOString();
+
+      const { error } = await db()
+        .from('step_progress')
+        .upsert(patch, { onConflict: 'user_id,step_id' });
+
+      if (error) {
+        return reply.code(500).send({ error: 'save_failed', message: error.message });
+      }
+
+      return reply.send({ ok: true });
     },
   );
 

@@ -23,7 +23,12 @@ async function fetchHint(
     { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!res.ok) {
-    throw new Error(`Failed to fetch hint (tier ${tier}): ${res.status}`);
+    // The server enforces the same gate independently and explains itself in
+    // the body — a bare status code here would leave a locked hint looking
+    // like a broken one.
+    const body = await res.json().catch(() => null);
+    const message = typeof body?.message === 'string' ? body.message : null;
+    throw new Error(message ?? `Failed to fetch hint (tier ${tier}): ${res.status}`);
   }
   const body = await res.json();
   return body.text as string;
@@ -37,6 +42,10 @@ export interface HintDrawerProps {
   hintCount: number;
   attemptCount: number;
   startedAt: number | null;
+  /** Tiers opened on an earlier visit. A spent hint stays spent. */
+  openedTiers?: number[];
+  /** Fired the first time a tier is opened, so it survives a reload. */
+  onTierOpened?: (tier: number) => void;
 }
 
 const TIER_THRESHOLDS = [
@@ -58,10 +67,14 @@ export function HintDrawer({
   hintCount,
   attemptCount,
   startedAt,
+  openedTiers = [],
+  onTierOpened,
 }: HintDrawerProps) {
-  if (hintCount === 0) return null;
-
-  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+  // A hint the learner has already read reopens read. Collapsing it back to
+  // "locked" on every visit would ask them to spend it twice.
+  const [expanded, setExpanded] = useState<Record<number, boolean>>(() =>
+    Object.fromEntries(openedTiers.map((tier) => [tier, true])),
+  );
   const [cache, setCache] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState<Record<number, boolean>>({});
   const [errors, setErrors] = useState<Record<number, string>>({});
@@ -82,6 +95,7 @@ export function HintDrawer({
       }
 
       setExpanded((prev) => ({ ...prev, [tier]: true }));
+      if (!openedTiers.includes(tier)) onTierOpened?.(tier);
 
       // Already cached — nothing to fetch.
       if (cache[tier] !== undefined) return;
@@ -99,8 +113,33 @@ export function HintDrawer({
         setLoading((prev) => ({ ...prev, [tier]: false }));
       }
     },
-    [expanded, cache, projectId, stepIndex],
+    [expanded, cache, projectId, stepIndex, openedTiers, onTierOpened],
   );
+
+  // Tiers carried over from a previous visit are open but empty — their text
+  // was never in this page's memory. Fetch it once so they read as they left.
+  useEffect(() => {
+    for (const tier of openedTiers) {
+      if (cache[tier] !== undefined || loading[tier]) continue;
+      setLoading((prev) => ({ ...prev, [tier]: true }));
+      fetchHint(projectId, stepIndex, tier)
+        .then((text) => setCache((prev) => ({ ...prev, [tier]: text })))
+        .catch((err: unknown) =>
+          setErrors((prev) => ({
+            ...prev,
+            [tier]: err instanceof Error ? err.message : 'Something went wrong.',
+          })),
+        )
+        .finally(() => setLoading((prev) => ({ ...prev, [tier]: false })));
+    }
+    // Keyed on the step alone: this is the mount-time restore, and `toggle`
+    // owns every tier opened after it.
+  }, [projectId, stepIndex]);
+
+  // After the hooks, never before: a conditional return above them changes the
+  // hook order the first time `hintCount` goes from 0 to non-zero, and React
+  // throws rather than rendering.
+  if (hintCount === 0) return null;
 
   const elapsed = startedAt ? Date.now() - startedAt : 0;
   const tiers = TIER_THRESHOLDS.slice(0, hintCount);
