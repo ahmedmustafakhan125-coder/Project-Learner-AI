@@ -79,6 +79,14 @@ export const VENDORS: Record<string, Vendor> = {
     envKey: 'GEMINI_API_KEY',
     docsURL: 'https://ai.google.dev/pricing',
   },
+  openrouter: {
+    id: 'openrouter',
+    label: 'OpenRouter',
+    adapter: 'openai-compatible',
+    baseURL: 'https://openrouter.ai/api/v1',
+    envKey: 'OPENROUTER_API_KEY',
+    docsURL: 'https://openrouter.ai/docs',
+  },
 };
 
 /* ------------------------------------------------------------------ *
@@ -339,6 +347,24 @@ const BUILTIN_MODELS: ModelEntry[] = [
     verifiedOn: null,
   },
   {
+    id: 'gemini-3.7-flash',
+    label: 'Gemini 3.7 Flash (Default)',
+    vendor: 'gemini',
+    providerModel: 'gemini-3.6-flash',
+    pricing: {
+      inputPerMTok: 0.10,
+      outputPerMTok: 0.40,
+      cacheReadPerMTok: 0.025,
+      cacheWritePerMTok: 0.10,
+    },
+    capabilities: OPENAI_COMPATIBLE_CAPS({
+      maxContext: 1_048_576,
+      maxOutputTokens: 65_536,
+    }),
+    verifiedOn: '2026-09-02',
+    blurb: 'Fast, intelligent, and multimodal. Default Google Gemini model.',
+  },
+  {
     id: 'gemini-3.6-flash',
     label: 'Gemini 3.6 Flash',
     vendor: 'gemini',
@@ -354,11 +380,11 @@ const BUILTIN_MODELS: ModelEntry[] = [
       maxOutputTokens: 65_536,
     }),
     verifiedOn: '2026-09-02',
-    blurb: 'Fast and intelligent. Default Gemini model.',
+    blurb: 'Fast and intelligent. Gemini model.',
   },
   {
     id: 'gemini-2.5-flash',
-    label: 'Gemini 3.6 Flash (Default)',
+    label: 'Gemini Flash',
     vendor: 'gemini',
     providerModel: 'gemini-3.6-flash',
     pricing: {
@@ -372,11 +398,11 @@ const BUILTIN_MODELS: ModelEntry[] = [
       maxOutputTokens: 65_536,
     }),
     verifiedOn: '2026-09-02',
-    blurb: 'Fast and intelligent. Default Gemini model.',
+    blurb: 'Fast and intelligent. Gemini model.',
   },
   {
     id: 'gemini-2.5-pro',
-    label: 'Gemini 3.6 Flash',
+    label: 'Gemini Pro',
     vendor: 'gemini',
     providerModel: 'gemini-3.6-flash',
     pricing: {
@@ -390,7 +416,73 @@ const BUILTIN_MODELS: ModelEntry[] = [
       maxOutputTokens: 65_536,
     }),
     verifiedOn: '2026-09-02',
-    blurb: 'Fast and intelligent. Default Gemini model.',
+    blurb: 'Fast and intelligent. Gemini model.',
+  },
+
+  /* --- OpenRouter: Universal Multi-Vendor Routing --- */
+  {
+    id: 'openrouter/auto',
+    label: 'OpenRouter (Auto Router)',
+    vendor: 'openrouter',
+    providerModel: 'openrouter/auto',
+    pricing: null,
+    capabilities: OPENAI_COMPATIBLE_CAPS({
+      maxContext: 128_000,
+      maxOutputTokens: 16_384,
+    }),
+    verifiedOn: '2026-09-02',
+    blurb: 'Automatically routes to the best available model on OpenRouter.',
+  },
+  {
+    id: 'openrouter/claude-3.5-sonnet',
+    label: 'Claude 3.5 Sonnet (OpenRouter)',
+    vendor: 'openrouter',
+    providerModel: 'anthropic/claude-3.5-sonnet',
+    pricing: {
+      inputPerMTok: 3.0,
+      outputPerMTok: 15.0,
+    },
+    capabilities: OPENAI_COMPATIBLE_CAPS({
+      maxContext: 200_000,
+      maxOutputTokens: 8_192,
+      supportsImages: true,
+    }),
+    verifiedOn: '2026-09-02',
+    blurb: 'Anthropic Claude 3.5 Sonnet routed via OpenRouter.',
+  },
+  {
+    id: 'openrouter/gpt-4o',
+    label: 'GPT-4o (OpenRouter)',
+    vendor: 'openrouter',
+    providerModel: 'openai/gpt-4o',
+    pricing: {
+      inputPerMTok: 2.50,
+      outputPerMTok: 10.00,
+    },
+    capabilities: OPENAI_COMPATIBLE_CAPS({
+      maxContext: 128_000,
+      maxOutputTokens: 16_384,
+      supportsImages: true,
+    }),
+    verifiedOn: '2026-09-02',
+    blurb: 'OpenAI GPT-4o routed via OpenRouter.',
+  },
+  {
+    id: 'openrouter/deepseek-r1',
+    label: 'DeepSeek R1 (OpenRouter)',
+    vendor: 'openrouter',
+    providerModel: 'deepseek/deepseek-r1',
+    pricing: {
+      inputPerMTok: 0.55,
+      outputPerMTok: 2.19,
+    },
+    capabilities: OPENAI_COMPATIBLE_CAPS({
+      maxContext: 64_000,
+      maxOutputTokens: 8_000,
+      reasoningControl: 'toggle',
+    }),
+    verifiedOn: '2026-09-02',
+    blurb: 'DeepSeek R1 reasoning model routed via OpenRouter.',
   },
 ];
 
@@ -451,56 +543,71 @@ export type TaskKind = 'interview' | 'fanout' | 'projectGen' | 'review' | 'utili
  * projects. Changing the cost profile of the whole app is a one-line edit here.
  */
 export const TASK_DEFAULTS: Record<TaskKind, string> = {
-  interview: 'claude-haiku-4-5',
-  fanout: 'claude-opus-5',
-  projectGen: 'claude-opus-5',
-  review: 'claude-sonnet-5',
-  utility: 'claude-haiku-4-5',
+  interview: 'gemini-3.7-flash',
+  fanout: 'gemini-3.7-flash',
+  projectGen: 'gemini-3.7-flash',
+  review: 'gemini-3.7-flash',
+  utility: 'gemini-3.7-flash',
 };
 
 /**
  * Intelligent preference fallback chains across all supported providers.
- * If the operator provides ANY key (Anthropic, OpenAI, Google Gemini, DeepSeek, Moonshot),
+ * If the operator provides ANY key (Google Gemini, OpenAI, Anthropic, OpenRouter, DeepSeek, Moonshot),
  * the system automatically selects the highest-tier available model for that specific task.
  */
 export const TASK_PREFERENCE_CHAINS: Record<TaskKind, string[]> = {
   interview: [
-    'claude-haiku-4-5',
+    'gemini-3.7-flash',
     'gemini-3.6-flash',
+    'claude-haiku-4-5',
     'gpt-4o-mini',
+    'openrouter/auto',
     'deepseek-chat',
     'kimi-moonshot-128k',
   ],
   fanout: [
-    'claude-opus-5',
-    'gpt-4o',
+    'gemini-3.7-flash',
     'gemini-3.6-flash',
+    'gpt-4o',
+    'claude-opus-5',
+    'openrouter/claude-3.5-sonnet',
+    'openrouter/gpt-4o',
     'o3-mini',
     'claude-sonnet-5',
     'gpt-4o-mini',
+    'openrouter/auto',
     'deepseek-chat',
   ],
   projectGen: [
-    'claude-opus-5',
+    'gemini-3.7-flash',
+    'gemini-3.6-flash',
     'gpt-4o',
+    'claude-opus-5',
+    'openrouter/claude-3.5-sonnet',
+    'openrouter/gpt-4o',
     'o1',
     'o3-mini',
-    'gemini-3.6-flash',
+    'openrouter/deepseek-r1',
     'claude-sonnet-5',
     'deepseek-reasoner',
   ],
   review: [
-    'claude-sonnet-5',
-    'gpt-4o',
+    'gemini-3.7-flash',
     'gemini-3.6-flash',
+    'gpt-4o',
+    'claude-sonnet-5',
+    'openrouter/claude-3.5-sonnet',
     'o3-mini',
     'claude-opus-5',
+    'openrouter/auto',
     'deepseek-chat',
   ],
   utility: [
-    'claude-haiku-4-5',
+    'gemini-3.7-flash',
     'gemini-3.6-flash',
+    'claude-haiku-4-5',
     'gpt-4o-mini',
+    'openrouter/auto',
     'deepseek-chat',
     'kimi-moonshot-128k',
   ],

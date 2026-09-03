@@ -224,38 +224,38 @@ export async function* fanOut(options: FanOutOptions): AsyncIterable<FanOutEvent
     }
   };
 
-  const [leadAgent, ...followers] = AGENT_ORDER;
-
   const streamFor = (agent: AgentKind) =>
     provider.stream({
       ...buildAgentRequest(agent, options),
       ...(signal ? { signal } : {}),
     });
 
-  // 1. Lead goes out alone and writes the cache entry.
-  //
-  // The buffered stream is already in flight before `consume` runs — that is
-  // what makes the stagger work. It can only be drained once, so a retry has to
-  // issue a genuinely new request instead of re-reading a queue that has
-  // already ended or latched its failure.
-  const lead = bufferStream(streamFor(leadAgent));
-  let leadStreamTaken = false;
-  const leadFactory = (): AsyncIterable<LLMEvent> => {
-    if (!leadStreamTaken) {
-      leadStreamTaken = true;
-      return lead.events;
+  let tasks: Promise<void>[] = [];
+
+  // When explicit prompt caching is supported (e.g. Anthropic), stagger the lead agent to write the cache prefix.
+  // For all other providers (e.g. Gemini, OpenAI, OpenRouter), dispatch all 4 agents concurrently in parallel.
+  if (provider.capabilities.explicitCaching && leadTimeoutMs > 0) {
+    const [leadAgent, ...followers] = AGENT_ORDER;
+    const lead = bufferStream(streamFor(leadAgent));
+    let leadStreamTaken = false;
+    const leadFactory = (): AsyncIterable<LLMEvent> => {
+      if (!leadStreamTaken) {
+        leadStreamTaken = true;
+        return lead.events;
+      }
+      return streamFor(leadAgent);
+    };
+    tasks = [consume(leadAgent, leadFactory)];
+
+    // Wait for first token proof before releasing followers
+    await firstTokenOrTimeout(lead, leadTimeoutMs);
+
+    for (const agent of followers) {
+      tasks.push(consume(agent, () => streamFor(agent)));
     }
-    return streamFor(leadAgent);
-  };
-  const tasks = [consume(leadAgent, leadFactory)];
-
-  // 2. Wait for proof the entry is live — bounded, so a stalled lead cannot
-  //    hold the other three hostage.
-  await firstTokenOrTimeout(lead, leadTimeoutMs);
-
-  // 3. Followers now read what the lead just wrote.
-  for (const agent of followers) {
-    tasks.push(consume(agent, () => streamFor(agent)));
+  } else {
+    // Pure async parallel dispatch across all 4 specialist agents
+    tasks = AGENT_ORDER.map((agent) => consume(agent, () => streamFor(agent)));
   }
 
   try {

@@ -24,7 +24,7 @@ const EnvSchema = z.object({
   // absent is treated exactly like unreachable: model-bound routes fail closed.
   // See apps/api/src/gateway.ts.
   SECURITY_GATEWAY_URL: z.string().url().optional(),
-  SECURITY_GATEWAY_TIMEOUT_MS: z.coerce.number().int().positive().default(4000),
+  SECURITY_GATEWAY_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
