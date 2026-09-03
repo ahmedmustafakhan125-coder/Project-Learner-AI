@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classify, decodeText } from '../src/routes/attachments.js';
+import { classify, decodePdf, decodeText } from '../src/routes/attachments.js';
 
 /**
  * These guard an upload path that accepts attacker-controlled bytes.
@@ -79,5 +79,72 @@ describe('classify', () => {
 
   it('refuses a file with no extension and an unknown type', () => {
     expect(classify('mystery', 'application/octet-stream')).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * PDF text extraction
+ * ------------------------------------------------------------------ */
+
+const NL = String.fromCharCode(10);
+
+/**
+ * A minimal but genuinely valid single-page PDF containing `contents`.
+ *
+ * Built by hand rather than mocked: the point of these tests is that a real
+ * parser is handed real bytes. The bug being guarded against was PDFs being
+ * accepted by `classify` and then never read at all, which a mocked extractor
+ * would have happily reported as working.
+ */
+function makePdf(contents: string): Buffer {
+  const stream = 'BT /F1 24 Tf 72 700 Td (' + contents + ') Tj ET';
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] ' +
+      '/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+    '<< /Length ' + stream.length + ' >>' + NL + 'stream' + NL + stream + NL + 'endstream',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+
+  let pdf = '%PDF-1.4' + NL;
+  const offsets: number[] = [];
+  objects.forEach((body, i) => {
+    offsets.push(pdf.length);
+    pdf += String(i + 1) + ' 0 obj' + NL + body + NL + 'endobj' + NL;
+  });
+
+  const xrefAt = pdf.length;
+  pdf += 'xref' + NL + '0 ' + (objects.length + 1) + NL + '0000000000 65535 f ' + NL;
+  for (const off of offsets) {
+    pdf += String(off).padStart(10, '0') + ' 00000 n ' + NL;
+  }
+  pdf +=
+    'trailer' + NL + '<< /Size ' + (objects.length + 1) + ' /Root 1 0 R >>' + NL +
+    'startxref' + NL + xrefAt + NL + '%%EOF';
+
+  return Buffer.from(pdf, 'latin1');
+}
+
+describe('decodePdf', () => {
+  it('reads the text layer out of a real PDF', async () => {
+    const text = await decodePdf(makePdf('Closures capture their enclosing scope'));
+    expect(text).not.toBeNull();
+    expect(text).toContain('Closures capture their enclosing scope');
+  });
+
+  it('returns null for bytes that are not a PDF at all', async () => {
+    expect(await decodePdf(Buffer.from('this is plainly not a pdf', 'utf8'))).toBeNull();
+  });
+
+  it('returns null rather than throwing when there is no text to extract', async () => {
+    // A scanned PDF is images: structurally valid, nothing in the text layer.
+    // That is a reportable outcome, not a crash.
+    await expect(decodePdf(makePdf(''))).resolves.toBeNull();
+  });
+
+  it('caps extracted text at the same ceiling as plain text files', async () => {
+    const text = await decodePdf(makePdf('concept '.repeat(20_000)));
+    if (text !== null) expect(text.length).toBeLessThanOrEqual(60_000);
   });
 });

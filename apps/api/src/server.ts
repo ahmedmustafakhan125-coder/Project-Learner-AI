@@ -6,7 +6,9 @@ import { listAvailableModels, registryReport } from '@ai-edu/llm';
 import { requireAuth, userOf } from './auth.js';
 import { checkBudget } from './db.js';
 import { loadEnv } from './env.js';
+import { registerRateLimit } from './rateLimit.js';
 import { agentRoutes } from './routes/agents.js';
+import { attemptRoutes } from './routes/attempts.js';
 import { attachmentRoutes } from './routes/attachments.js';
 import { interviewRoutes } from './routes/interview.js';
 import { projectRoutes } from './routes/projects.js';
@@ -19,9 +21,14 @@ export async function buildServer() {
     // SSE responses are written directly to the raw socket, so Fastify's own
     // request timeout must not cut a long fan-out short.
     connectionTimeout: 0,
+    // Rate limiting falls back to `request.ip` for unauthenticated routes.
+    // Without this, every request behind a proxy or load balancer reports the
+    // proxy's address and they all share one bucket.
+    trustProxy: true,
   });
 
   await app.register(cors, { origin: env.WEB_ORIGIN, credentials: true });
+  await registerRateLimit(app);
 
   app.get('/health', async () => ({ ok: true }));
 
@@ -46,6 +53,7 @@ export async function buildServer() {
   await app.register(attachmentRoutes);
   await app.register(interviewRoutes);
   await app.register(agentRoutes);
+  await app.register(attemptRoutes);
   await app.register(projectRoutes);
 
   return app;

@@ -19,6 +19,12 @@ const EnvSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'SUPABASE_SERVICE_ROLE_KEY is required'),
 
   DAILY_USD_BUDGET_PER_USER: z.coerce.number().positive().default(2),
+
+  // The LLM security gateway. Optional so the stack still boots without it, but
+  // absent is treated exactly like unreachable: model-bound routes fail closed.
+  // See apps/api/src/gateway.ts.
+  SECURITY_GATEWAY_URL: z.string().url().optional(),
+  SECURITY_GATEWAY_TIMEOUT_MS: z.coerce.number().int().positive().default(4000),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

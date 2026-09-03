@@ -11,6 +11,7 @@ import {
 import { createProviderForTask } from '@ai-edu/llm';
 
 import { requireAuth, userOf } from '../auth.js';
+import { gatewayErrorReply, screenOrThrow } from '../gateway.js';
 import { checkBudget, db, recordUsage } from '../db.js';
 
 /**
@@ -49,6 +50,19 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
     }
     const { query, projectId, stepId, attachments } = parsed.data;
 
+    // Screened before the budget check and before a provider exists, so a
+    // refused prompt costs nothing. MASK returns redacted text, and it is the
+    // redacted text that continues — never the original.
+    let safeQuery: string;
+    try {
+      safeQuery = await screenOrThrow(query, `interview-start:${user.id}`);
+    } catch (err) {
+      const refusal = gatewayErrorReply(err);
+      if (!refusal) throw err;
+      request.log.warn({ userId: user.id, ...refusal.body }, 'interview query refused');
+      return reply.code(refusal.status).send(refusal.body);
+    }
+
     const budget = await checkBudget(user.id);
     if (budget.exceeded) {
       return reply.code(429).send({
@@ -70,7 +84,7 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
     const started = Date.now();
 
     try {
-      const outcome = await beginInterview({ provider, rawQuery: query, context, attachments });
+      const outcome = await beginInterview({ provider, rawQuery: safeQuery, context, attachments });
       void recordUsage({
         userId: user.id,
         task: 'interview:start',
@@ -83,7 +97,7 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
       });
       return reply.send(serialise(outcome));
     } catch (err) {
-      return interviewFailure(reply, err, query, attachments);
+      return interviewFailure(reply, err, safeQuery, attachments);
     }
   });
 
@@ -96,6 +110,24 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
     }
     const { state, answers, attachments, skip } = parsed.data;
 
+    // Interview answers are free text and reach the model exactly like the
+    // original query does, so they are screened on the same terms.
+    let safeAnswers: Record<string, string>;
+    try {
+      const entries = await Promise.all(
+        Object.entries(answers).map(
+          async ([key, value]) =>
+            [key, await screenOrThrow(value, `interview-answer:${user.id}:${key}`)] as const,
+        ),
+      );
+      safeAnswers = Object.fromEntries(entries);
+    } catch (err) {
+      const refusal = gatewayErrorReply(err);
+      if (!refusal) throw err;
+      request.log.warn({ userId: user.id, ...refusal.body }, 'interview answer refused');
+      return reply.code(refusal.status).send(refusal.body);
+    }
+
     let provider;
     try {
       provider = createProviderForTask('interview');
@@ -106,7 +138,13 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
     }
 
     try {
-      const outcome = await continueInterview({ provider, state, answers, attachments, skip });
+      const outcome = await continueInterview({
+        provider,
+        state,
+        answers: safeAnswers,
+        attachments,
+        skip,
+      });
 
       // Durable answers graduate into the learner's profile so the next query
       // asks less. Only self-reported values qualify — never inferred ones.

@@ -7,11 +7,16 @@ import {
   expandStep,
   generateBlueprint,
   planExpansion,
+  scorePacing,
+  type PaceState,
+  type AttemptSummary,
 } from '@ai-edu/core';
 import { createProviderForTask } from '@ai-edu/llm';
 
 import { requireAuth, userOf } from '../auth.js';
+import { gatewayErrorReply, screenOrThrow } from '../gateway.js';
 import { checkBudget, db, recordUsage } from '../db.js';
+import { rateLimitConfig } from '../rateLimit.js';
 
 /**
  * Project generation.
@@ -43,12 +48,31 @@ const CreateBody = z.object({
 export async function projectRoutes(app: FastifyInstance): Promise<void> {
   /* ---------------- Phase A: blueprint ---------------- */
 
-  app.post('/api/projects/blueprint', { preHandler: requireAuth }, async (request, reply) => {
+  app.post('/api/projects/blueprint', { preHandler: requireAuth, config: rateLimitConfig.generation }, async (request, reply) => {
     const user = userOf(request);
 
     const parsed = BlueprintBody.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: 'bad_request', issues: parsed.error.issues });
+    }
+
+    /*
+     * Like /api/agents/ask, this route takes a client-supplied CompiledQuery,
+     * so it is a second way to hand the model a prompt that never passed
+     * through the interview. It gets the same screening, before the budget
+     * check and before a provider exists.
+     */
+    let safeCompiled;
+    try {
+      safeCompiled = {
+        ...parsed.data.compiled,
+        text: await screenOrThrow(parsed.data.compiled.text, `blueprint:${user.id}`),
+      };
+    } catch (err) {
+      const refusal = gatewayErrorReply(err);
+      if (!refusal) throw err;
+      request.log.warn({ userId: user.id, ...refusal.body }, 'blueprint prompt refused');
+      return reply.code(refusal.status).send(refusal.body);
     }
 
     const budget = await checkBudget(user.id);
@@ -70,7 +94,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
 
     const started = Date.now();
     try {
-      const blueprint = await generateBlueprint({ provider, compiled: parsed.data.compiled });
+      const blueprint = await generateBlueprint({ provider, compiled: safeCompiled });
 
       void recordUsage({
         userId: user.id,
@@ -222,7 +246,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
 
   app.post<{ Params: { id: string; index: string } }>(
     '/api/projects/:id/steps/:index/expand',
-    { preHandler: requireAuth },
+    { preHandler: requireAuth, config: rateLimitConfig.generation },
     async (request, reply) => {
       const user = userOf(request);
       const stepIndex = Number(request.params.index);
@@ -279,13 +303,57 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
+      // Compute pacing directive from previous step's attempts
+      let directive = null;
+      if (stepIndex > 0) {
+        const { data: enrollment } = await db()
+          .from('enrollments')
+          .select('pace_state')
+          .eq('project_id', project.id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        const { data: prevStep } = await db()
+          .from('project_steps')
+          .select('id')
+          .eq('project_id', project.id)
+          .eq('step_index', stepIndex - 1)
+          .maybeSingle();
+
+        if (prevStep) {
+          const { data: prevAttempts } = await db()
+            .from('step_attempts')
+            .select('duration_ms, hints_used, passed')
+            .eq('step_id', prevStep.id)
+            .eq('user_id', user.id);
+
+          if (prevAttempts && prevAttempts.length > 0) {
+            const summary: AttemptSummary = {
+              attempts: prevAttempts.length,
+              durationMs: prevAttempts.reduce((sum, a) => sum + (a.duration_ms ?? 0), 0),
+              hintsUsed: Math.max(...prevAttempts.map((a) => a.hints_used ?? 0)),
+              passed: true,
+            };
+            const paceState = (enrollment?.pace_state as PaceState) ?? {
+              recentAttemptCounts: [],
+              recentDurations: [],
+              hintsUsedTotal: 0,
+              streakPassed: 0,
+              streakFailed: 0,
+            };
+            const result = scorePacing(paceState, summary);
+            directive = result.directive;
+          }
+        }
+      }
+
       const started = Date.now();
       try {
         const expansion = await expandStep({
           provider,
           blueprint: blueprint.data,
           stepIndex,
-          directive: (step.pacing_directive as never) ?? null,
+          directive,
         });
 
         await db()
@@ -298,6 +366,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
             solution_files: expansion.solutionFiles,
             checkpoint: { ...expansion.checkpoint, hints: expansion.hints },
             expanded_at: new Date().toISOString(),
+            pacing_directive: directive,
           })
           .eq('id', step.id);
 
@@ -389,5 +458,9 @@ function toExpansionPayload(step: Record<string, unknown>) {
     starterFiles: step['starter_files'],
     checkpoint,
     hintCount: hints.length,
+    // Persisted by the expand route but previously never returned, so the
+    // learner-facing pacing banner had nothing to render and silently never
+    // appeared.
+    pacingDirective: step['pacing_directive'] ?? null,
   };
 }

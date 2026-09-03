@@ -108,11 +108,42 @@ export interface StepContent {
   starterFiles: SourceFile[];
   checkpoint: Checkpoint;
   hintCount: number;
+  /**
+   * Why this step was reshaped, when adaptive pacing changed it.
+   *
+   * Null on a step the blueprint produced unchanged. Surfaced to the learner on
+   * purpose: pacing that silently rewrites the work is a black box, and a
+   * learner who cannot see why the difficulty moved cannot argue with it.
+   */
+  pacingDirective: PacingDirective | null;
+}
+
+export interface PacingDirective {
+  adjustment: 'scaffold' | 'insert_micro_step' | 'hold' | 'compress' | 'stretch';
+  reason: string;
+  notes: string[];
 }
 
 export interface ExpansionPlan {
   blocking: number | null;
   background: number[];
+}
+
+export interface AttemptResult {
+  passed: boolean;
+  solutionFiles?: Array<{ path: string; contents: string }>;
+  failedLayer?: string;
+  message?: string;
+}
+
+export interface AdvanceResult {
+  ok: boolean;
+  nextStepIndex: number;
+}
+
+export interface HintResponse {
+  tier: number;
+  text: string;
 }
 
 /* ------------------------------------------------------------------ *
@@ -260,6 +291,33 @@ export class ApiClient {
   /** What to fetch next: what blocks the learner, and what to warm in the background. */
   async getExpansionPlan(projectId: string): Promise<ExpansionPlan> {
     return this.get<ExpansionPlan>(`/api/projects/${projectId}/plan`);
+  }
+
+  /* ---- attempts & hints ---- */
+
+  async submitAttempt(
+    projectId: string,
+    stepIndex: number,
+    files: Array<{ path: string; contents: string }>,
+    durationMs?: number,
+  ): Promise<AttemptResult> {
+    return this.post<AttemptResult>(
+      `/api/projects/${projectId}/steps/${stepIndex}/attempt`,
+      { submittedFiles: files, ...(durationMs != null ? { durationMs } : {}) },
+    );
+  }
+
+  async advanceStep(projectId: string, stepIndex: number): Promise<AdvanceResult> {
+    return this.post<AdvanceResult>(
+      `/api/projects/${projectId}/steps/${stepIndex}/advance`,
+      {},
+    );
+  }
+
+  async getHint(projectId: string, stepIndex: number, tier: number): Promise<HintResponse> {
+    return this.get<HintResponse>(
+      `/api/projects/${projectId}/steps/${stepIndex}/hints?tier=${tier}`,
+    );
   }
 
   /* ---- misc ---- */

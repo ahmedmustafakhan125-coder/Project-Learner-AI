@@ -71,3 +71,29 @@ export function renderPacingDirective(directive: PacingDirective): string | null
 
   return lines.join('\n');
 }
+
+export const AttemptSummary = z.object({
+  attempts: z.number().int().min(1),
+  durationMs: z.number().int().nonnegative(),
+  hintsUsed: z.number().int().nonnegative(),
+  passed: z.boolean(),
+});
+export type AttemptSummary = z.infer<typeof AttemptSummary>;
+
+export const PaceState = z.object({
+  recentAttemptCounts: z.array(z.number()).default([]),
+  recentDurations: z.array(z.number()).default([]),
+  /**
+   * Hints used per step over the rolling window.
+   *
+   * Separate from `hintsUsedTotal` on purpose. `stretch` asks "has this learner
+   * needed help *lately*", which a lifetime counter can never answer: one hint
+   * on step 1 would otherwise disable stretching for the rest of the project.
+   */
+  recentHints: z.array(z.number()).default([]),
+  /** Lifetime total. Reporting only — never a pacing input. */
+  hintsUsedTotal: z.number().default(0),
+  streakPassed: z.number().default(0),    // consecutive first-try passes
+  streakFailed: z.number().default(0),    // consecutive multi-attempt steps
+});
+export type PaceState = z.infer<typeof PaceState>;

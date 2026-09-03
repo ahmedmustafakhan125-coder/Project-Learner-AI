@@ -24,10 +24,11 @@ reuse it unchanged.
 
 ---
 
-## The five things that will bite you
+## The six things that will bite you
 
 These are non-obvious, and each one is load-bearing. Breaking any of them
-produces no error — just silently worse behaviour or silently higher cost.
+produces no error — just silently worse behaviour, silently higher cost, or a
+feature that quietly stops running.
 
 ### 1. The four agents must share a byte-identical prompt prefix
 
@@ -95,6 +96,53 @@ The practice exercise runs in `sandbox="allow-scripts"` **without**
 `allow-same-origin` alongside `allow-scripts` lets the frame remove its own
 sandbox attribute — the two together are equivalent to no sandbox at all.
 
+Note what the sandbox attribute does *not* do: it does not block `fetch`. An
+opaque-origin document can still issue requests; they simply carry `Origin:
+null`, and anything answering `Access-Control-Allow-Origin: *` is readable.
+Network containment comes from the sandbox document's `connect-src`. Confusing
+the two produces code that looks contained and is not.
+
+### 6. The sandbox is a route, not a `srcdoc`, and that is not cosmetic
+
+A frame created from a **local scheme** — `srcdoc`, `about:blank`, `blob:`,
+`data:` — has no response of its own, so it **inherits the parent's CSP**. The
+app policy has no `'unsafe-inline'`, which means an inline `<script>` inside a
+`srcdoc` sandbox is *refused*. The frame loads, reports nothing, and the parent
+waits forever. No error reaches the UI.
+
+That is why the sandbox is served from `/sandbox` (`apps/web/app/sandbox/route.ts`).
+A document loaded from a real URL is governed by the CSP on its own response,
+which is set independently in `apps/web/lib/csp.mjs`.
+
+Inside that document, **`'self'` is meaningless**. The frame's origin is opaque,
+so `'self'` resolves against it and matches nothing — not even the origin that
+just served the frame. The sandbox policy names the app origin explicitly, and
+`/pyodide/*` is served with CORS headers because the frame fetching its own
+runtime is, from the browser's point of view, a cross-origin request.
+
+Both facts were verified in Chrome, against a no-CSP control. If you are ever
+tempted to move this back to `srcdoc` to "simplify" it, the symptom you will get
+is a checkpoint that silently never runs.
+
+The app's own pages have the mirror-image problem. Next delivers its hydration
+payload in **inline** `<script>` tags, so a policy with neither `'unsafe-inline'`
+nor a nonce refuses them and the page renders as dead HTML — it looks completely
+fine and nothing on it works. `apps/web/proxy.ts` mints a per-request nonce and
+sets the CSP on the *request* headers, which is where Next reads it back out to
+stamp its scripts.
+
+That is also why `app/layout.tsx` sets `dynamic = 'force-dynamic'`. A statically
+prerendered page has those inline scripts baked in at build time, and no
+per-request nonce can ever match them. Nothing is lost — every page sits behind
+`AuthGate` and is learner-specific — but removing that export brings the blank
+page straight back.
+
+Monaco and Pyodide are therefore vendored into `public/` at build time by
+`apps/web/scripts/vendor-assets.mjs` rather than loaded from jsDelivr. Both
+default to a CDN, and `script-src` lists none. The copies are gitignored and
+rebuilt from `node_modules`, so the served version cannot drift from
+`package.json`.
+
 ---
 
 ## Architecture
@@ -105,20 +153,40 @@ apps/
   api/          Fastify — orchestration, SSE, auth, budgets
 packages/
   llm/          provider-agnostic LLM layer (2 adapters, N providers)
-  core/         portable domain logic — interview, agents, generation, pacing
+  core/         portable domain logic — interview, agents, generation, pacing, knowledge
   api-client/   typed SDK + SSE streaming
-  runners/      browser sandboxes (P3, not built)
+  runners/      static checkpoint verification (layers 1 and 2)
   ui/           design tokens (not built; tokens currently live in web CSS)
+knowledge/      OKF v0.2 bundle — the curated wiki the four agents consult
 supabase/
   migrations/   13 tables, RLS forced on all of them
 ```
 
+Two things sit in front of every model call, both in `apps/api` because
+`packages/core` must stay portable:
+
+- `gateway.ts` — screens every learner-supplied string before it reaches a model.
+- `knowledge.ts` — loads the OKF bundle off disk; selection and rendering are
+  pure and live in `packages/core/src/knowledge/`.
+
 **Data flow for a question:**
 
 ```
-query -> interview (classify, auto-fill, score) -> CompiledQuery
-      -> fanOut (staggered) -> SSE multiplex -> 4 tabs
+query -> gateway (ALLOW / MASK / BLOCK)
+      -> interview (classify, auto-fill, score) -> CompiledQuery
+      -> gateway again, at /api/agents/ask
+      -> fanOut (staggered, + selected OKF concepts) -> SSE multiplex -> 4 tabs
 ```
+
+The gateway appears **twice on purpose**. `/api/agents/ask` accepts a
+client-supplied `CompiledQuery` — the browser posts the finished prompt object —
+so anything screened only during the interview is bypassed by posting straight to
+that route. The same is true of `/api/projects/blueprint`. Screening at the
+interview alone enforces nothing.
+
+Screening runs **before** the budget check and before a provider is constructed,
+so a blocked prompt costs nothing. Model-bound routes fail **closed**: if the
+gateway cannot be reached, the request is refused rather than sent unscreened.
 
 **Data flow for a project:**
 
@@ -166,11 +234,18 @@ Anthropic API specifics that are easy to get wrong from memory, all verified:
 npm install
 npm run dev            # web :3000, api :3001
 npm run build          # all packages (Turborepo, cached)
-npm test               # 185 tests, no network or keys needed
+npm test               # 275 tests, no network, browser, or keys needed
 npm run lint           # includes both portability guards
 npm run smoke          # live provider round-trip + cost accounting
 npm run db:start       # Supabase local (vendored CLI at .tools/supabase.exe)
+
+# P3 exit criterion. Needs `npm run build` first, and an installed Chrome or Edge.
+npm run test:containment --workspace @ai-edu/web
 ```
+
+`npm test` is deliberately hermetic. The containment suite is separate because it
+builds the app, starts the production server, and drives a real browser — see
+the phase table below for why that separation matters.
 
 ---
 
@@ -205,16 +280,30 @@ criterion is met.
 | **P0** Scaffold + provider layer | Built, verified. Exit criterion (`npm run smoke`) needs an API key. |
 | **P1** Interview + 4-agent Q&A | Built: interview, staggered fan-out, SSE multiplex, 4-tab UI, auth, budgets, attachments. Needs a live run. |
 | **P2** Project generation | Built: two-phase generation, blueprint approval, lazy expansion + prefetch, project shell and step view. Needs a live run. |
-| **P3** Checkpoint flow | Not started. Monaco, iframe + Pyodide sandboxes, 3-layer verification, tiered hints. |
-| **P4** Pacing + tracking | Not started. `PacingDirective` contract exists in `packages/core/src/pacing/types.ts`; the scoring does not. |
-| **P5** Hardening | Not started. |
+| **P3** Checkpoint flow | Built and verified. Monaco and Pyodide self-hosted, sandbox served from `/sandbox`, static verification, tiered hints. Exit criterion met — see below. |
+| **P4** Pacing + tracking | Built and wired end to end. `scorePacing` feeds step expansion, and the directive is surfaced to the learner. |
+| **P5** Hardening | Mostly built: rate limits, input caps, restrictive RLS, security gateway. Open items listed below. |
 
 **Two things block every outstanding exit criterion:** an API key in `.env`, and
 Supabase running. Neither is a code problem.
 
-P3's exit criterion is deliberately adversarial: it is not done until three
-specific sandbox-escape attempts (reaching `window.parent`, calling `fetch`, an
-infinite loop) are provably contained.
+P3's exit criterion is deliberately adversarial, and it is now **met by
+execution, not by inspection**. `apps/web/test/sandbox-containment.browser.test.ts`
+drives a real browser against the production server and attempts all three
+escapes. It carries a fourth test that rebuilds the frame WITH
+`allow-same-origin` and asserts the escape then *succeeds* — without that, there
+is no evidence the other three can fail, and a containment test that cannot fail
+is decorative. An earlier version of this suite passed 18 assertions in 6ms while
+executing nothing at all.
+
+**Still open in P5**, none of them blocking:
+
+- The sandbox result is advisory, not trusted. Learner code runs with
+  `parent.postMessage` in scope and can forge `{type:'result', passed:true}`.
+  Server-side layers 1 and 2 stay authoritative; closing this properly means
+  running tests somewhere the learner's globals cannot reach.
+- `attempt_no` is derived from a count, so two concurrent submissions can race.
+- Layer 2 is a substring check, so a required symbol inside a comment counts.
 
 ---
 
@@ -222,10 +311,13 @@ infinite loop) are provably contained.
 
 | Package | Tests | What they actually protect |
 |---|---:|---|
-| `@ai-edu/llm` | 60 | registry, cost nulls, stream utils, adapter mapping, structured-output repair |
-| `@ai-edu/core` | 99 | prompt-prefix stability, interview logic, fan-out stagger and isolation, generation schemas, prefetch policy |
+| `@ai-edu/llm` | 68 | registry, cost nulls, stream utils, adapter mapping, structured-output repair, retry backoff |
+| `@ai-edu/core` | 124 | prompt-prefix stability, interview logic, fan-out stagger and isolation, generation schemas, prefetch policy, pacing scoring, knowledge selection determinism |
 | `@ai-edu/api-client` | 13 | SSE framing across chunk boundaries, multi-byte splits, CRLF, errors |
-| `@ai-edu/api` | 13 | attachment allowlist and binary detection |
+| `@ai-edu/api` | 47 | attachment allowlist, binary detection, PDF extraction, gateway failure policy, OKF loader |
+| `@ai-edu/runners` | 9 | static verification layering and short-circuiting |
+| `@ai-edu/web` | 14 | sandbox configuration guards, CSP shape |
+| `@ai-edu/web` (browser) | 4 | **the P3 exit criterion** — real escapes in a real browser, plus a mutation check |
 
 Database behaviour is not unit-tested but was verified directly against
 Postgres: the migration applies clean, and RLS was proven to isolate two users

@@ -5,6 +5,8 @@ import { createProviderForTask } from '@ai-edu/llm';
 
 import { requireAuth, userOf } from '../auth.js';
 import { checkBudget, db, recordUsage } from '../db.js';
+import { gatewayErrorReply, screenOrThrow } from '../gateway.js';
+import { knowledgeBundle } from '../knowledge.js';
 
 /**
  * The four-agent fan-out, streamed to the browser.
@@ -14,6 +16,9 @@ import { checkBudget, db, recordUsage } from '../db.js';
  * question would starve every other request on the page — and a single
  * multiplexed stream is also the shape that ports to a WebSocket on mobile.
  */
+
+/** Shown to the learner when a specialist fails. Provider errors stay server-side. */
+const AGENT_UNAVAILABLE_MESSAGE = 'This specialist is temporarily unavailable. Try again shortly.';
 
 const AskBody = z.object({
   threadId: z.string().uuid().nullable().default(null),
@@ -31,6 +36,49 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: 'bad_request', issues: parsed.error.issues });
     }
     const { compiled, model, threadId } = parsed.data;
+
+    /*
+     * Screening happens HERE, not only during the interview.
+     *
+     * This route accepts a client-supplied CompiledQuery: the browser posts the
+     * finished prompt object. Anything that screened the raw query upstream is
+     * therefore bypassable by posting straight to this endpoint, which makes
+     * this the only placement that actually enforces anything.
+     *
+     * It runs before the budget check and before a provider exists, so a
+     * blocked prompt costs nothing. Attachment text is screened too — an
+     * uploaded file is the more likely injection carrier of the two.
+     */
+    let screened;
+    try {
+      screened = {
+        ...compiled,
+        text: await screenOrThrow(compiled.text, `ask:${user.id}:${threadId ?? 'new'}`),
+        attachments: await Promise.all(
+          compiled.attachments.map(async (file) =>
+            file.extractedText
+              ? {
+                  ...file,
+                  extractedText: await screenOrThrow(
+                    file.extractedText,
+                    `ask-attachment:${user.id}:${file.id}`,
+                  ),
+                }
+              : file,
+          ),
+        ),
+      };
+    } catch (err) {
+      const refusal = gatewayErrorReply(err);
+      if (refusal) {
+        request.log.warn(
+          { userId: user.id, ...refusal.body },
+          'prompt refused by security gateway',
+        );
+        return reply.code(refusal.status).send(refusal.body);
+      }
+      throw err;
+    }
 
     // Budget is checked before the call, never after — one expensive request
     // could otherwise sail past the ceiling with nothing to stop it.
@@ -58,7 +106,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
     /* ---- persist the question and four placeholder rows ---- */
 
-    const messageId = await persistQuestion(user.id, threadId, compiled);
+    const messageId = await persistQuestion(user.id, threadId, screened);
 
     /* ---- open the SSE stream ---- */
 
@@ -88,7 +136,10 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     try {
       for await (const event of fanOut({
         provider,
-        compiled,
+        compiled: screened,
+        // Curated OKF concepts, selected deterministically inside the fan-out so
+        // all four agents get identical bytes and share one cache entry.
+        knowledge: knowledgeBundle(),
         signal: controller.signal,
       })) {
         switch (event.type) {
@@ -124,7 +175,20 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
           case 'error':
             // Reported per agent. The other three still stream — a learner
             // getting three of four angles is far better than getting none.
-            send('agent', { agent: event.agent, type: 'error', message: event.message });
+            //
+            // The provider's own message is a diagnostic: it can name models,
+            // quotas, or internal failures a learner should not be reading. It
+            // is logged and persisted, but what goes over the wire is fixed copy.
+            request.log.warn(
+              { agent: event.agent, err: event.message, retryable: event.retryable },
+              'fan-out agent failed',
+            );
+            send('agent', {
+              agent: event.agent,
+              type: 'error',
+              message: AGENT_UNAVAILABLE_MESSAGE,
+              retryable: event.retryable,
+            });
             void finaliseAgent(messageId, event.agent, {
               status: 'error',
               content: buffers.get(event.agent) ?? '',
