@@ -158,8 +158,12 @@ describe('error containment in generated HTML', () => {
     expect(web).toMatch(/try\s*\{[\s\S]*?new Function\(code\)[\s\S]*?\}\s*catch/);
     expect(web).toMatch(/try\s*\{[\s\S]*?new Function\(t\.code\)[\s\S]*?\}\s*catch/);
 
+    // Loading the submission is writing its files out and then executing the
+    // modules among them, so the guarded call is the loader rather than a bare
+    // runPython of one concatenated blob.
     const py = createSandboxHTML('python');
-    expect(py).toMatch(/try\s*\{[\s\S]*?pyodide\.runPython\(code\)[\s\S]*?\}\s*catch/);
+    expect(py).toMatch(/try\s*\{[\s\S]*?materialise\(pyodide, files\)[\s\S]*?\}\s*catch/);
+    expect(py).toMatch(/try\s*\{[\s\S]*?pyodide\.runPython\(PY_LOAD\)[\s\S]*?\}\s*catch/);
     expect(py).toMatch(/try\s*\{[\s\S]*?pyodide\.runPython\(t\.code\)[\s\S]*?\}\s*catch/);
 
     for (const html of [web, py]) {

@@ -20,5 +20,6 @@ export * from './schemas/step.js';
 export * from './generation/blueprint.js';
 export * from './generation/expand.js';
 export * from './generation/prefetch.js';
+export * from './generation/runnable.js';
 
 export * from './pacing/index.js';

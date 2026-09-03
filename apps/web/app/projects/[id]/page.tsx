@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
-import type { ProjectDetail, StepContent } from '@ai-edu/api-client';
+import type { ProjectDetail, SourceFile, StepContent } from '@ai-edu/api-client';
 import { ApiError } from '@ai-edu/api-client';
 
 import { AuthGate } from '../../../components/AuthGate';
@@ -80,6 +80,15 @@ function ProjectShell() {
     [projectId, steps],
   );
 
+  // Keeps the cached step in step with what the learner has saved, so returning
+  // to a step reopens their work rather than the scaffolding.
+  const rememberDraft = useCallback((index: number, files: SourceFile[]): void => {
+    setSteps((prev) => {
+      const step = prev[index];
+      return step ? { ...prev, [index]: { ...step, draftFiles: files } } : prev;
+    });
+  }, []);
+
   useEffect(() => {
     if (!detail) return;
     void (async () => {
@@ -140,7 +149,17 @@ function ProjectShell() {
               Writing this step<span className="caret" />
             </p>
           )}
-          {current && <StepView step={current} projectId={projectId} />}
+          {/* Keyed by step: without it React reuses one instance across steps,
+              carrying the previous step's editor contents, attempt count and
+              revealed explanation into the next one. */}
+          {current && (
+            <StepView
+              key={active}
+              step={current}
+              projectId={projectId}
+              onDraftSaved={(files) => rememberDraft(active, files)}
+            />
+          )}
           {!current && loadingStep !== active && (
             <p className="skeleton">This step has not been written yet.</p>
           )}

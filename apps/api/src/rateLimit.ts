@@ -32,6 +32,13 @@ const GENERATION_LIMIT = 10;
 /** Attempt endpoints — moderate; learners submit frequently. */
 const ATTEMPT_LIMIT = 30;
 
+/**
+ * Draft autosave — the most frequent write in the app, and the cheapest: one
+ * upsert of a row the learner already owns. Limited only so a runaway client
+ * cannot write in a loop.
+ */
+const DRAFT_LIMIT = 120;
+
 export async function registerRateLimit(app: FastifyInstance): Promise<void> {
   await app.register(rateLimit, {
     max: READ_LIMIT,
@@ -73,6 +80,13 @@ export const rateLimitConfig = {
   attempt: {
     rateLimit: {
       max: ATTEMPT_LIMIT,
+      timeWindow: MINUTE,
+    },
+  },
+  /** Draft autosave: 120 req/min. */
+  draft: {
+    rateLimit: {
+      max: DRAFT_LIMIT,
       timeWindow: MINUTE,
     },
   },

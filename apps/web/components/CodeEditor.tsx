@@ -45,10 +45,14 @@ function detectLanguage(path: string): string {
 }
 
 export function CodeEditor({ files, onChange, readOnlyPaths = [] }: CodeEditorProps) {
-  const [activePath, setActivePath] = useState(files[0]?.path ?? '');
+  const [selectedPath, setSelectedPath] = useState(files[0]?.path ?? '');
 
   const readOnlySet = new Set(readOnlyPaths);
-  const activeFile = files.find(f => f.path === activePath);
+  // Falls back to the first file when the selection is no longer in `files` —
+  // a stale path from a previous file set would otherwise render an empty
+  // editor body with no tab looking active.
+  const activeFile = files.find(f => f.path === selectedPath) ?? files[0];
+  const activePath = activeFile?.path ?? '';
   const isReadOnly = readOnlySet.has(activePath);
 
   function handleChange(value: string | undefined) {
@@ -69,7 +73,7 @@ export function CodeEditor({ files, onChange, readOnlyPaths = [] }: CodeEditorPr
             role="tab"
             aria-selected={f.path === activePath}
             className="code-editor-tab"
-            onClick={() => setActivePath(f.path)}
+            onClick={() => setSelectedPath(f.path)}
           >
             {f.path}
             {readOnlySet.has(f.path) && <span className="code-editor-readonly">ro</span>}

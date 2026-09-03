@@ -3,6 +3,7 @@ import type { LLMProvider } from '@ai-edu/llm';
 import type { AbortSignalLike } from '../platform.js';
 import type { ProjectBlueprint } from '../schemas/project.js';
 import { ExpandedStep } from '../schemas/step.js';
+import { groundCheckpoint } from './runnable.js';
 import type { PacingDirective } from '../pacing/types.js';
 import { renderPacingDirective } from '../pacing/types.js';
 
@@ -46,6 +47,16 @@ requiredFiles / requiredSymbols are the cheap first pass — do the files exist,
 tests are deterministic assertions run in a browser sandbox against their code. They must pass for a correct solution and fail for the obvious wrong ones. No network, no timing dependence, no randomness. failureMessage must say what was actually wrong — "expected total to be 6 but got 5, check whether the last item is included" not "test failed".
 
 runtime is "web" for HTML/CSS/JS, "python" for Python, "none" when nothing can be executed automatically.
+
+### What the sandbox actually is
+
+Tests run in the learner's own browser, not on a machine you can provision. Write them for this environment or they cannot pass:
+
+- "python" is Pyodide. The standard library is there and nothing else. There is no pip install, so 'import fastapi', 'import django', 'import requests', 'import numpy' all fail. Nothing may bind a port, start a server, spawn a process, reach the network, or depend on wall-clock timing.
+- "web" is a bare JS realm. No DOM built from the learner's HTML, no bundler, no npm package, no fetch.
+- The whole submission is written to the working directory before the tests run, so a test may read a data file by name — open("requirements.txt").read() — and reach the code as a module, 'import main'. Names defined in the learner's modules are also in scope directly.
+
+When the real work of a step cannot be checked under those rules — installing dependencies, running a server, connecting a database, rendering a page — set runtime to "none", give NO tests, and let requiredFiles and requiredSymbols carry the check. A test that cannot pass in this sandbox is worse than no test: it blocks the learner on work they did correctly, and the fix is never in their hands.
 
 ## Explanation
 
@@ -194,6 +205,10 @@ export function normaliseStep(step: ExpandedStep): ExpandedStep {
     ...step,
     instructionsMd: step.instructionsMd.trim(),
     explanationMd: step.explanationMd.trim(),
+    // A checkpoint whose code the sandbox cannot even load is not a checkpoint.
+    // The prompt asks for runtime "none" on those steps; this is what makes it
+    // true when the model asks for a package the browser has no way to install.
+    checkpoint: groundCheckpoint(step.checkpoint, [...step.starterFiles, ...step.solutionFiles]),
     hints: [...byTier.entries()]
       .sort(([a], [b]) => a - b)
       .map(([tier, text]) => ({ tier, text })),

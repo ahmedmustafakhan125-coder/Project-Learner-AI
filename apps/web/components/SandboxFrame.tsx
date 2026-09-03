@@ -3,13 +3,15 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import {
   SANDBOX_TIMEOUT_MS,
+  type SandboxFile,
   type SandboxInMessage,
   type SandboxOutMessage,
 } from '@/lib/sandbox-protocol';
 
 interface SandboxFrameProps {
   runtime: 'web' | 'python';
-  code: string;
+  /** The whole submission. The sandbox decides what of it is executable. */
+  files: SandboxFile[];
   tests: Array<{ name: string; code: string; failureMessage: string }>;
   onProgress?: (message: string) => void;
   onResult: (result: {
@@ -30,7 +32,7 @@ interface SandboxFrameProps {
  */
 export function SandboxFrame({
   runtime,
-  code,
+  files,
   tests,
   onProgress,
   onResult,
@@ -116,12 +118,12 @@ export function SandboxFrame({
 
     const msg: SandboxInMessage =
       runtime === 'python'
-        ? { type: 'exec-python', code, tests }
-        : { type: 'exec-web', code, tests };
+        ? { type: 'exec-python', files, tests }
+        : { type: 'exec-web', files, tests };
 
     frame.contentWindow.postMessage(msg, '*');
     startTimer();
-  }, [runtime, code, tests]);
+  }, [runtime, files, tests]);
 
   /* ---- mount / unmount lifecycle ---- */
   useEffect(() => {

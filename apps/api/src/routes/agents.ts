@@ -110,6 +110,15 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
     /* ---- open the SSE stream ---- */
 
+    // Plugin-set headers — CORS above all — live on the Fastify reply object and
+    // are only flushed by `reply.send()`. This route writes to the raw socket
+    // instead, so they have to be carried across by hand: without them the
+    // browser blocks the cross-origin stream and `fetch` rejects with
+    // "Failed to fetch" before a single token arrives.
+    for (const [name, value] of Object.entries(reply.getHeaders())) {
+      if (value !== undefined) reply.raw.setHeader(name, value);
+    }
+
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
