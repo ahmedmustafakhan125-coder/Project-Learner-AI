@@ -22,7 +22,25 @@ vi.mock('@ai-edu/llm', () => ({
   collectStream: async () => ({ text: '', events: [] }),
 }));
 
-vi.mock('@ai-edu/core', () => ({
+vi.mock('@ai-edu/core', async () => ({
+  // Imported inside the factory: vi.mock is hoisted above the file's imports,
+  // so a top-level `z` is not in scope here.
+  AgentKind: (await import('zod')).z.enum(['simple', 'industry', 'practice', 'concepts']),
+  followUpWithAgent: async function* () {},
+  // Step unlocking. These are pure functions in core and are exercised
+  // directly by its own suite; here they only need to not gate these tests,
+  // which submit to step 0.
+  lockStates: () => [],
+  mayExpand: () => true,
+  unlockedThrough: () => 0,
+  parseStoredBlueprint: (value: unknown) => value,
+  assembleProject: () => ({
+    files: [],
+    stepsFromReference: [],
+    stepsMissing: [],
+    fullyLearnerWritten: false,
+  }),
+  finishProject: async () => ({ readmeMd: '', deployFiles: [] }),
   Checkpoint: {
     safeParse: (data: any) => ({
       success: true,
@@ -139,10 +157,12 @@ describe('POST /api/projects/:id/steps/:index/attempt', () => {
     };
     const existingAttempts: any[] = [];
 
-    // DB call order: project lookup, step lookup, existing attempts, insert
+    // DB call order: project lookup, step lookup, the unlock check's
+    // enrollment lookup, existing attempts, insert.
     setupDbResponses([
       { data: project },          // project lookup
       { data: step },             // step lookup
+      { data: null },             // enrollment (loadProgress)
       { data: existingAttempts }, // existing attempts
     ]);
     mockDb.insert.mockResolvedValue({ error: null });
@@ -181,6 +201,7 @@ describe('POST /api/projects/:id/steps/:index/attempt', () => {
     setupDbResponses([
       { data: project },
       { data: step },
+      { data: null }, // enrollment (loadProgress)
       { data: existingAttempts },
     ]);
     mockDb.insert.mockResolvedValue({ error: null });

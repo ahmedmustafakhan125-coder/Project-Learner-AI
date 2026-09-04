@@ -23,6 +23,7 @@ import { requireAuth, userOf } from '../auth.js';
 import { gatewayErrorReply, screenOrThrow } from '../gateway.js';
 import { checkBudget, db, recordUsage } from '../db.js';
 import { assembleFinished, priorFilesFor } from '../projectFiles.js';
+import { canExpand, loadProgress } from '../progress.js';
 import { rateLimitConfig } from '../rateLimit.js';
 import { archiveName, createZip } from '../zip.js';
 
@@ -251,17 +252,14 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         .eq('user_id', user.id)
         .maybeSingle();
 
-      // Which steps are actually done. One query for the whole project, so the
-      // navigator can mark progress and the finish view can say honestly how
-      // much of the assembled code is the learner's own.
-      const { data: passedRows } = await db()
-        .from('step_attempts')
-        .select('step_id')
-        .in('step_id', (steps ?? []).map((step) => step.id))
-        .eq('user_id', user.id)
-        .eq('passed', true);
-
-      const passed = new Set((passedRows ?? []).map((row) => row.step_id));
+      // Progress drives two things: the navigator's tick marks, and which
+      // steps are open at all. Both come from the same rule as the server's
+      // own enforcement, so the UI cannot show a lock the API disagrees with.
+      const progress = await loadProgress(project.id, user.id);
+      const passed = new Set(progress.steps.filter((step) => step.passed).map((step) => step.id));
+      const unlocked = new Set(
+        progress.locks.filter((lock) => lock.unlocked).map((lock) => lock.index),
+      );
 
       return reply.send({
         project,
@@ -277,8 +275,18 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
           estMinutes: step.est_minutes,
           expanded: step.expanded_at !== null,
           passed: passed.has(step.id),
+          /*
+           * Steps unlock in sequence. A locked step is still readable once it
+           * has been written — the learner can see what is coming — but the
+           * editor and the checkpoint are closed until the step before it
+           * passes. That matters more than it used to: each step's starter
+           * files are now the previous step's output, so jumping ahead hands
+           * them work that continues something they never did.
+           */
+          unlocked: unlocked.has(step.step_index),
         })),
         currentStepIndex: enrollment?.current_step_index ?? 0,
+        unlockedThrough: progress.unlockedThrough,
         // Present once the README and deploy config have been written.
         artifactGeneratedAt: project.artifact_generated_at ?? null,
       });
@@ -315,6 +323,24 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         .maybeSingle();
 
       if (!step) return reply.code(404).send({ error: 'not_found', message: 'No such step.' });
+
+      /*
+       * Generation is allowed one step past the frontier and no further, so
+       * the next step is warm when the learner arrives but nothing beyond it
+       * is paid for. Enforced here rather than in the client: this route bills
+       * a model call, and a client-side check is not a spending control.
+       *
+       * It runs before the cached-return branch so a step expanded under the
+       * old rules cannot be used to read ahead either.
+       */
+      const progress = await loadProgress(project.id, user.id);
+      if (progress.steps.length > 0 && !canExpand(progress, stepIndex)) {
+        return reply.code(403).send({
+          error: 'step_locked',
+          message: 'Finish the earlier steps first — this one builds on them.',
+          unlockedThrough: progress.unlockedThrough,
+        });
+      }
 
       // Already done — return it rather than paying to generate it twice.
       if (step.expanded_at) {

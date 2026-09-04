@@ -13,6 +13,7 @@ export * from './knowledge/select.js';
 
 export * from './agents/prompts.js';
 export * from './agents/fanOut.js';
+export * from './agents/followUp.js';
 
 export * from './schemas/project.js';
 export * from './schemas/step.js';
@@ -23,5 +24,7 @@ export * from './generation/finish.js';
 export * from './generation/expand.js';
 export * from './generation/prefetch.js';
 export * from './generation/runnable.js';
+
+export * from './progress/unlock.js';
 
 export * from './pacing/index.js';

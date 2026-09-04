@@ -2,7 +2,10 @@
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { AGENT_ORDER, type AgentKind } from '@ai-edu/core';
+import type { FollowUpTurn } from '@ai-edu/api-client';
 import { renderMarkdown } from '@/lib/markdown';
+
+import { AgentChat } from './AgentChat';
 
 export interface AgentPane {
   status: 'pending' | 'streaming' | 'complete' | 'error' | 'cancelled';
@@ -85,6 +88,29 @@ function statusColor(status: AgentPane['status'], accent: string): string {
   return accent;
 }
 
+/**
+ * One specialist's private conversation, as the page holds it.
+ *
+ * Owned above this component because a stream has to outlive a tab switch: the
+ * learner asks the Practical Engineer something, moves to another tab to read
+ * while it thinks, and comes back to a finished answer.
+ */
+export interface AgentChatState {
+  turns: FollowUpTurn[];
+  /** Text arriving right now, before it lands as a turn. Null when idle. */
+  streaming: string | null;
+  error: string | null;
+}
+
+export function emptyChats(): Record<AgentKind, AgentChatState> {
+  return Object.fromEntries(
+    AGENT_ORDER.map((agent) => [
+      agent,
+      { turns: [] as FollowUpTurn[], streaming: null, error: null } satisfies AgentChatState,
+    ]),
+  ) as Record<AgentKind, AgentChatState>;
+}
+
 export interface AgentTabsProps {
   panes: AgentPanes;
   /**
@@ -93,9 +119,25 @@ export interface AgentTabsProps {
    * reading view (useful once there is a finished answer to actually read).
    */
   complete?: boolean;
+  /**
+   * Per-specialist follow-up threads. Omitted when there is nothing to follow
+   * up on — a replayed conversation with no answers, for instance.
+   */
+  chats?: Record<AgentKind, AgentChatState>;
+  /** Which specialist is mid-answer, if any. Only one runs at a time. */
+  chatBusyAgent?: AgentKind | null;
+  onFollowUp?: (agent: AgentKind, question: string) => void;
+  onStopFollowUp?: () => void;
 }
 
-export function AgentTabs({ panes, complete = false }: AgentTabsProps) {
+export function AgentTabs({
+  panes,
+  complete = false,
+  chats,
+  chatBusyAgent = null,
+  onFollowUp,
+  onStopFollowUp,
+}: AgentTabsProps) {
   const [viewMode, setViewMode] = useState<'grid' | 'tabbed'>(complete ? 'tabbed' : 'grid');
   const [activeTab, setActiveTab] = useState<AgentKind>('simple');
 
@@ -177,6 +219,35 @@ export function AgentTabs({ panes, complete = false }: AgentTabsProps) {
             aria-labelledby={`tab-${activeTab}`}
           >
             <Pane agent={activeTab} pane={panes[activeTab]} />
+
+            {/*
+              The follow-up box lives here and only here. The grid is for
+              scanning four answers side by side; a conversation belongs where
+              there is width to read it, and four chat logs in a 2x2 would be
+              unreadable in any of them.
+            */}
+            {chats && onFollowUp && onStopFollowUp && (
+              <AgentChat
+                agent={activeTab}
+                label={AGENT_METADATA[activeTab].title}
+                accentColor={AGENT_METADATA[activeTab].accentColor}
+                turns={chats[activeTab].turns}
+                streamingText={chats[activeTab].streaming}
+                busy={chatBusyAgent === activeTab}
+                // Nothing to press on until this specialist has actually
+                // answered, and a second stream while one is running would put
+                // two half-answers on the same screen.
+                disabled={
+                  !panes[activeTab].text ||
+                  panes[activeTab].status === 'streaming' ||
+                  panes[activeTab].status === 'pending' ||
+                  (chatBusyAgent !== null && chatBusyAgent !== activeTab)
+                }
+                error={chats[activeTab].error}
+                onSend={(question) => onFollowUp(activeTab, question)}
+                onStop={onStopFollowUp}
+              />
+            )}
           </div>
         </div>
       )}

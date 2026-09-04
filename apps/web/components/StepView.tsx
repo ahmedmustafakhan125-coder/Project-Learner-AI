@@ -38,6 +38,18 @@ export interface StepViewProps {
   step: StepContent;
   projectId: string;
   /**
+   * False until the previous step passes.
+   *
+   * A locked step is READABLE — the instructions, the starting files and what
+   * it is for are all shown, because seeing what is coming is genuinely useful
+   * and hiding it makes the project feel like a corridor. What closes is the
+   * work: the editor, the checkpoint, the hints and the explanation. The server
+   * enforces the same rule; this is the part the learner can see.
+   */
+  locked?: boolean;
+  /** The step that has to be passed first. Shown in the lock banner. */
+  blockedBy?: number | null;
+  /**
    * Reports a saved draft back to whoever holds the step.
    *
    * The project page caches steps and this component is keyed per step, so
@@ -46,9 +58,24 @@ export interface StepViewProps {
    * even though the server has it.
    */
   onDraftSaved?: (files: SourceFile[]) => void;
+  /**
+   * Fired when this step's checkpoint passes.
+   *
+   * The project page advances the enrollment on it, which is what unlocks the
+   * next step. Without this the frontier never moves: the advance endpoint has
+   * existed since the beginning and nothing has ever called it.
+   */
+  onPassed?: () => void;
 }
 
-export function StepView({ step, projectId, onDraftSaved }: StepViewProps) {
+export function StepView({
+  step,
+  projectId,
+  locked = false,
+  blockedBy = null,
+  onDraftSaved,
+  onPassed,
+}: StepViewProps) {
   // Everything below is seeded from the server. A step the learner has already
   // worked on reopens where they left it: the explanation they unlocked stays
   // unlocked, the checkpoint keeps its verdict, the hints they spent stay open.
@@ -137,6 +164,21 @@ export function StepView({ step, projectId, onDraftSaved }: StepViewProps) {
         {step.objective && <p className="objective">{step.objective}</p>}
       </header>
 
+      {locked && (
+        <div className="lock-banner" role="status">
+          <span className="lock-banner-icon" aria-hidden="true">🔒</span>
+          <span>
+            <strong>
+              {blockedBy === null
+                ? 'This step is not open yet.'
+                : `Pass step ${blockedBy + 1} to start this one.`}
+            </strong>{' '}
+            You can read it now — it builds directly on the code from the step before, so the
+            editor opens once that one passes.
+          </span>
+        </div>
+      )}
+
       {step.pacingDirective && step.pacingDirective.adjustment !== 'hold' && (
         <div className="pacing-banner">{step.pacingDirective.reason}</div>
       )}
@@ -160,7 +202,17 @@ export function StepView({ step, projectId, onDraftSaved }: StepViewProps) {
         </section>
       )}
 
-      {hasCheckpoint ? (
+      {locked ? (
+        /*
+          Readable, not workable. Rendering a disabled editor here would still
+          load Monaco and still autosave on any stray change, so the working
+          half is not disabled — it is simply not mounted.
+        */
+        <section className="notice info locked-note">
+          <strong>The editor opens when this step does.</strong> Your starting files are listed
+          above, and nothing here is lost — this step keeps its own draft once you begin it.
+        </section>
+      ) : hasCheckpoint ? (
         <section className="checkpoint-section">
           <CodeEditor
             files={editorFiles}
@@ -191,7 +243,13 @@ export function StepView({ step, projectId, onDraftSaved }: StepViewProps) {
                 // The server times the hint gate from the first attempt; match it.
                 setStartedAt((at) => at ?? Date.now());
               }}
-              onPass={() => setPassed(true)}
+              onPass={() => {
+                setPassed(true);
+                // Moves the enrollment forward, which is what opens the next
+                // step. Fired here rather than inside the runner so the runner
+                // stays a checkpoint and knows nothing about navigation.
+                onPassed?.();
+              }}
               initialRun={step.lastRun}
               onRunComplete={(run) => persist({ lastRun: run })}
             />
@@ -218,7 +276,11 @@ export function StepView({ step, projectId, onDraftSaved }: StepViewProps) {
       )}
 
       <section className="reveal">
-        {!revealed ? (
+        {locked ? (
+          <button className="btn" disabled>
+            Open this step to see the explanation
+          </button>
+        ) : !revealed ? (
           hasCheckpoint && !passed ? (
             <button className="btn" disabled>
               Pass the checkpoint to see the explanation

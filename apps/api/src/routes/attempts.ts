@@ -4,6 +4,7 @@ import { Checkpoint, scorePacing, type PaceState, type AttemptSummary } from '@a
 
 import { requireAuth, userOf } from '../auth.js';
 import { db } from '../db.js';
+import { canAttempt, loadProgress } from '../progress.js';
 import { rateLimitConfig } from '../rateLimit.js';
 
 /**
@@ -191,6 +192,24 @@ export async function attemptRoutes(app: FastifyInstance): Promise<void> {
       if (!step) return reply.code(404).send({ error: 'not_found', message: 'No such step.' });
       if (!step.checkpoint) {
         return reply.code(400).send({ error: 'not_expanded', message: 'Step has not been expanded yet.' });
+      }
+
+      /*
+       * Steps unlock in sequence, and this is where that is enforced. A locked
+       * step stays readable in the UI — seeing what is coming is useful — but
+       * recording an attempt on it is not, because the code it would be graded
+       * against continues work the learner has not done.
+       *
+       * The browser disables the controls; this is what makes the rule true
+       * for a request that skips the browser.
+       */
+      const unlockState = await loadProgress(project.id, user.id);
+      if (unlockState.steps.length > 0 && !canAttempt(unlockState, stepIndex)) {
+        return reply.code(403).send({
+          error: 'step_locked',
+          message: 'Pass the previous step first — this one builds on its code.',
+          unlockedThrough: unlockState.unlockedThrough,
+        });
       }
 
       const checkpointResult = Checkpoint.safeParse(step.checkpoint);

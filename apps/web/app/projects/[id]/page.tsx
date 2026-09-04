@@ -54,6 +54,32 @@ function ProjectShell() {
       .catch((err) => setError(describe(err)));
   }, [projectId]);
 
+  /**
+   * Move the frontier forward after a pass.
+   *
+   * `advanceStep` has existed on the server since the beginning and nothing
+   * ever called it, so `current_step_index` never left 0 and no step ever
+   * unlocked. The refetch afterwards is what actually redraws the navigator —
+   * the lock state is computed server-side, so the client asks rather than
+   * guessing at it.
+   */
+  const advance = useCallback(
+    async (stepIndex: number) => {
+      try {
+        await api.advanceStep(projectId, stepIndex);
+      } catch {
+        // A failed advance is not the learner's problem: the attempt passed and
+        // is recorded, so the next refetch unlocks the step anyway.
+      }
+      try {
+        setDetail(await api.getProject(projectId));
+      } catch {
+        // Leave the page as it is; the lock will be right on the next load.
+      }
+    },
+    [projectId],
+  );
+
   const ensureStep = useCallback(
     async (index: number, blocking: boolean): Promise<void> => {
       if (steps[index] || inFlight.current.has(index)) return;
@@ -74,8 +100,12 @@ function ProjectShell() {
         );
       } catch (err) {
         // A background prefetch failing is not the learner's problem — it will
-        // simply be fetched again, blocking, when they actually get there.
-        if (blocking) setError(describe(err));
+        // simply be fetched again, blocking, when they actually get there. A
+        // step refused for being locked is the same: the navigator already says
+        // so, and an error banner would just repeat it.
+        if (blocking && !(err instanceof ApiError && err.code === 'step_locked')) {
+          setError(describe(err));
+        }
       } finally {
         inFlight.current.delete(index);
         if (blocking) setLoadingStep(null);
@@ -109,6 +139,7 @@ function ProjectShell() {
   if (!detail) return <main className="shell"><p className="skeleton">Loading project…</p></main>;
 
   const current = steps[active];
+  const activeStep = detail.steps.find((step) => step.stepIndex === active);
   const passedCount = detail.steps.filter((step) => step.passed).length;
 
   return (
@@ -136,12 +167,20 @@ function ProjectShell() {
             {detail.steps.map((step) => (
               <li key={step.id}>
                 <button
-                  className="step-link"
+                  className={`step-link ${step.unlocked ? '' : 'locked'}`}
                   aria-current={!showFinished && step.stepIndex === active ? 'step' : undefined}
                   onClick={() => {
                     setShowFinished(false);
                     setActive(step.stepIndex);
                   }}
+                  // Locked steps stay clickable on purpose: they are readable,
+                  // and a control that does nothing when pressed teaches less
+                  // than one that opens and explains why it is closed.
+                  title={
+                    step.unlocked
+                      ? undefined
+                      : `Readable now — pass step ${step.stepIndex} to start it`
+                  }
                 >
                   <span className="num">{step.stepIndex + 1}</span>
                   <span className="label">
@@ -151,7 +190,10 @@ function ProjectShell() {
                   {/* A passed step is the only unambiguous progress signal the
                       navigator has; without it every step looks identical. */}
                   {step.passed && <span className="step-passed" title="Passed">✓</span>}
-                  {!step.passed && !step.expanded && (
+                  {!step.passed && !step.unlocked && (
+                    <span className="step-locked" title="Not open yet">🔒</span>
+                  )}
+                  {!step.passed && step.unlocked && !step.expanded && (
                     <span className="pending" title="Not written yet">○</span>
                   )}
                 </button>
@@ -198,11 +240,22 @@ function ProjectShell() {
               key={active}
               step={current}
               projectId={projectId}
+              locked={!activeStep?.unlocked}
+              blockedBy={activeStep?.unlocked ? null : active - 1}
               onDraftSaved={(files) => rememberDraft(active, files)}
+              onPassed={() => void advance(active)}
             />
           )}
+          {/* A locked step beyond the prefetch window has not been written and
+              will not be: generation stops one step past the frontier. The stub
+              from the blueprint is all there is to show, and saying so beats a
+              spinner that never resolves. */}
           {!showFinished && !current && loadingStep !== active && (
-            <p className="skeleton">This step has not been written yet.</p>
+            <p className="skeleton">
+              {activeStep?.unlocked
+                ? 'This step has not been written yet.'
+                : `This step is written once you reach it. Pass step ${active} to open it.`}
+            </p>
           )}
         </section>
       </div>

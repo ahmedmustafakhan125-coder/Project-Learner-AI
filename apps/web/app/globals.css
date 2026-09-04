@@ -4285,3 +4285,191 @@ select.control option {
   max-height: 520px;
   overflow-y: auto;
 }
+
+/* ------------------------------------------------------------------ */
+/* Sequential step unlocking                                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A locked step is readable, not hidden. It reads as "not yet" rather than as
+ * "forbidden": dimmed and marked, but still openable, because seeing what is
+ * coming is useful and a control that does nothing when pressed teaches less
+ * than one that opens and explains itself.
+ */
+.step-link.locked {
+  opacity: 0.62;
+}
+
+.step-link.locked:hover {
+  opacity: 0.85;
+}
+
+.step-link.locked .num {
+  background: var(--surface-2);
+  color: var(--text-dim);
+}
+
+.step-locked {
+  font-size: 11px;
+  line-height: 1;
+  flex: none;
+}
+
+.lock-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border-radius: var(--radius-xl);
+  background: var(--warn-soft);
+  border: 1px solid var(--warn-border);
+  border-left: 3px solid var(--warn);
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--warn-ink);
+}
+
+.lock-banner-icon {
+  font-size: 14px;
+  line-height: 1.4;
+  flex: none;
+}
+
+.locked-note {
+  margin-top: 18px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Per-specialist follow-up chat                                      */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Lives inside the tab panel, under that specialist's answer. The grid stays a
+ * four-up comparison with no chat in it: four conversation logs in a 2x2 would
+ * be unreadable in all four, and comparing answers and talking to one of them
+ * are different jobs.
+ */
+.agent-chat {
+  margin-top: 26px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+}
+
+.agent-chat-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 14px;
+}
+
+.agent-chat-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.agent-chat-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.agent-chat-count {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
+
+.agent-chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 460px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 4px 16px 0;
+}
+
+.chat-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.chat-turn-who {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.chat-turn-text {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* The learner's own turn is a bubble; the specialist's is prose, because one
+   is a sentence and the other can be a page with code in it. */
+.chat-turn-user .chat-turn-text {
+  align-self: flex-start;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 9px 14px;
+  max-width: 90%;
+  color: var(--text-heading);
+}
+
+.agent-chat-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-2xl);
+  background: var(--surface);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.agent-chat-composer:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+.agent-chat-composer textarea {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  font-family: var(--font);
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--text-heading);
+}
+
+.agent-chat-composer textarea::placeholder {
+  color: var(--text-faint);
+}
+
+.agent-chat-composer textarea:disabled {
+  /* The UA default disabled grey is a colour the theme never chose. */
+  color: var(--text-dim);
+  -webkit-text-fill-color: var(--text-dim);
+  opacity: 1;
+}
+
+.agent-chat-composer .btn {
+  flex: none;
+  white-space: nowrap;
+}

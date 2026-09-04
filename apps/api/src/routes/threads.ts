@@ -135,10 +135,13 @@ export async function threadRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const messages = (messageData ?? []) as MessageRow[];
-    const responses = await agentResponses(
-      messages.map((message) => message.id),
-      user.id,
-    );
+    const messageIds = messages.map((message) => message.id);
+    const [responses, followups] = await Promise.all([
+      agentResponses(messageIds, user.id),
+      // Reopening a conversation has to bring the private threads back too — a
+      // follow-up that vanishes when you navigate away is not a conversation.
+      agentFollowUps(messageIds, user.id),
+    ]);
     const row = thread as ThreadRow;
 
     return reply.send({
@@ -169,6 +172,7 @@ export async function threadRoutes(app: FastifyInstance): Promise<void> {
             ];
           }),
         ),
+        followups: followups.get(message.id) ?? {},
       })),
     });
   });
@@ -255,6 +259,44 @@ async function messageCounts(threadIds: string[]): Promise<Map<string, number>> 
     counts.set(row.thread_id, (counts.get(row.thread_id) ?? 0) + 1);
   }
   return counts;
+}
+
+interface FollowUpRow {
+  message_id: string;
+  agent: AgentKind;
+  turn_index: number;
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+type FollowUpThreads = Partial<Record<AgentKind, Array<{ role: string; content: string }>>>;
+
+/**
+ * Every specialist's follow-up thread, grouped by message and then by agent.
+ *
+ * One query for the whole conversation. Ordered by turn so the caller can hand
+ * the array straight to the UI without sorting it again.
+ */
+async function agentFollowUps(
+  messageIds: string[],
+  userId: string,
+): Promise<Map<string, FollowUpThreads>> {
+  const byMessage = new Map<string, FollowUpThreads>();
+  if (messageIds.length === 0) return byMessage;
+
+  const { data } = await db()
+    .from('agent_followups')
+    .select('message_id, agent, turn_index, role, content')
+    .in('message_id', messageIds)
+    .eq('user_id', userId)
+    .order('turn_index', { ascending: true });
+
+  for (const row of (data ?? []) as FollowUpRow[]) {
+    const forMessage = byMessage.get(row.message_id) ?? {};
+    (forMessage[row.agent] ??= []).push({ role: row.role, content: row.content });
+    byMessage.set(row.message_id, forMessage);
+  }
+  return byMessage;
 }
 
 async function agentResponses(

@@ -1,10 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CompiledQuery, InterviewQuestion, InterviewState } from '@ai-edu/core';
+import type { AgentKind, CompiledQuery, InterviewQuestion, InterviewState } from '@ai-edu/core';
 import { ApiError, type ModelOption, type ThreadSummary } from '@ai-edu/api-client';
 
-import { AgentTabs, type AgentPanes, emptyPanes } from '../../components/AgentTabs';
+import {
+  AgentTabs,
+  emptyChats,
+  type AgentChatState,
+  type AgentPanes,
+  emptyPanes,
+} from '../../components/AgentTabs';
 import { ChatHistory } from '../../components/ChatHistory';
 import { InterviewPanel } from '../../components/InterviewPanel';
 import { AuthGate } from '../../components/AuthGate';
@@ -61,7 +67,16 @@ function Ask() {
   const [askedQuestion, setAskedQuestion] = useState<string | null>(null);
   const [railOpen, setRailOpen] = useState(false);
 
+  /* ---- per-specialist follow-ups ---- */
+
+  /** The question the four answers on screen belong to. Follow-ups hang off it. */
+  const [messageId, setMessageId] = useState<string | null>(null);
+  const [chats, setChats] = useState<Record<AgentKind, AgentChatState>>(emptyChats);
+  const [chatBusyAgent, setChatBusyAgent] = useState<AgentKind | null>(null);
+
   const abortRef = useRef<AbortController | null>(null);
+  /** Separate from the fan-out's: stopping a follow-up must not kill the page. */
+  const chatAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     api
@@ -98,6 +113,13 @@ function Ask() {
       setPhase('streaming');
       setPanes(emptyPanes());
       setAskedQuestion(compiled.originalQuery);
+      // A new question is a new set of four answers, so the private threads
+      // that hung off the last one do not belong under it.
+      setChats(emptyChats());
+      setMessageId(null);
+      chatAbortRef.current?.abort();
+      chatAbortRef.current = null;
+      setChatBusyAgent(null);
 
       const controller = new AbortController();
       abortRef.current?.abort();
@@ -115,6 +137,8 @@ function Ask() {
               // Follow-ups ride the same thread, so the rail keeps one row per
               // conversation rather than one row per question.
               if (event.threadId) setActiveThreadId(event.threadId);
+              // Per-specialist follow-ups hang off this message id.
+              setMessageId(event.messageId);
               break;
             case 'start':
               setPanes((prev) => ({
@@ -261,6 +285,11 @@ function Ask() {
   const startNew = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
+    chatAbortRef.current?.abort();
+    chatAbortRef.current = null;
+    setChatBusyAgent(null);
+    setChats(emptyChats());
+    setMessageId(null);
     setActiveThreadId(null);
     setAskedQuestion(null);
     setPanes(emptyPanes());
@@ -276,6 +305,11 @@ function Ask() {
   const openThread = useCallback(async (threadId: string) => {
     abortRef.current?.abort();
     abortRef.current = null;
+    chatAbortRef.current?.abort();
+    chatAbortRef.current = null;
+    setChatBusyAgent(null);
+    setChats(emptyChats());
+    setMessageId(null);
 
     setActiveThreadId(threadId);
     setRailOpen(false);
@@ -300,6 +334,16 @@ function Ask() {
       }
 
       setAskedQuestion(latest.question);
+      setMessageId(latest.messageId);
+      // Private threads come back with the conversation. A follow-up that
+      // vanished on reopening would not be a conversation at all.
+      setChats(() => {
+        const restored = emptyChats();
+        for (const [agent, turns] of Object.entries(latest.followups ?? {})) {
+          if (turns) restored[agent as AgentKind] = { turns, streaming: null, error: null };
+        }
+        return restored;
+      });
       setPanes(
         Object.fromEntries(
           Object.entries(latest.panes).map(([agent, pane]) => [
@@ -334,6 +378,79 @@ function Ask() {
     },
     [activeThreadId, startNew, refreshThreads],
   );
+
+  /**
+   * Ask one specialist to go further.
+   *
+   * Only one runs at a time. Four concurrent follow-ups would be four bills and
+   * three answers nobody is looking at, and the learner can only read one tab.
+   */
+  const followUp = useCallback(
+    async (agent: AgentKind, question: string) => {
+      if (!messageId || chatBusyAgent) return;
+
+      const controller = new AbortController();
+      chatAbortRef.current?.abort();
+      chatAbortRef.current = controller;
+      setChatBusyAgent(agent);
+
+      // The learner's turn goes up immediately; the server has already stored
+      // it by the time the first token arrives.
+      setChats((prev) => ({
+        ...prev,
+        [agent]: {
+          turns: [...prev[agent].turns, { role: 'user' as const, content: question }],
+          streaming: '',
+          error: null,
+        },
+      }));
+
+      let answer = '';
+      try {
+        for await (const event of api.followUp({
+          messageId,
+          agent,
+          question,
+          signal: controller.signal,
+        })) {
+          if (event.kind === 'delta') {
+            answer += event.text;
+            setChats((prev) => ({ ...prev, [agent]: { ...prev[agent], streaming: answer } }));
+          } else if (event.kind === 'done') {
+            answer = event.text || answer;
+          } else if (event.kind === 'error') {
+            setChats((prev) => ({ ...prev, [agent]: { ...prev[agent], error: event.message } }));
+          }
+        }
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          setChats((prev) => ({ ...prev, [agent]: { ...prev[agent], error: describe(err) } }));
+        }
+      } finally {
+        // Whatever arrived is kept as a turn, including a partial answer from a
+        // stream the learner stopped — it was on their screen either way, and
+        // the server persisted the same text.
+        setChats((prev) => ({
+          ...prev,
+          [agent]: {
+            ...prev[agent],
+            turns: answer
+              ? [...prev[agent].turns, { role: 'assistant' as const, content: answer }]
+              : prev[agent].turns,
+            streaming: null,
+          },
+        }));
+        setChatBusyAgent(null);
+        if (chatAbortRef.current === controller) chatAbortRef.current = null;
+      }
+    },
+    [messageId, chatBusyAgent],
+  );
+
+  const stopFollowUp = useCallback(() => {
+    chatAbortRef.current?.abort();
+    chatAbortRef.current = null;
+  }, []);
 
   const busy = phase === 'interviewing' || phase === 'streaming';
   const showResults = phase === 'streaming' || phase === 'done';
@@ -498,7 +615,21 @@ function Ask() {
                   <p>{askedQuestion}</p>
                 </div>
               )}
-              <AgentTabs panes={panes} complete={generationComplete} />
+              <AgentTabs
+                panes={panes}
+                complete={generationComplete}
+                // Only offered once there is a stored question to hang the
+                // follow-ups off. A cancelled fan-out never got a message id.
+                {...(messageId
+                  ? {
+                      chats,
+                      chatBusyAgent,
+                      onFollowUp: (agent: AgentKind, question: string) =>
+                        void followUp(agent, question),
+                      onStopFollowUp: stopFollowUp,
+                    }
+                  : {})}
+              />
             </>
           )}
         </div>

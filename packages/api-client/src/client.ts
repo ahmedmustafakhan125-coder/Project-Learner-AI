@@ -90,13 +90,31 @@ export interface ThreadSummary {
   messageCount: number;
 }
 
+/** One turn of a private conversation with a single specialist. */
+export interface FollowUpTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/** Each specialist's follow-up thread, keyed by agent. Absent means none yet. */
+export type FollowUpThreads = Partial<Record<AgentKind, FollowUpTurn[]>>;
+
 /** One question and the four answers it produced, as replayed from storage. */
 export interface ThreadTurn {
   messageId: string;
   question: string;
   askedAt: string;
   panes: Record<AgentKind, { status: 'complete' | 'error'; text: string; error: string | null }>;
+  /** Per-specialist follow-ups on this question. */
+  followups: FollowUpThreads;
 }
+
+/** What the browser consumes while one specialist answers a follow-up. */
+export type FollowUpStreamEvent =
+  | { kind: 'meta'; agent: AgentKind; turnIndex: number; model: string }
+  | { kind: 'delta'; text: string }
+  | { kind: 'done'; text: string }
+  | { kind: 'error'; message: string };
 
 export interface ThreadDetail {
   thread: Omit<ThreadSummary, 'messageCount'>;
@@ -128,12 +146,19 @@ export interface ProjectStepRef {
   expanded: boolean;
   /** True once an attempt on this step has passed. */
   passed: boolean;
+  /**
+   * False until the previous step passes. A locked step is still readable once
+   * written — the editor and checkpoint are what close, not the instructions.
+   */
+  unlocked: boolean;
 }
 
 export interface ProjectDetail {
   project: Record<string, unknown> & { id: string; title: string };
   steps: ProjectStepRef[];
   currentStepIndex: number;
+  /** Highest step index the learner may work on. */
+  unlockedThrough: number;
   /** When the finished project was last assembled and written. Null if never. */
   artifactGeneratedAt: string | null;
 }
@@ -508,6 +533,65 @@ export class ApiClient {
 
   async deleteThread(id: string): Promise<{ ok: boolean }> {
     return this.request<{ ok: boolean }>(`/api/threads/${id}`, { method: 'DELETE' });
+  }
+
+  /* ---- following up with one specialist ---- */
+
+  /**
+   * Continue with a single agent.
+   *
+   * One stream rather than four: the fan-out's shared-cache stagger buys
+   * nothing here, and the point of this call is to press on ONE angle. The
+   * specialist keeps its own instruction and is shown what its three siblings
+   * said, so it can build on ground already covered instead of repeating it.
+   */
+  async *followUp(options: {
+    messageId: string;
+    agent: AgentKind;
+    question: string;
+    signal?: AbortSignal;
+  }): AsyncIterable<FollowUpStreamEvent> {
+    const token = await this.getToken();
+
+    const stream = streamSSE({
+      url: `${this.baseUrl}/api/agents/followup`,
+      token,
+      body: {
+        messageId: options.messageId,
+        agent: options.agent,
+        question: options.question,
+      },
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+
+    for await (const message of stream) {
+      const payload = safeParse(message.data);
+      if (!payload) continue;
+
+      switch (message.event) {
+        case 'meta':
+          yield { kind: 'meta', ...(payload as { agent: AgentKind; turnIndex: number; model: string }) };
+          break;
+        case 'delta':
+          yield { kind: 'delta', text: (payload as { text: string }).text };
+          break;
+        case 'done':
+          yield { kind: 'done', text: (payload as { text: string }).text };
+          break;
+        case 'error':
+        case 'fatal':
+          yield { kind: 'error', message: (payload as { message: string }).message };
+          break;
+      }
+    }
+  }
+
+  /** Every specialist's follow-up thread on one question. */
+  async getFollowUps(messageId: string): Promise<FollowUpThreads> {
+    const { followups } = await this.get<{ followups: FollowUpThreads }>(
+      `/api/agents/followups/${messageId}`,
+    );
+    return followups;
   }
 
   /* ---- plumbing ---- */
