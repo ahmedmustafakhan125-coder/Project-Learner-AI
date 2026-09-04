@@ -26,5 +26,5 @@ langdetect==1.0.9
 pandas==2.2.2
 numpy==1.26.4
 
-https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.7.0/en_core_web_sm-3.7.0-py3-none-any.whl
-
+# spaCy Small English Model (~12MB, ideal for Render free/starter memory)
+https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.0/en_core_web_sm-3.7.0-py3-none-any.whl
