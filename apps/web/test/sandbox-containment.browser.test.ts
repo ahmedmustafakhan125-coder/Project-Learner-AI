@@ -157,7 +157,10 @@ async function runInSandbox(code: string, extraSandbox = ''): Promise<Record<str
         window.addEventListener('message', onMessage);
 
         frame.addEventListener('load', () => {
-          frame.contentWindow!.postMessage({ type: 'exec-web', code, tests: [] }, '*');
+          frame.contentWindow!.postMessage(
+            { type: 'exec-web', files: [{ path: 'escape.js', contents: code }], tests: [] },
+            '*',
+          );
         });
         document.body.appendChild(frame);
 
@@ -180,6 +183,9 @@ const REACH_PARENT = `
 describe('P3 exit criterion: sandbox containment', () => {
   it('escape 1 — learner code cannot reach window.parent', async () => {
     const result = await runInSandbox(REACH_PARENT);
+    // Guard the guard: if the sandbox never answers, `parentDom` is undefined and
+    // a bare toMatch reports a type error rather than "containment unverified".
+    expect(result.timedOut, 'sandbox never replied — the probe timed out').toBeUndefined();
     expect(result.parentDom).toMatch(/^BLOCKED:/);
     expect(result.parentDom).not.toContain('ESCAPED');
   }, 60_000);
@@ -209,7 +215,11 @@ describe('P3 exit criterion: sandbox containment', () => {
       await new Promise((r) => frame.addEventListener('load', r, { once: true }));
 
       frame.contentWindow!.postMessage(
-        { type: 'exec-web', code: 'while (true) {}', tests: [] },
+        {
+          type: 'exec-web',
+          files: [{ path: 'loop.js', contents: 'while (true) {}' }],
+          tests: [],
+        },
         '*',
       );
 
