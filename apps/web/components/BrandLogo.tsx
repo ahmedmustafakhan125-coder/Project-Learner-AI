@@ -13,14 +13,14 @@
  * to 3x the nav height so it stays crisp without shipping the original.
  */
 export function BrandLogo({
-  height = 34,
+  height = 40,
   className,
 }: {
   height?: number;
   className?: string;
 }) {
   // Intrinsic ratio of the trimmed artwork, so width never has to be guessed.
-  const width = Math.round(height * (194 / 102));
+  const width = Math.round(height * (200 / 100));
 
   return (
     <img
