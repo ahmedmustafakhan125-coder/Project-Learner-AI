@@ -8,6 +8,38 @@ import { useState } from 'react';
 // lists no CDN in script-src, so that request is refused and the editor sits on
 // "Loading editor…" forever. Point the loader at the copy vendored into public/
 // by scripts/vendor-assets.mjs before the component can trigger a fetch.
+/**
+ * Monaco's stock `vs-dark` sits on #1e1e1e, which reads as a different panel
+ * from the starter-file blocks on --code-bg (#0f172a) directly above it. This
+ * matches them, and warms the syntax colours toward the sky palette.
+ */
+const CODE_THEME = 'project-learner-dark';
+
+function defineTheme(monaco: { editor: { defineTheme: (n: string, t: unknown) => void } }) {
+  monaco.editor.defineTheme(CODE_THEME, {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'comment', foreground: '64748b', fontStyle: 'italic' },
+      { token: 'keyword', foreground: '7dd3fc' },
+      { token: 'string', foreground: '86efac' },
+      { token: 'number', foreground: 'fcd34d' },
+      { token: 'type', foreground: '93c5fd' },
+      { token: 'function', foreground: 'bae6fd' },
+    ],
+    colors: {
+      'editor.background': '#0f172a',
+      'editor.foreground': '#e2e8f0',
+      'editorLineNumber.foreground': '#475569',
+      'editorLineNumber.activeForeground': '#94a3b8',
+      'editor.lineHighlightBackground': '#1e293b',
+      'editor.selectionBackground': '#1d4ed855',
+      'editorCursor.foreground': '#38bdf8',
+      'editorIndentGuide.background1': '#1e293b',
+    },
+  });
+}
+
 const MonacoEditor = dynamic(
   () =>
     import('@monaco-editor/react').then((m) => {
@@ -86,10 +118,11 @@ export function CodeEditor({ files, onChange, readOnlyPaths = [] }: CodeEditorPr
         {activeFile && (
           <MonacoEditor
             height="400px"
-            theme="vs-dark"
+            theme={CODE_THEME}
             language={detectLanguage(activeFile.path)}
             value={activeFile.contents}
             onChange={handleChange}
+            beforeMount={defineTheme}
             options={{
               readOnly: isReadOnly,
               minimap: { enabled: false },
