@@ -79,66 +79,20 @@ function restoreLayers(run: CheckpointRun | null | undefined): [LayerState, Laye
 /* Status icons                                                        */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The glyph in front of each layer row.
+ *
+ * Styling moved to the stylesheet: the pending dot was --text-faint on white,
+ * which is invisible, and the running dot referenced a `cr-pulse` keyframe that
+ * the component injected with its own inline <style> element on every render.
+ */
 function StatusDot({ status }: { status: LayerState['status'] }) {
-  const base: React.CSSProperties = {
-    display: 'inline-block',
-    width: 10,
-    height: 10,
-    borderRadius: '50%',
-    marginRight: 8,
-    flexShrink: 0,
-  };
-
-  switch (status) {
-    case 'pending':
-      return <span style={{ ...base, backgroundColor: 'var(--text-faint)' }} />;
-    case 'running':
-      return (
-        <span
-          style={{
-            ...base,
-            backgroundColor: 'var(--warn)',
-            animation: 'cr-pulse 0.8s ease-in-out infinite',
-          }}
-        />
-      );
-    case 'passed':
-      return (
-        <span
-          style={{
-            ...base,
-            backgroundColor: 'transparent',
-            color: 'var(--success)',
-            fontSize: 14,
-            lineHeight: '10px',
-            width: 'auto',
-            height: 'auto',
-            borderRadius: 0,
-          }}
-          aria-label="passed"
-        >
-          ✓
-        </span>
-      );
-    case 'failed':
-      return (
-        <span
-          style={{
-            ...base,
-            backgroundColor: 'transparent',
-            color: 'var(--danger)',
-            fontSize: 14,
-            lineHeight: '10px',
-            width: 'auto',
-            height: 'auto',
-            borderRadius: 0,
-          }}
-          aria-label="failed"
-        >
-          ✗
-        </span>
-      );
-  }
+  const glyph = status === 'passed' ? '✓' : status === 'failed' ? '✗' : null;
+  return (
+    <span className={`cp-dot cp-dot-${status}`} aria-hidden="true">
+      {glyph}
+    </span>
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -298,7 +252,14 @@ export function CheckpointRunner({
       // Layer 1 — file existence
       updateLayer(0, { status: 'running', message: null });
       const layer1Result = await gen.next();
-      if (layer1Result.done) return;
+      // A generator that finishes without yielding cannot produce a verdict.
+      // Returning here without settling left `status` on 'running' forever —
+      // a permanently disabled button with no way back but a page reload.
+      if (layer1Result.done) {
+        updateLayer(0, { status: 'failed', message: 'Verification did not run. Try again.' });
+        settle('failed');
+        return;
+      }
       const layer1: LayerResult = layer1Result.value;
       updateLayer(0, {
         status: layer1.passed ? 'passed' : 'failed',
@@ -316,7 +277,11 @@ export function CheckpointRunner({
       // Layer 2 — symbol grep
       updateLayer(1, { status: 'running', message: null });
       const layer2Result = await gen.next();
-      if (layer2Result.done) return;
+      if (layer2Result.done) {
+        updateLayer(1, { status: 'failed', message: 'Verification did not run. Try again.' });
+        settle('failed');
+        return;
+      }
       const layer2: LayerResult = layer2Result.value;
       updateLayer(1, {
         status: layer2.passed ? 'passed' : 'failed',
@@ -363,82 +328,75 @@ export function CheckpointRunner({
   /* ---- render ---- */
 
   return (
-    <div style={{ fontFamily: 'inherit' }}>
-      <style>{`
-        @keyframes cr-pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.4; }
-        }
-      `}</style>
-
+    <div className="checkpoint-runner">
       {/* Layer results */}
       {status !== 'idle' && (
-        <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 12px' }}>
+        <ul className="cp-layers">
           {layers.map((layer, i) => (
-            <li
-              key={i}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                padding: '4px 0',
-                fontSize: 14,
-                color:
-                  layer.status === 'failed'
-                    ? 'var(--danger)'
-                    : layer.status === 'passed'
-                      ? 'var(--success)'
-                      : 'var(--text-dim)',
-              }}
-            >
+            <li key={i} className={`cp-layer cp-layer-${layer.status}`}>
               <StatusDot status={layer.status} />
               <span>
-                {layer.status === 'running'
-                  ? LAYER_LABELS[i]
-                  : layer.status === 'passed'
-                    ? PASS_LABELS[i]
-                    : layer.status === 'failed'
-                      ? layer.message ?? 'Failed'
-                      : LAYER_LABELS[i]}
+                {layer.status === 'passed'
+                  ? PASS_LABELS[i]
+                  : layer.status === 'failed'
+                    ? layer.message ?? 'Failed'
+                    : LAYER_LABELS[i]}
               </span>
             </li>
           ))}
           {sandboxProgress && layers[2].status === 'running' && (
-            <li style={{ padding: '2px 0 0 18px', fontSize: 12, color: 'var(--text-faint)' }}>
-              {sandboxProgress}
-            </li>
+            <li className="cp-progress">{sandboxProgress}</li>
           )}
         </ul>
       )}
 
-      {/* Action area */}
-      {status === 'idle' && (
-        <button type="button" onClick={run}>
-          Run Checkpoint
-        </button>
-      )}
-
-      {status === 'running' && (
-        <button type="button" disabled>
-          Verifying…
-        </button>
-      )}
-
-      {status === 'passed' && (
-        <span style={{ color: 'var(--success)', fontWeight: 600, fontSize: 14 }}>
-          Checkpoint passed!
-        </span>
-      )}
-
-      {status === 'failed' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button type="button" onClick={run}>
-            Retry
+      {/*
+        Action area.
+        Every control here was a bare <button> with no class, so the one thing
+        the learner has to press on this page rendered as raw browser chrome on
+        a themed card. The verdict is announced politely rather than shouted,
+        because it lands while focus is still in the editor.
+      */}
+      <div className="checkpoint-actions" aria-live="polite">
+        {status === 'idle' && (
+          <button type="button" className="btn primary" onClick={run}>
+            Submit for checking
           </button>
-          {attemptCount > 0 && (
-            <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>Attempt {attemptCount}</span>
-          )}
-        </div>
-      )}
+        )}
+
+        {status === 'running' && (
+          <button type="button" className="btn primary" disabled>
+            <span className="loading-dots" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+            Checking your work…
+          </button>
+        )}
+
+        {status === 'passed' && (
+          <>
+            <span className="cp-verdict cp-verdict-passed">✓ Checkpoint passed</span>
+            {/* Passing used to remove the control entirely, so a learner who
+                kept editing afterwards had no way to verify the change. */}
+            <button type="button" className="btn" onClick={run}>
+              Check again
+            </button>
+          </>
+        )}
+
+        {status === 'failed' && (
+          <>
+            <button type="button" className="btn primary" onClick={run}>
+              Retry checkpoint
+            </button>
+            <span className="cp-verdict cp-verdict-failed">Not passing yet.</span>
+          </>
+        )}
+
+        {attemptCount > 0 && <span className="cp-attempts">Attempt {attemptCount}</span>}
+      </div>
 
       {/* Sandbox — invisible iframe, only mounted when needed */}
       {showSandbox && checkpoint.runtime !== 'none' && (

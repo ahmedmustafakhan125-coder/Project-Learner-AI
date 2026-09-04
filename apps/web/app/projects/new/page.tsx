@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { CompiledQuery, InterviewQuestion, InterviewState, ProjectBlueprint } from '@ai-edu/core';
 import { ApiError } from '@ai-edu/api-client';
@@ -120,6 +121,17 @@ function NewProject() {
 
   return (
     <main className="shell">
+      {/*
+        The only route into this page is the library, and until now there was no
+        route back out of it: a learner who changed their mind mid-blueprint had
+        the browser's back button or nothing. Nothing here is persisted until
+        they approve the plan, so leaving costs them nothing and needs no
+        confirmation.
+      */}
+      <Link href="/projects" className="page-back">
+        <span aria-hidden="true">←</span> Back to library
+      </Link>
+
       <header className="masthead">
         <div>
           <h1>Start a project</h1>
