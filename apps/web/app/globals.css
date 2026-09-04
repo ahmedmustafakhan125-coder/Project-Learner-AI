@@ -2512,7 +2512,7 @@ select.control option {
   line-height: 1.35;
 }
 
-.step-link .pending { color: var(--text-faint); font-size: 11px; }
+.step-link .pending { color: var(--text-dim); font-size: 11px; }
 
 .step-link[aria-current='step'] {
   background: var(--agent-conceptual-bg);
@@ -3958,4 +3958,302 @@ select.control option {
 .page-back:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
+}
+
+/* ================================================================== *\
+ * PROJECT GENERATION — file plan, deployment, finished project
+\* ================================================================== */
+
+/* ------------------------------------------------------------------ */
+/* Blueprint: the file plan and where it runs                         */
+/* ------------------------------------------------------------------ */
+
+.deploy-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  max-width: 46ch;
+}
+
+.deploy-toggle input {
+  margin-top: 3px;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  flex: none;
+  cursor: pointer;
+}
+
+.deploy-toggle > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13.5px;
+  color: var(--text-heading);
+}
+
+.deploy-toggle-hint {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.kbd-row {
+  margin: 10px 0 0;
+  text-align: right;
+}
+
+.file-plan {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13.5px;
+}
+
+.file-plan code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--code-chip-bg);
+  border: 1px solid var(--border);
+  color: var(--text-heading);
+}
+
+.deploy-line {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+
+.deploy-target {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-heading);
+}
+
+.deploy-taught {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tertiary);
+}
+
+/*
+ * Which files a step touches. This is the visible evidence that the steps form
+ * one build: a reader can follow a filename down the list and watch it get
+ * created once and extended after.
+ */
+.step-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.file-chip {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.file-chip-new {
+  background: var(--success-soft);
+  border-color: var(--success-border);
+  color: var(--success-ink);
+}
+
+/* ------------------------------------------------------------------ */
+/* Step navigator: progress                                           */
+/* ------------------------------------------------------------------ */
+
+.step-passed {
+  color: var(--success);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.step-link-finish {
+  width: 100%;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+
+.step-link-finish .num {
+  background: var(--primary);
+  color: var(--on-primary);
+  border-color: transparent;
+}
+
+/* ------------------------------------------------------------------ */
+/* The finished project                                               */
+/* ------------------------------------------------------------------ */
+
+.finished {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+  padding: 26px 28px;
+  box-shadow: var(--shadow);
+}
+
+.finished-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.finished-head h2 {
+  margin: 0 0 4px;
+  font-size: 22px;
+}
+
+.finished-head p {
+  margin: 0;
+  max-width: 56ch;
+}
+
+.finished-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.finished-blurb {
+  margin: 0;
+  max-width: 62ch;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+/*
+ * File list beside a preview. The tree is the proof it is one project — a
+ * reader scanning it sees a repository, not a folder of step_3 exercises.
+ */
+.finished-body {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  gap: 20px;
+  margin-top: 20px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .finished-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.finished-tree h3 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.finished-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 460px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.finished-file {
+  appearance: none;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.finished-file:hover {
+  background: var(--surface-2);
+  color: var(--text-heading);
+}
+
+.finished-file.active {
+  background: var(--agent-conceptual-bg);
+  border-color: var(--agent-conceptual-border);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.finished-preview {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+}
+
+.finished-preview-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.finished-preview-head code {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-heading);
+  overflow-wrap: anywhere;
+}
+
+.finished-preview-head .btn {
+  padding: 3px 12px;
+  font-size: 12px;
+}
+
+.finished-code {
+  margin: 0;
+  padding: 16px 18px;
+  max-height: 520px;
+  overflow: auto;
+  background: var(--code-bg);
+  color: var(--code-text);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.finished-code code {
+  color: inherit;
+  background: none;
+}
+
+.finished-readme {
+  padding: 22px 26px;
+  max-height: 520px;
+  overflow-y: auto;
 }

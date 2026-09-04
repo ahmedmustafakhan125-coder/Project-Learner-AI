@@ -1,6 +1,16 @@
 'use client';
 
-import type { ProjectBlueprint } from '@ai-edu/core';
+import type { DeploymentTarget, ProjectBlueprint } from '@ai-edu/core';
+
+/** Host names as a learner would say them, not as the enum spells them. */
+const DEPLOY_LABEL: Record<DeploymentTarget, string> = {
+  local: 'Runs on your machine',
+  docker: 'Docker container',
+  vercel: 'Vercel',
+  netlify: 'Netlify',
+  'github-pages': 'GitHub Pages',
+  fly: 'Fly.io',
+};
 
 /**
  * The plan, before anything is committed.
@@ -65,6 +75,30 @@ export function BlueprintReview({ blueprint, busy, onAccept, onRegenerate }: Blu
               </li>
             ))}
           </ul>
+
+          {/*
+            The file plan is the part worth reading twice. It is what the steps
+            are held to, so it is also the honest answer to "what will I
+            actually have at the end" — a file list, not a promise.
+          */}
+          <h3>What you will end up with</h3>
+          <ul className="file-plan">
+            {blueprint.finalFileTree.map((file) => (
+              <li key={file.path}>
+                <code>{file.path}</code>
+                <span className="muted"> — {file.purpose}</span>
+              </li>
+            ))}
+          </ul>
+
+          <h3>Where it runs</h3>
+          <p className="deploy-line">
+            <span className="deploy-target">{DEPLOY_LABEL[blueprint.deployment.target]}</span>
+            <span className="why">{blueprint.deployment.rationale}</span>
+            {blueprint.deployment.taught && (
+              <span className="deploy-taught">Deployment is taught as part of the project.</span>
+            )}
+          </p>
         </div>
       </div>
 
@@ -77,6 +111,22 @@ export function BlueprintReview({ blueprint, busy, onAccept, onRegenerate }: Blu
               <span className="muted">{step.estMinutes} min</span>
             </div>
             <div className="muted">{step.objective}</div>
+            {/* Which files this step touches — the visible evidence that each
+                step continues the last one instead of starting over. */}
+            {(step.creates.length > 0 || step.edits.length > 0) && (
+              <div className="step-files">
+                {step.creates.map((path) => (
+                  <span className="file-chip file-chip-new" key={`c${path}`} title="Created here">
+                    + {path}
+                  </span>
+                ))}
+                {step.edits.map((path) => (
+                  <span className="file-chip" key={`e${path}`} title="Extended here">
+                    ± {path}
+                  </span>
+                ))}
+              </div>
+            )}
             {step.concepts.length > 0 && (
               <div className="concepts">
                 {step.concepts.map((concept) => (

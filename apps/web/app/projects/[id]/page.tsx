@@ -1,11 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import type { ProjectDetail, SourceFile, StepContent } from '@ai-edu/api-client';
 import { ApiError } from '@ai-edu/api-client';
 
 import { AuthGate } from '../../../components/AuthGate';
+import { FinishedProject } from '../../../components/FinishedProject';
 import { StepView } from '../../../components/StepView';
 import { api } from '../../../lib/api';
 
@@ -35,6 +37,8 @@ function ProjectShell() {
   const [steps, setSteps] = useState<Record<number, StepContent>>({});
   const [loadingStep, setLoadingStep] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The finished-project view replaces the step body rather than sitting under it. */
+  const [showFinished, setShowFinished] = useState(false);
 
   // Guards against a re-render firing a second expansion for a step already in
   // flight — that would bill twice for the same generation.
@@ -90,7 +94,7 @@ function ProjectShell() {
   }, []);
 
   useEffect(() => {
-    if (!detail) return;
+    if (!detail || showFinished) return;
     void (async () => {
       await ensureStep(active, true);
       // Warm the next one only after the current one has landed, so the
@@ -99,20 +103,27 @@ function ProjectShell() {
         void ensureStep(active + 1, false);
       }
     })();
-  }, [detail, active, ensureStep]);
+  }, [detail, active, ensureStep, showFinished]);
 
   if (error && !detail) return <main className="shell"><div className="notice error">{error}</div></main>;
   if (!detail) return <main className="shell"><p className="skeleton">Loading project…</p></main>;
 
   const current = steps[active];
+  const passedCount = detail.steps.filter((step) => step.passed).length;
 
   return (
     <main className="shell wide">
+      <Link href="/projects" className="page-back">
+        <span aria-hidden="true">←</span> Back to library
+      </Link>
+
       <header className="masthead">
         <div>
           <h1>{detail.project.title as string}</h1>
           <div className="sub">
-            Step {active + 1} of {detail.steps.length}
+            {showFinished
+              ? `${passedCount} of ${detail.steps.length} steps complete`
+              : `Step ${active + 1} of ${detail.steps.length}`}
           </div>
         </div>
       </header>
@@ -126,25 +137,55 @@ function ProjectShell() {
               <li key={step.id}>
                 <button
                   className="step-link"
-                  aria-current={step.stepIndex === active ? 'step' : undefined}
-                  onClick={() => setActive(step.stepIndex)}
+                  aria-current={!showFinished && step.stepIndex === active ? 'step' : undefined}
+                  onClick={() => {
+                    setShowFinished(false);
+                    setActive(step.stepIndex);
+                  }}
                 >
                   <span className="num">{step.stepIndex + 1}</span>
                   <span className="label">
                     {step.title}
                     <span className="muted"> · {step.estMinutes ?? '?'} min</span>
                   </span>
-                  {/* Marks steps not yet written, so an unwritten step reads as
-                      "not there yet" rather than as something broken. */}
-                  {!step.expanded && <span className="pending" title="Not written yet">○</span>}
+                  {/* A passed step is the only unambiguous progress signal the
+                      navigator has; without it every step looks identical. */}
+                  {step.passed && <span className="step-passed" title="Passed">✓</span>}
+                  {!step.passed && !step.expanded && (
+                    <span className="pending" title="Not written yet">○</span>
+                  )}
                 </button>
               </li>
             ))}
           </ol>
+
+          {/* The finished project sits at the end of the list because that is
+              where it belongs in the sequence — it is what the steps add up to. */}
+          <button
+            type="button"
+            className="step-link step-link-finish"
+            aria-current={showFinished ? 'step' : undefined}
+            onClick={() => setShowFinished(true)}
+          >
+            <span className="num">★</span>
+            <span className="label">
+              Finished project
+              <span className="muted"> · README, files &amp; download</span>
+            </span>
+          </button>
         </nav>
 
         <section className="step-body">
-          {loadingStep === active && (
+          {showFinished && (
+            <FinishedProject
+              projectId={projectId}
+              projectTitle={detail.project.title as string}
+              passedCount={passedCount}
+              totalSteps={detail.steps.length}
+            />
+          )}
+
+          {!showFinished && loadingStep === active && (
             <p className="skeleton">
               Writing this step<span className="caret" />
             </p>
@@ -152,7 +193,7 @@ function ProjectShell() {
           {/* Keyed by step: without it React reuses one instance across steps,
               carrying the previous step's editor contents, attempt count and
               revealed explanation into the next one. */}
-          {current && (
+          {!showFinished && current && (
             <StepView
               key={active}
               step={current}
@@ -160,7 +201,7 @@ function ProjectShell() {
               onDraftSaved={(files) => rememberDraft(active, files)}
             />
           )}
-          {!current && loadingStep !== active && (
+          {!showFinished && !current && loadingStep !== active && (
             <p className="skeleton">This step has not been written yet.</p>
           )}
         </section>

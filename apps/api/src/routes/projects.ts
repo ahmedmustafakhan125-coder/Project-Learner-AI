@@ -6,12 +6,15 @@ import {
   ProjectBlueprint,
   SkillLevel,
   expandStep,
+  finishProject,
   generateBlueprint,
   groundCheckpoint,
+  parseStoredBlueprint,
   planExpansion,
   scorePacing,
   type PaceState,
   type AttemptSummary,
+  type ProjectArtifact,
   type SourceFile,
 } from '@ai-edu/core';
 import { createProviderForTask } from '@ai-edu/llm';
@@ -19,7 +22,9 @@ import { createProviderForTask } from '@ai-edu/llm';
 import { requireAuth, userOf } from '../auth.js';
 import { gatewayErrorReply, screenOrThrow } from '../gateway.js';
 import { checkBudget, db, recordUsage } from '../db.js';
+import { assembleFinished, priorFilesFor } from '../projectFiles.js';
 import { rateLimitConfig } from '../rateLimit.js';
+import { archiveName, createZip } from '../zip.js';
 
 /**
  * Project generation.
@@ -30,15 +35,31 @@ import { rateLimitConfig } from '../rateLimit.js';
  *                                  approves or rejects it before more is spent
  *   POST /api/projects             persist an approved blueprint as stubs
  *   POST /api/projects/:id/steps/:index/expand   fill in one step, lazily
+ *   POST /api/projects/:id/finish  README + deploy config for the finished code
+ *   GET  /api/projects/:id/export  the whole thing as a .zip
  *
  * Steps are stored as stubs and expanded on approach rather than all at once.
  * That is what leaves room for pacing to change a step before the learner ever
  * sees it.
+ *
+ * Each expansion is handed the project as it currently stands — the learner's
+ * own passing code where they wrote it, the reference solution where they did
+ * not — so a step continues the codebase instead of starting a new one. The
+ * blueprint's file plan says which files that step may touch. Together those
+ * are what make the finished project one thing rather than N exercises.
  */
 
 const BlueprintBody = z.object({
   compiled: CompiledQuery,
   model: z.string().optional(),
+  /**
+   * Whether the plan should spend real steps teaching deployment.
+   *
+   * Independent of whether deployment CONFIG is produced: that happens either
+   * way at the finish, because a project nobody else can run is not a portfolio
+   * piece. This only decides whether shipping it is part of the curriculum.
+   */
+  teachDeployment: z.boolean().default(false),
 });
 
 const CreateBody = z.object({
@@ -97,7 +118,11 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
 
     const started = Date.now();
     try {
-      const blueprint = await generateBlueprint({ provider, compiled: safeCompiled });
+      const blueprint = await generateBlueprint({
+        provider,
+        compiled: safeCompiled,
+        teachDeployment: parsed.data.teachDeployment,
+      });
 
       void recordUsage({
         userId: user.id,
@@ -226,6 +251,18 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         .eq('user_id', user.id)
         .maybeSingle();
 
+      // Which steps are actually done. One query for the whole project, so the
+      // navigator can mark progress and the finish view can say honestly how
+      // much of the assembled code is the learner's own.
+      const { data: passedRows } = await db()
+        .from('step_attempts')
+        .select('step_id')
+        .in('step_id', (steps ?? []).map((step) => step.id))
+        .eq('user_id', user.id)
+        .eq('passed', true);
+
+      const passed = new Set((passedRows ?? []).map((row) => row.step_id));
+
       return reply.send({
         project,
         // Step bodies are omitted here on purpose: the list is for navigation,
@@ -239,8 +276,11 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
           concepts: step.concepts,
           estMinutes: step.est_minutes,
           expanded: step.expanded_at !== null,
+          passed: passed.has(step.id),
         })),
         currentStepIndex: enrollment?.current_step_index ?? 0,
+        // Present once the README and deploy config have been written.
+        artifactGeneratedAt: project.artifact_generated_at ?? null,
       });
     },
   );
@@ -333,8 +373,11 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
           .send({ error: 'no_provider', message: err instanceof Error ? err.message : 'unavailable' });
       }
 
-      const blueprint = ProjectBlueprint.safeParse(project.blueprint);
-      if (!blueprint.success) {
+      // Tolerant on purpose: projects planned before file plans existed parse
+      // with an empty plan and keep working, rather than 500-ing every learner
+      // who had a project open when this shipped.
+      const blueprint = parseStoredBlueprint(project.blueprint);
+      if (!blueprint) {
         return reply.code(500).send({
           error: 'corrupt_blueprint',
           message: 'This project was stored with a blueprint this version cannot read.',
@@ -387,12 +430,18 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         }
       }
 
+      // The project as this step finds it. Without this the expansion sees
+      // only earlier step TITLES and has to invent a starting point, which is
+      // what made each step restart the project rather than continue it.
+      const priorFiles = await priorFilesFor(project.id, user.id, stepIndex);
+
       const started = Date.now();
       try {
         const expansion = await expandStep({
           provider,
-          blueprint: blueprint.data,
+          blueprint,
           stepIndex,
+          priorFiles,
           directive,
         });
 
@@ -483,6 +532,195 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
       return reply.send(plan);
     },
   );
+
+  /* ---------------- Phase C: the finished project ---------------- */
+
+  /**
+   * Assemble the project and, if it has not been written yet, generate the
+   * README and deployment config for it.
+   *
+   * The assembly is free and always fresh — it is a pure overlay of rows the
+   * learner already owns. The written parts cost a model call, so they are
+   * cached on the project and only regenerated when asked for explicitly.
+   */
+  app.post<{ Params: { id: string }; Body: { regenerate?: boolean } }>(
+    '/api/projects/:id/finish',
+    { preHandler: requireAuth, config: rateLimitConfig.generation },
+    async (request, reply) => {
+      const user = userOf(request);
+
+      const { data: project } = await db()
+        .from('projects')
+        .select('id, title, blueprint, artifact, artifact_generated_at')
+        .eq('id', request.params.id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (!project?.blueprint) return reply.code(404).send({ error: 'not_found' });
+
+      const blueprint = parseStoredBlueprint(project.blueprint);
+      if (!blueprint) {
+        return reply.code(409).send({
+          error: 'corrupt_blueprint',
+          message: 'This project was stored with a blueprint this version cannot read.',
+        });
+      }
+
+      const assembled = await assembleFinished(project.id, user.id);
+      if (assembled.files.length === 0) {
+        return reply.code(409).send({
+          error: 'nothing_to_assemble',
+          message: 'There is no code in this project yet. Work through a step first.',
+        });
+      }
+
+      const regenerate = request.body?.regenerate === true;
+      const cached = project.artifact as ProjectArtifact | null;
+
+      // The written parts describe the code, so they are reused only while the
+      // code they described is still the code. Anything else ships a README
+      // that talks about functions the learner has since replaced.
+      if (cached && !regenerate && stillDescribes(cached.files, assembled.files)) {
+        return reply.send({ artifact: cached, cached: true });
+      }
+
+      const budget = await checkBudget(user.id);
+      if (budget.exceeded) {
+        return reply.code(429).send({
+          error: 'budget_exceeded',
+          message: `Daily allowance of $${budget.limitUSD.toFixed(2)} reached.`,
+        });
+      }
+
+      let provider;
+      try {
+        provider = createProviderForTask('projectGen');
+      } catch (err) {
+        return reply
+          .code(503)
+          .send({ error: 'no_provider', message: err instanceof Error ? err.message : 'unavailable' });
+      }
+
+      const started = Date.now();
+      let written;
+      try {
+        written = await finishProject({
+          provider,
+          blueprint,
+          files: assembled.files,
+        });
+      } catch (err) {
+        request.log.error({ err }, 'finish generation failed');
+        return reply.code(502).send({
+          error: 'generation_failed',
+          message: err instanceof Error ? err.message : 'Could not write the finishing files.',
+        });
+      }
+
+      void recordUsage({
+        userId: user.id,
+        task: 'project:finish',
+        provider: provider.id,
+        model: provider.modelId,
+        usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        latencyMs: Date.now() - started,
+      });
+
+      const artifact: ProjectArtifact = {
+        files: [
+          ...assembled.files,
+          { path: 'README.md', contents: written.readmeMd },
+          ...written.deployFiles,
+        ],
+        readmeMd: written.readmeMd,
+        deployment: blueprint.deployment,
+        stepsFromReference: assembled.stepsFromReference,
+        fullyLearnerWritten: assembled.fullyLearnerWritten,
+        generatedAt: new Date().toISOString(),
+      };
+
+      const { error: saveErr } = await db()
+        .from('projects')
+        .update({ artifact, artifact_generated_at: artifact.generatedAt })
+        .eq('id', project.id)
+        .eq('user_id', user.id);
+
+      // A cache that failed to save is not a failed request — the learner has
+      // their project either way, they will just pay for it again next time.
+      if (saveErr) request.log.error({ err: saveErr.message }, 'failed to cache project artifact');
+
+      return reply.send({ artifact, cached: false });
+    },
+  );
+
+  /** The finished project as a download. */
+  app.get<{ Params: { id: string } }>(
+    '/api/projects/:id/export',
+    { preHandler: requireAuth },
+    async (request, reply) => {
+      const user = userOf(request);
+
+      const { data: project } = await db()
+        .from('projects')
+        .select('id, title, artifact')
+        .eq('id', request.params.id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (!project) return reply.code(404).send({ error: 'not_found' });
+
+      /*
+       * The code is always assembled fresh, and only the WRITTEN files come
+       * from the cache. Serving the stored artifact wholesale would hand the
+       * learner a zip of the code as it was when they last pressed Assemble —
+       * silently missing everything they have done since, which is the worst
+       * possible thing for a download they are about to show someone.
+       *
+       * A README that no longer matches is dropped rather than shipped: better
+       * an archive with no README than one describing different code.
+       */
+      const assembled = await assembleFinished(project.id, user.id);
+      const cached = project.artifact as ProjectArtifact | null;
+      const written =
+        cached && stillDescribes(cached.files, assembled.files)
+          ? cached.files.filter((file) => !assembled.files.some((a) => a.path === file.path))
+          : [];
+      const files = [...assembled.files, ...written];
+
+      if (files.length === 0) {
+        return reply
+          .code(409)
+          .send({ error: 'nothing_to_export', message: 'There is no code in this project yet.' });
+      }
+
+      const zip = createZip(files);
+      const name = archiveName(String(project.title ?? 'project'));
+
+      return reply
+        .header('Content-Type', 'application/zip')
+        // The name is a conservative slug of the learner's own title, so it
+        // cannot break out of the quoted header value.
+        .header('Content-Disposition', `attachment; filename="${name}"`)
+        .header('Content-Length', String(zip.length))
+        .send(zip);
+    },
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * Whether a cached artifact still describes the code it was written from.
+ *
+ * The artifact's files are the assembly PLUS the README and deploy config, so
+ * this is a superset check rather than an equality one: every assembled file
+ * must still be present, byte for byte. A learner who reworked step 3 after
+ * finishing gets a README regenerated against what they actually have, instead
+ * of one describing functions they have since replaced.
+ */
+function stillDescribes(cachedFiles: SourceFile[], assembled: SourceFile[]): boolean {
+  const cached = new Map(cachedFiles.map((file) => [file.path, file.contents]));
+  return assembled.every((file) => cached.get(file.path) === file.contents);
 }
 
 /* ------------------------------------------------------------------ */

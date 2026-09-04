@@ -40,19 +40,33 @@ function NewProject() {
   const [compiled, setCompiled] = useState<CompiledQuery | null>(null);
   const [blueprint, setBlueprint] = useState<ProjectBlueprint | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Whether the plan should spend steps teaching deployment.
+   *
+   * Separate from whether the finished project GETS deploy config — it always
+   * does. This only buys steps in the curriculum, which is why it is off by
+   * default: most people want the project, not the ops lesson.
+   */
+  const [teachDeployment, setTeachDeployment] = useState(false);
 
-  const plan = useCallback(async (query: CompiledQuery) => {
-    setPhase('planning');
-    setCompiled(query);
-    try {
-      const { blueprint: generated } = await api.generateBlueprint({ compiled: query });
-      setBlueprint(generated);
-      setPhase('reviewing');
-    } catch (err) {
-      setError(describe(err));
-      setPhase('describing');
-    }
-  }, []);
+  const plan = useCallback(
+    async (query: CompiledQuery) => {
+      setPhase('planning');
+      setCompiled(query);
+      try {
+        const { blueprint: generated } = await api.generateBlueprint({
+          compiled: query,
+          teachDeployment,
+        });
+        setBlueprint(generated);
+        setPhase('reviewing');
+      } catch (err) {
+        setError(describe(err));
+        setPhase('describing');
+      }
+    },
+    [teachDeployment],
+  );
 
   const start = useCallback(async () => {
     if (!goal.trim()) return;
@@ -150,11 +164,25 @@ function NewProject() {
             }}
           />
           <div className="row">
-            <span className="muted">Ctrl/⌘ + Enter to continue</span>
+            <label className="deploy-toggle">
+              <input
+                type="checkbox"
+                checked={teachDeployment}
+                onChange={(e) => setTeachDeployment(e.target.checked)}
+              />
+              <span>
+                <strong>Teach me to deploy it</strong>
+                <span className="deploy-toggle-hint">
+                  Adds steps that ship the finished project. The deploy config is written for
+                  you either way.
+                </span>
+              </span>
+            </label>
             <button className="btn primary" onClick={() => void start()} disabled={!goal.trim()}>
               Continue
             </button>
           </div>
+          <p className="muted kbd-row">Ctrl/⌘ + Enter to continue</p>
         </div>
       )}
 
@@ -173,7 +201,8 @@ function NewProject() {
 
       {phase === 'planning' && (
         <div className="notice info">
-          Designing your project. This one takes a little longer — it is planning every step.
+          Designing your project — the whole file tree and which step builds each part. This one
+          takes a little longer, because everything after it is held to this plan.
         </div>
       )}
 

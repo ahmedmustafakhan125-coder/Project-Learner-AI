@@ -6,6 +6,7 @@ import type {
   CompiledQuery,
   InterviewQuestion,
   InterviewState,
+  ProjectArtifact,
   ProjectBlueprint,
   SkillLevel,
   SourceFile,
@@ -125,12 +126,16 @@ export interface ProjectStepRef {
   estMinutes: number | null;
   /** False until Phase B has written this step. */
   expanded: boolean;
+  /** True once an attempt on this step has passed. */
+  passed: boolean;
 }
 
 export interface ProjectDetail {
   project: Record<string, unknown> & { id: string; title: string };
   steps: ProjectStepRef[];
   currentStepIndex: number;
+  /** When the finished project was last assembled and written. Null if never. */
+  artifactGeneratedAt: string | null;
 }
 
 /** A step as sent to the browser. Solution files are deliberately absent. */
@@ -324,9 +329,15 @@ export class ApiClient {
   async generateBlueprint(input: {
     compiled: CompiledQuery;
     model?: string;
+    /**
+     * Spend real steps teaching deployment. Independent of whether deploy
+     * CONFIG is written at the end — that happens either way.
+     */
+    teachDeployment?: boolean;
   }): Promise<{ blueprint: ProjectBlueprint; model: string }> {
     return this.post('/api/projects/blueprint', {
       compiled: input.compiled,
+      teachDeployment: input.teachDeployment ?? false,
       ...(input.model ? { model: input.model } : {}),
     });
   }
@@ -420,6 +431,50 @@ export class ApiClient {
     return this.get<HintResponse>(
       `/api/projects/${projectId}/steps/${stepIndex}/hints?tier=${tier}`,
     );
+  }
+
+  /* ---- the finished project ---- */
+
+  /**
+   * Phase C. Assembles the project from the learner's own code and writes the
+   * README and deployment config for it.
+   *
+   * Cached server-side against the assembled files, so calling this repeatedly
+   * on unchanged code costs nothing. `regenerate` forces a rewrite.
+   */
+  async finishProject(
+    projectId: string,
+    regenerate = false,
+  ): Promise<{ artifact: ProjectArtifact; cached: boolean }> {
+    return this.post(`/api/projects/${projectId}/finish`, { regenerate });
+  }
+
+  /**
+   * The finished project as a zip.
+   *
+   * Returned as a Blob rather than a URL because the download is authenticated:
+   * a bare href would reach the API without the bearer token and 401. The
+   * caller turns it into an object URL and clicks it.
+   */
+  async exportProject(projectId: string): Promise<Blob> {
+    const token = await this.getToken();
+    const response = await fetch(`${this.baseUrl}/api/projects/${projectId}/export`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+      throw new ApiError(
+        response.status,
+        typeof payload?.['error'] === 'string' ? payload['error'] : 'export_failed',
+        typeof payload?.['message'] === 'string'
+          ? payload['message']
+          : 'Could not export this project.',
+        payload,
+      );
+    }
+
+    return response.blob();
   }
 
   /* ---- misc ---- */

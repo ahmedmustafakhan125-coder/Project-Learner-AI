@@ -2,7 +2,8 @@ import type { LLMProvider } from '@ai-edu/llm';
 
 import type { AbortSignalLike } from '../platform.js';
 import type { ProjectBlueprint } from '../schemas/project.js';
-import { ExpandedStep } from '../schemas/step.js';
+import { ExpandedStep, type SourceFile } from '../schemas/step.js';
+import { renderProjectState } from './assemble.js';
 import { groundCheckpoint } from './runnable.js';
 import type { PacingDirective } from '../pacing/types.js';
 import { renderPacingDirective } from '../pacing/types.js';
@@ -16,6 +17,13 @@ import { renderPacingDirective } from '../pacing/types.js';
  *
  * Running late is the point, not an optimisation: a step that has not been
  * written yet can still be reshaped by how the learner is actually doing.
+ *
+ * What it also gets is the project as it currently stands — the real files, the
+ * learner's own code where they wrote it. Before that, an expansion saw only
+ * the TITLES of earlier steps and had to guess what was on disk, so its starter
+ * files restarted the project instead of continuing it. The blueprint's file
+ * plan says which files this step may touch; `<project_state>` says what is in
+ * them.
  */
 
 const SYSTEM = `You write one step of a project-based programming tutorial. The learner writes the code themselves — you never hand them the finished answer.
@@ -30,7 +38,14 @@ Do NOT include the solution. Describe what the code must do, not the code that d
 
 Where there is a trap — an easy mistake, a confusing error message, an ordering that matters — warn about it before they hit it, in one line.
 
-## Starter files
+## Starter files — you are continuing a codebase, not starting one
+
+You are given <project_state>: every file the project already has, with its real current contents. Your starter files ARE that project, moved forward by one step.
+
+- A file listed in "This step edits" must appear in starterFiles with its existing contents carried over, changed only where this step's work goes. Never hand back an empty or rewritten version of a file the learner already filled in — that deletes their work.
+- A file listed in "This step creates" is new. Write its scaffolding.
+- Every other existing file is left alone. Do not restate it, do not rename it, do not "improve" it.
+- Never invent a file that is not in this step's creates list. The plan already knows which step makes it.
 
 Give them the scaffolding and withhold the idea. Boilerplate, imports, markup, and the test harness are yours to write. The part that teaches the concept is a clearly marked TODO comment.
 
@@ -38,7 +53,9 @@ Starter files must run as given, even with the TODOs unfilled — failing tests 
 
 ## Solution files
 
-The complete working version. Never shown before the step passes; used to check the learner's approach and to unstick them.
+The complete working version of every file this step creates or edits — the project as it should stand when the step is done. The next step is written against exactly these files, so anything missing here is missing from the project from then on.
+
+Never shown before the step passes; used to check the learner's approach and to unstick them.
 
 ## Checkpoint
 
@@ -78,13 +95,19 @@ export interface ExpandStepOptions {
   provider: LLMProvider;
   blueprint: ProjectBlueprint;
   stepIndex: number;
+  /**
+   * The project as this step finds it: every file the earlier steps produced,
+   * preferring the learner's own passing code over the reference solution.
+   * Empty for step 1. Without it the step cannot continue anything.
+   */
+  priorFiles?: SourceFile[];
   /** Adjusts this step based on how the learner has been doing. */
   directive?: PacingDirective | null;
   signal?: AbortSignalLike;
 }
 
 export async function expandStep(options: ExpandStepOptions): Promise<ExpandedStep> {
-  const { provider, blueprint, stepIndex, directive, signal } = options;
+  const { provider, blueprint, stepIndex, priorFiles = [], directive, signal } = options;
 
   const stub = blueprint.steps[stepIndex];
   if (!stub) {
@@ -97,8 +120,16 @@ export async function expandStep(options: ExpandStepOptions): Promise<ExpandedSt
       content: [
         // The blueprint is identical for every step of this project, so it is
         // cached once and read by each expansion rather than re-paid for.
+        // Everything below the boundary changes per step and per learner.
         { type: 'text' as const, text: renderBlueprint(blueprint), cacheBoundary: true },
-        { type: 'text' as const, text: renderTarget(blueprint, stepIndex) },
+        {
+          type: 'text' as const,
+          text: renderProjectState({
+            files: priorFiles,
+            focusPaths: [...stub.creates, ...stub.edits],
+          }),
+        },
+        { type: 'text' as const, text: renderStepBrief(blueprint, stepIndex) },
       ],
     },
   ];
@@ -151,17 +182,38 @@ export function renderBlueprint(blueprint: ProjectBlueprint): string {
     lines.push('', 'Assumed prior knowledge:', ...blueprint.prerequisites.map((p) => `  - ${p}`));
   }
 
+  // A blueprint planned before file plans existed has none. Rendering an empty
+  // section would read as "the finished project contains no files".
+  if (blueprint.finalFileTree.length > 0) {
+    lines.push('', 'Files in the finished project:');
+    for (const file of blueprint.finalFileTree) {
+      lines.push(`  - ${file.path}: ${file.purpose}`);
+    }
+  }
+
+  lines.push(
+    '',
+    `Deployment target: ${blueprint.deployment.target} — ${blueprint.deployment.rationale}`,
+  );
+
   lines.push('', 'All steps:');
   blueprint.steps.forEach((step, i) => {
     lines.push(`  ${i + 1}. ${step.title} (${step.estMinutes} min) — ${step.objective}`);
     if (step.concepts.length) lines.push(`     concepts: ${step.concepts.join(', ')}`);
+    if (step.creates.length) lines.push(`     creates: ${step.creates.join(', ')}`);
+    if (step.edits.length) lines.push(`     edits: ${step.edits.join(', ')}`);
   });
   lines.push('</project>');
 
   return lines.join('\n');
 }
 
-function renderTarget(blueprint: ProjectBlueprint, stepIndex: number): string {
+/**
+ * The brief for one step: its objective, its file manifest, and what sits
+ * either side of it. Exported because the manifest is the contract the whole
+ * sequential build rests on, and a contract worth enforcing is worth asserting.
+ */
+export function renderStepBrief(blueprint: ProjectBlueprint, stepIndex: number): string {
   const stub = blueprint.steps[stepIndex]!;
   const previous = blueprint.steps.slice(0, stepIndex).map((s) => s.title);
   const next = blueprint.steps[stepIndex + 1];
@@ -175,17 +227,51 @@ function renderTarget(blueprint: ProjectBlueprint, stepIndex: number): string {
 
   if (stub.concepts.length) lines.push(`Concepts to teach: ${stub.concepts.join(', ')}`);
 
+  // The file manifest is the contract. Repeating it right next to the work
+  // keeps it in front of the model at the moment it decides what to write.
+  //
+  // Skipped entirely on a legacy blueprint that has no manifest: telling a step
+  // it "creates no new files" when the plan simply never said would forbid it
+  // from writing anything at all.
+  if (stub.creates.length > 0 || stub.edits.length > 0) {
+    lines.push(
+      stub.creates.length
+        ? `This step CREATES (new files, write their scaffolding): ${stub.creates.join(', ')}`
+        : 'This step creates no new files.',
+      stub.edits.length
+        ? `This step EDITS (already exist above — carry their contents forward and change only what this step needs): ${stub.edits.join(', ')}`
+        : 'This step edits no existing files.',
+      'Touch no other file. starterFiles and solutionFiles contain exactly the files named above.',
+    );
+  } else {
+    lines.push(
+      'Continue the project shown above. Carry forward every file you change, and do not',
+      'restart anything an earlier step already built.',
+    );
+  }
+
   lines.push(
     previous.length
       ? `Already built in earlier steps (do not repeat): ${previous.join('; ')}`
       : 'This is the first step — the learner is starting from nothing.',
   );
 
-  if (next) lines.push(`Comes next (do not pre-empt): ${next.title}`);
-  else lines.push('This is the final step — the project should be complete after it.');
+  if (next) {
+    lines.push(
+      `Comes next (do not pre-empt): ${next.title}`,
+      next.edits.length
+        ? `The next step will edit: ${next.edits.join(', ')} — leave those in a state it can build on.`
+        : '',
+    );
+  } else {
+    lines.push(
+      'This is the FINAL step. After it the project must be complete and runnable —',
+      'something the learner can show someone, not a foundation for more work.',
+    );
+  }
 
   lines.push('</expand_step>');
-  return lines.join('\n');
+  return lines.filter(Boolean).join('\n');
 }
 
 /* ------------------------------------------------------------------ *

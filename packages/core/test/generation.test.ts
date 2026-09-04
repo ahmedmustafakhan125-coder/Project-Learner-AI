@@ -20,10 +20,23 @@ const blueprint = (over: Partial<ProjectBlueprint> = {}): ProjectBlueprint =>
     techStack: [{ name: 'Node.js', role: 'runtime', why: 'no build step to get in the way' }],
     prerequisites: ['Comfortable writing functions'],
     estimatedHours: 4,
+    // The file plan is what makes the three steps one project rather than
+    // three exercises: each names the files it writes, and every path here is
+    // created exactly once.
+    finalFileTree: [
+      { path: 'todo.js', purpose: 'CLI entry point' },
+      { path: 'store.js', purpose: 'Reads and writes the JSON file' },
+    ],
+    deployment: {
+      target: 'local',
+      rationale: 'A CLI runs on the machine it is installed on.',
+      artifacts: [],
+      taught: false,
+    },
     steps: [
-      { title: 'Print a hardcoded list', objective: 'See output', concepts: ['stdout'], estMinutes: 30 },
-      { title: 'Add an item', objective: 'Mutate state', concepts: ['arrays'], estMinutes: 45 },
-      { title: 'Persist to disk', objective: 'Survive restart', concepts: ['fs', 'JSON'], estMinutes: 60 },
+      { title: 'Print a hardcoded list', objective: 'See output', concepts: ['stdout'], estMinutes: 30, creates: ['todo.js'], edits: [] },
+      { title: 'Add an item', objective: 'Mutate state', concepts: ['arrays'], estMinutes: 45, creates: [], edits: ['todo.js'] },
+      { title: 'Persist to disk', objective: 'Survive restart', concepts: ['fs', 'JSON'], estMinutes: 60, creates: ['store.js'], edits: ['todo.js'] },
     ],
     ...over,
   });
@@ -50,6 +63,8 @@ describe('ProjectBlueprint schema', () => {
       objective: 'x',
       concepts: [],
       estMinutes: 20,
+      creates: [],
+      edits: [],
     }));
     expect(() => ProjectBlueprint.parse({ ...blueprint(), steps: tooMany })).toThrow();
   });

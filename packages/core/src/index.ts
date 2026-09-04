@@ -18,6 +18,8 @@ export * from './schemas/project.js';
 export * from './schemas/step.js';
 
 export * from './generation/blueprint.js';
+export * from './generation/assemble.js';
+export * from './generation/finish.js';
 export * from './generation/expand.js';
 export * from './generation/prefetch.js';
 export * from './generation/runnable.js';
