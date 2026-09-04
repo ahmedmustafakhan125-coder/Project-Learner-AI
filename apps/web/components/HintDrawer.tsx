@@ -2,36 +2,18 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import { currentToken } from '../lib/supabase';
+import { api } from '../lib/api';
 
 /**
- * Fetch a single hint tier from the API.
- *
- * Uses `currentToken` for auth, matching the pattern in lib/api.ts. Once
- * `@ai-edu/api-client` ships a `getHint` method on ApiClient, this helper
- * should be removed and callers should use `api.getHint(…)` instead.
+ * Fetch a single hint tier from the API using the unified ApiClient.
  */
 async function fetchHint(
   projectId: string,
   stepIndex: number,
   tier: number,
 ): Promise<string> {
-  const token = await currentToken();
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
-  const res = await fetch(
-    `${baseUrl}/api/projects/${projectId}/steps/${stepIndex}/hints?tier=${tier}`,
-    { headers: { Authorization: `Bearer ${token}` } },
-  );
-  if (!res.ok) {
-    // The server enforces the same gate independently and explains itself in
-    // the body — a bare status code here would leave a locked hint looking
-    // like a broken one.
-    const body = await res.json().catch(() => null);
-    const message = typeof body?.message === 'string' ? body.message : null;
-    throw new Error(message ?? `Failed to fetch hint (tier ${tier}): ${res.status}`);
-  }
-  const body = await res.json();
-  return body.text as string;
+  const res = await api.getHint(projectId, stepIndex, tier);
+  return res.text;
 }
 
 /* ------------------------------------------------------------------ */
