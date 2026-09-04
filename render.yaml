@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: llm-security-gateway
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt && python -m app.detectors.semantic_detector
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: HIGH_RISK_THRESHOLD
+        value: "60"
+      - key: MEDIUM_RISK_THRESHOLD
+        value: "30"
+      - key: MAX_INPUT_LENGTH
+        value: "2000"
+      - key: ALLOWED_ORIGINS
+        value: "*"
