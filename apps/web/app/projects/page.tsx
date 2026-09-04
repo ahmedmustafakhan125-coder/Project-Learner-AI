@@ -6,6 +6,7 @@ import type { ProjectSummary } from '@ai-edu/api-client';
 
 import { AuthGate } from '../../components/AuthGate';
 import { api } from '../../lib/api';
+import { BrandLogo } from '@/components/BrandLogo';
 
 export default function ProjectsPage() {
   return (
@@ -50,9 +51,7 @@ function Projects() {
 
       {projects?.length === 0 && !error && (
         <div className="empty" style={{ background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--border)', padding: '60px 24px', textAlign: 'center' }}>
-          <div className="auth-logo-badge" style={{ margin: '0 auto 16px' }}>
-            <span className="logo-spark">✦</span>
-          </div>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}><BrandLogo height={40} /></div>
           <h2 style={{ fontSize: '20px', margin: '0 0 8px' }}>No projects generated yet</h2>
           <p className="muted" style={{ maxWidth: '440px', margin: '0 auto 24px' }}>
             Tell Project Learner what technology, game, or tool you want to build and it will create a tailored blueprint.

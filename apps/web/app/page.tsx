@@ -3,6 +3,45 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { BrandLogo } from '@/components/BrandLogo';
+
+/**
+ * The four platform features, each with its own character.
+ *
+ * The bot replaces the diamond that used to sit here rather than joining it —
+ * two marks in the same slot would compete. Colour is the mapping: each card
+ * keeps the same character everywhere it appears, so the cast stays learnable.
+ *
+ * Extracted from the reference sheet into public/bots/ with the plate removed;
+ * they are decorative, so each is aria-hidden and the heading carries meaning.
+ */
+const PLATFORM_FEATURES = [
+  {
+    title: '4-Specialist Fan-Out',
+    bot: '/bots/purple.png',
+    body: 'Queries are broadcast across 4 agents running in parallel over multiplexed Server-Sent Events, sharing a cached prompt prefix.',
+    meta: 'Multiplexed SSE • Shared Prefix Caching',
+  },
+  {
+    title: 'Adaptive Project Blueprints',
+    bot: '/bots/blue.png',
+    body: 'Generate milestone-driven coding projects with instructions, checkpoints, hints, and automated difficulty scaling based on your progress.',
+    meta: 'Phased Expansion • Pacing Directives',
+  },
+  {
+    title: 'In-Browser Code Sandboxes',
+    bot: '/bots/green.png',
+    body: 'Run Python stdlib and algorithms via Pyodide WebAssembly or execute JavaScript/TypeScript with Monaco editor and zero local environment setup.',
+    meta: 'Pyodide WASM • Monaco IDE • Strict CSP',
+  },
+  {
+    title: 'Enterprise AI Security',
+    bot: '/bots/terracotta.png',
+    body: 'Automated PII masking, prompt injection defense with FastAPI, and transparent daily USD budget limits safeguard every interaction.',
+    meta: 'PII Redaction • Injection Defense • RLS',
+  },
+] as const;
+
 
 export default function HomePage() {
   const router = useRouter();
@@ -200,41 +239,23 @@ export default function HomePage() {
         </div>
 
         <div className="features-grid">
-          <div className="feature-card glassmorphic-card">
-            <div className="feature-icon-box">✦</div>
-            <h3>4-Specialist Fan-Out</h3>
-            <p>
-              Queries are broadcast across 4 agents running in parallel over multiplexed Server-Sent Events, sharing a cached prompt prefix.
-            </p>
-            <div className="feature-meta">Multiplexed SSE • Shared Prefix Caching</div>
-          </div>
-
-          <div className="feature-card glassmorphic-card">
-            <div className="feature-icon-box">✦</div>
-            <h3>Adaptive Project Blueprints</h3>
-            <p>
-              Generate milestone-driven coding projects with instructions, checkpoints, hints, and automated difficulty scaling based on your progress.
-            </p>
-            <div className="feature-meta">Phased Expansion • Pacing Directives</div>
-          </div>
-
-          <div className="feature-card glassmorphic-card">
-            <div className="feature-icon-box">✦</div>
-            <h3>In-Browser Code Sandboxes</h3>
-            <p>
-              Run Python stdlib and algorithms via Pyodide WebAssembly or execute JavaScript/TypeScript with Monaco editor and zero local environment setup.
-            </p>
-            <div className="feature-meta">Pyodide WASM • Monaco IDE • Strict CSP</div>
-          </div>
-
-          <div className="feature-card glassmorphic-card">
-            <div className="feature-icon-box">✦</div>
-            <h3>Enterprise AI Security</h3>
-            <p>
-              Automated PII masking, prompt injection defense with FastAPI, and transparent daily USD budget limits safeguard every interaction.
-            </p>
-            <div className="feature-meta">PII Redaction • Injection Defense • RLS</div>
-          </div>
+          {PLATFORM_FEATURES.map((feature) => (
+            <div key={feature.title} className="feature-card glassmorphic-card">
+              <div className="feature-icon-box">
+                <img
+                  src={feature.bot}
+                  alt=""
+                  aria-hidden="true"
+                  className="bot-character"
+                  width={44}
+                  height={44}
+                />
+              </div>
+              <h3>{feature.title}</h3>
+              <p>{feature.body}</p>
+              <div className="feature-meta">{feature.meta}</div>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -293,7 +314,7 @@ export default function HomePage() {
       <footer className="landing-footer">
         <div className="footer-inner">
           <div className="footer-brand">
-            <span className="brand-title">Project <span>Learner</span></span>
+            <BrandLogo height={26} />
             <p className="footer-blurb">Modern multi-agent AI educational workspace for software engineers.</p>
           </div>
           <div className="footer-links">

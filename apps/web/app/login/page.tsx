@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase, supabaseConfigured } from '../../lib/supabase';
+import { BrandLogo } from '@/components/BrandLogo';
 
 export default function LoginPage() {
   return (
@@ -55,9 +56,7 @@ function LoginForm() {
       <main className="shell auth-page-container">
         <div className="auth glassmorphic-card">
           <div className="auth-header">
-            <div className="auth-logo-badge">
-              <span className="logo-spark">✦</span>
-            </div>
+            <BrandLogo height={40} />
             <h1>Configuration Required</h1>
             <p className="muted">
               Supabase credentials not detected in environment. Start your local Supabase instance or check <code>.env.local</code>.
@@ -105,10 +104,7 @@ function LoginForm() {
       <div className="auth glassmorphic-card auth-standalone-card">
         <div className="auth-header">
           <Link href="/" className="auth-brand-link">
-            <div className="auth-logo-badge">
-              <span className="logo-spark">✦</span>
-            </div>
-            <span className="brand-title">Project <span>Learner</span></span>
+            <BrandLogo height={40} />
           </Link>
           
           <div className="auth-tabs-toggle">

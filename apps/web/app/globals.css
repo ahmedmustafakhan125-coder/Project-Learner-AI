@@ -1900,9 +1900,37 @@ select.control option {
   box-shadow: 0 12px 30px -8px rgba(15, 23, 42, 0.06);
 }
 
+/* Holds the character that replaced the diamond. Fixed height so all four
+   cards keep their headings on the same baseline whatever each bot's silhouette
+   happens to be. */
 .feature-icon-box {
+  display: flex;
+  align-items: flex-end;
+  height: 48px;
+  margin-bottom: 14px;
   font-size: 28px;
-  margin-bottom: 16px;
+}
+
+.bot-character {
+  height: 44px;
+  width: auto;
+  /* Decorative: the heading beneath already names the feature, so the bot must
+     never intercept a click meant for the card. */
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 4px 8px rgba(2, 132, 199, 0.18));
+  transition: transform 200ms cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+/* A small lift on hover — enough to read as a companion reacting, not enough
+   to distract while scanning four cards. */
+.feature-card:hover .bot-character {
+  transform: translateY(-3px) rotate(-2deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bot-character { transition: none; }
+  .feature-card:hover .bot-character { transform: none; }
 }
 
 .feature-card h3 {

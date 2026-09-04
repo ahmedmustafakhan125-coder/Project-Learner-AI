@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { BrandLogo } from './BrandLogo';
 
 export function NavHeader() {
   const pathname = usePathname();
@@ -40,13 +41,7 @@ export function NavHeader() {
     <header className="lumina-navbar">
       <div className="lumina-nav-container">
         <Link href="/" className="lumina-brand">
-          <div className="lumina-logo-icon">
-            <span className="logo-spark">✦</span>
-          </div>
-          <div className="lumina-brand-text">
-            <span className="brand-title">Project <span>Learner</span></span>
-            <span className="brand-badge">AI</span>
-          </div>
+          <BrandLogo height={34} />
         </Link>
 
         <nav className="lumina-nav-links">
