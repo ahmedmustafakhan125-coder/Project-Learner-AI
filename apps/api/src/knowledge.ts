@@ -123,7 +123,9 @@ export function loadKnowledgeBundle(root: string): KnowledgeBundle {
 let cached: KnowledgeBundle | null = null;
 
 /** Where the bundle lives, relative to the repository root. */
-export const KNOWLEDGE_ROOT = resolve(process.cwd(), '..', '..', 'knowledge');
+export const KNOWLEDGE_ROOT = existsSync(resolve(process.cwd(), 'knowledge'))
+  ? resolve(process.cwd(), 'knowledge')
+  : resolve(process.cwd(), '..', '..', 'knowledge');
 
 export function knowledgeBundle(): KnowledgeBundle {
   cached ??= loadKnowledgeBundle(KNOWLEDGE_ROOT);
