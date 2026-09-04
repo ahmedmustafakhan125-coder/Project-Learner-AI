@@ -372,9 +372,11 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
               hintsUsed: Math.max(...prevAttempts.map((a) => a.hints_used ?? 0)),
               passed: true,
             };
-            const paceState = (enrollment?.pace_state as PaceState) ?? {
+            const paceState: PaceState = (enrollment?.pace_state as PaceState) ?? {
               recentAttemptCounts: [],
               recentDurations: [],
+              // Windowed hint count — see PaceState in packages/core.
+              recentHints: [],
               hintsUsedTotal: 0,
               streakPassed: 0,
               streakFailed: 0,

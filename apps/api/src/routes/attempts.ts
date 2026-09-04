@@ -102,6 +102,25 @@ const MAX_TOTAL_BYTES = 1_048_576; // 1 MB total
  * attempt, so it is the more attractive of the two for storing arbitrary blobs
  * and needs the same ceiling.
  */
+/**
+ * The strict file shape everything downstream expects.
+ *
+ * zod's inference for `z.string()` inside an array resolves differently across
+ * TypeScript and zod patch versions: locally it yields required properties, on
+ * a clean install elsewhere it can widen to optional ones, and the build then
+ * fails on a host where nothing about the code changed. Normalising once, here,
+ * makes every call site independent of that.
+ *
+ * The `?? ''` branches are unreachable at runtime — zod has already validated
+ * both fields as required strings before this runs. They exist so the function
+ * compiles under either inference.
+ */
+type SubmittedFile = { path: string; contents: string };
+
+function toFiles(input: ReadonlyArray<{ path?: string; contents?: string }>): SubmittedFile[] {
+  return input.map((f) => ({ path: f.path ?? '', contents: f.contents ?? '' }));
+}
+
 function oversizeReason(files: Array<{ path: string; contents: string }>): string | null {
   if (files.length > MAX_FILES) {
     return `Too many files. Maximum is ${MAX_FILES}, received ${files.length}.`;
@@ -145,7 +164,7 @@ export async function attemptRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ error: 'bad_request', issues: parsed.error.issues });
       }
 
-      const files = parsed.data.submittedFiles;
+      const files = toFiles(parsed.data.submittedFiles);
       const oversize = oversizeReason(files);
       if (oversize) {
         return reply.code(413).send({ error: 'payload_too_large', message: oversize });
@@ -181,9 +200,9 @@ export async function attemptRoutes(app: FastifyInstance): Promise<void> {
       const checkpoint = checkpointResult.data;
 
       // 3. Static verification (Layer 1 + Layer 2)
-      const fileCheck = checkRequiredFiles(checkpoint.requiredFiles, parsed.data.submittedFiles);
+      const fileCheck = checkRequiredFiles(checkpoint.requiredFiles, files);
       const symbolCheck = fileCheck.ok
-        ? checkRequiredSymbols(checkpoint.requiredSymbols, parsed.data.submittedFiles)
+        ? checkRequiredSymbols(checkpoint.requiredSymbols, files)
         : { ok: false, missing: [] }; // skip symbols when files already fail
 
       /*
@@ -294,7 +313,7 @@ export async function attemptRoutes(app: FastifyInstance): Promise<void> {
       }
 
       if (parsed.data.files) {
-        const oversize = oversizeReason(parsed.data.files);
+        const oversize = oversizeReason(toFiles(parsed.data.files));
         if (oversize) {
           return reply.code(413).send({ error: 'payload_too_large', message: oversize });
         }
@@ -424,9 +443,12 @@ export async function attemptRoutes(app: FastifyInstance): Promise<void> {
           hintsUsed: Math.max(...allAttempts.map((a) => a.hints_used ?? 0)),
           passed: true,
         };
-        const paceState = (enrollment?.pace_state as PaceState) ?? {
+        const paceState: PaceState = (enrollment?.pace_state as PaceState) ?? {
           recentAttemptCounts: [],
           recentDurations: [],
+          // Windowed hint count. Omitting it compiled locally only because the
+          // cast made TypeScript skip the fallback branch.
+          recentHints: [],
           hintsUsedTotal: 0,
           streakPassed: 0,
           streakFailed: 0,
