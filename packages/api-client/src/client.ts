@@ -56,7 +56,14 @@ export interface BudgetStatus {
 
 /** What the UI consumes. Mirrors the server's per-agent SSE events. */
 export type AgentStreamEvent =
-  | { kind: 'meta'; messageId: string; model: string; agents: readonly AgentKind[] }
+  | {
+      kind: 'meta';
+      messageId: string;
+      /** The conversation this answer was filed under. Null if it failed to persist. */
+      threadId: string | null;
+      model: string;
+      agents: readonly AgentKind[];
+    }
   | { kind: 'start'; agent: AgentKind }
   | { kind: 'delta'; agent: AgentKind; text: string }
   | { kind: 'done'; agent: AgentKind }
@@ -69,6 +76,30 @@ export interface AskOptions {
   threadId?: string | null;
   model?: string;
   signal?: AbortSignal;
+}
+
+/* ---- conversation history ---- */
+
+export interface ThreadSummary {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  /** Questions asked in this conversation. Never zero — empty threads are filtered out. */
+  messageCount: number;
+}
+
+/** One question and the four answers it produced, as replayed from storage. */
+export interface ThreadTurn {
+  messageId: string;
+  question: string;
+  askedAt: string;
+  panes: Record<AgentKind, { status: 'complete' | 'error'; text: string; error: string | null }>;
+}
+
+export interface ThreadDetail {
+  thread: Omit<ThreadSummary, 'messageCount'>;
+  turns: ThreadTurn[];
 }
 
 
@@ -400,6 +431,28 @@ export class ApiClient {
 
   async getBudget(): Promise<BudgetStatus> {
     return this.get<BudgetStatus>('/api/budget');
+  }
+
+  /* ---- conversation history ---- */
+
+  async listThreads(): Promise<ThreadSummary[]> {
+    const { threads } = await this.get<{ threads: ThreadSummary[] }>('/api/threads');
+    return threads;
+  }
+
+  async getThread(id: string): Promise<ThreadDetail> {
+    return this.get<ThreadDetail>(`/api/threads/${id}`);
+  }
+
+  async renameThread(id: string, title: string): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>(`/api/threads/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    });
+  }
+
+  async deleteThread(id: string): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>(`/api/threads/${id}`, { method: 'DELETE' });
   }
 
   /* ---- plumbing ---- */
