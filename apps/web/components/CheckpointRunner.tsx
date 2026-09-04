@@ -91,13 +91,13 @@ function StatusDot({ status }: { status: LayerState['status'] }) {
 
   switch (status) {
     case 'pending':
-      return <span style={{ ...base, backgroundColor: '#999' }} />;
+      return <span style={{ ...base, backgroundColor: 'var(--text-faint)' }} />;
     case 'running':
       return (
         <span
           style={{
             ...base,
-            backgroundColor: '#d4a017',
+            backgroundColor: 'var(--warn)',
             animation: 'cr-pulse 0.8s ease-in-out infinite',
           }}
         />
@@ -108,7 +108,7 @@ function StatusDot({ status }: { status: LayerState['status'] }) {
           style={{
             ...base,
             backgroundColor: 'transparent',
-            color: '#2e7d32',
+            color: 'var(--success)',
             fontSize: 14,
             lineHeight: '10px',
             width: 'auto',
@@ -126,7 +126,7 @@ function StatusDot({ status }: { status: LayerState['status'] }) {
           style={{
             ...base,
             backgroundColor: 'transparent',
-            color: '#d32f2f',
+            color: 'var(--danger)',
             fontSize: 14,
             lineHeight: '10px',
             width: 'auto',
@@ -384,10 +384,10 @@ export function CheckpointRunner({
                 fontSize: 14,
                 color:
                   layer.status === 'failed'
-                    ? '#d32f2f'
+                    ? 'var(--danger)'
                     : layer.status === 'passed'
-                      ? '#2e7d32'
-                      : '#666',
+                      ? 'var(--success)'
+                      : 'var(--text-dim)',
               }}
             >
               <StatusDot status={layer.status} />
@@ -403,7 +403,7 @@ export function CheckpointRunner({
             </li>
           ))}
           {sandboxProgress && layers[2].status === 'running' && (
-            <li style={{ padding: '2px 0 0 18px', fontSize: 12, color: '#888' }}>
+            <li style={{ padding: '2px 0 0 18px', fontSize: 12, color: 'var(--text-faint)' }}>
               {sandboxProgress}
             </li>
           )}
@@ -424,7 +424,7 @@ export function CheckpointRunner({
       )}
 
       {status === 'passed' && (
-        <span style={{ color: '#2e7d32', fontWeight: 600, fontSize: 14 }}>
+        <span style={{ color: 'var(--success)', fontWeight: 600, fontSize: 14 }}>
           Checkpoint passed!
         </span>
       )}
@@ -435,7 +435,7 @@ export function CheckpointRunner({
             Retry
           </button>
           {attemptCount > 0 && (
-            <span style={{ fontSize: 12, color: '#999' }}>Attempt {attemptCount}</span>
+            <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>Attempt {attemptCount}</span>
           )}
         </div>
       )}

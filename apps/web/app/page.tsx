@@ -22,7 +22,7 @@ export default function HomePage() {
     simple: {
       tag: 'Plain English & Intuition',
       title: 'Simple & Intuitive Explanation',
-      color: '#10b981',
+      color: 'var(--agent-conceptual)',
       excerpt:
         'Think of a Closure like a backpack a function wears when it goes out into the world. Even when the outer function has finished executing and packed up, the inner function still keeps whatever variables were in its backpack wherever it travels.',
       bullets: ['Strips out unnecessary jargon', 'Uses real-world mental models', 'Builds foundational intuition before syntax'],
@@ -30,7 +30,7 @@ export default function HomePage() {
     industry: {
       tag: 'Production Patterns & Trade-offs',
       title: 'Industry Context & Production Patterns',
-      color: '#6366f1',
+      color: 'var(--agent-practical)',
       excerpt:
         'At scale (e.g., in React state handlers or Node.js event listeners), uncollected closures can hold large DOM trees or database pools in memory. Senior engineers use closures for data encapsulation and factory functions while being mindful of circular references.',
       bullets: ['Production war stories & failure modes', 'Memory leak prevention strategies', 'Architecture trade-offs at scale'],
@@ -38,7 +38,7 @@ export default function HomePage() {
     practice: {
       tag: 'Hands-On Exercises & Drills',
       title: 'Hands-On Sandbox Practice',
-      color: '#06b6d4',
+      color: 'var(--agent-interactive)',
       excerpt:
         'Exercise: Build a resilient token bucket rate limiter using a closure to store the token count and timestamp privately without exposing internal variables to global scope. Try modifying the leak test in the sandbox.',
       bullets: ['Executable code snippets', 'Self-verifying test checkpoints', 'Progressive micro-drills'],
@@ -46,7 +46,7 @@ export default function HomePage() {
     concepts: {
       tag: 'Underlying Mechanics & RFC Specs',
       title: 'Deep Architecture & Runtime Internals',
-      color: '#ec4899',
+      color: 'var(--agent-takeaways)',
       excerpt:
         'Under the V8 engine, closures are represented via ScopeInfo and Context heap objects. When an inner function references outer bindings, those bindings are allocated on the heap rather than the stack frame, surviving LIFO deallocation.',
       bullets: ['V8 / JS runtime heap layout', 'Time and space complexity proofs', 'Standards specifications & RFC citations'],
