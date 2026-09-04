@@ -2358,3 +2358,230 @@ select.control option {
 .alt-cols ul.tight li { margin: 2px 0; }
 
 .when { margin-top: 10px; font-size: 13.5px; color: var(--on-surface-variant); }
+
+/* ------------------------------------------------------------------ *\
+ * Rendered instructions
+ *
+ * Model output arrives as Markdown and is rendered to React elements by
+ * lib/markdown.tsx — never HTML, so the XSS invariant holds. These are the
+ * rules for what comes out.
+\* ------------------------------------------------------------------ */
+
+.prose {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.prose > :first-child { margin-top: 0; }
+.prose > :last-child { margin-bottom: 0; }
+
+.prose p { margin: 0 0 14px; max-width: 72ch; }
+
+.prose h2,
+.prose h3,
+.prose h4,
+.prose h5,
+.prose h6 {
+  font-family: var(--font-heading);
+  color: var(--text-heading);
+  letter-spacing: -0.015em;
+  margin: 26px 0 10px;
+  text-wrap: balance;
+}
+
+.prose h2 { font-size: 21px; }
+.prose h3 { font-size: 17px; }
+.prose h4,
+.prose h5,
+.prose h6 { font-size: 15px; }
+
+.prose ul,
+.prose ol { margin: 0 0 14px; padding-left: 22px; max-width: 72ch; }
+.prose li { margin: 5px 0; }
+.prose li::marker { color: var(--primary); }
+
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 22px 0;
+}
+
+.prose blockquote {
+  margin: 0 0 14px;
+  padding: 10px 16px;
+  border-left: 3px solid var(--primary);
+  background: var(--agent-conceptual-bg);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  color: var(--on-surface-variant);
+}
+
+.prose a { color: var(--primary); text-underline-offset: 2px; }
+.prose a:hover { color: var(--primary-container); }
+
+/* Inline code is a chip on the page; fenced code is a panel. Distinguishing
+   the two is what stops a wall of instructions reading as undifferentiated. */
+.prose :not(pre) > code {
+  padding: 2px 6px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  background: var(--code-chip-bg);
+  color: var(--text-heading);
+  font-family: var(--mono);
+  font-size: 0.88em;
+  white-space: nowrap;
+}
+
+.prose pre {
+  position: relative;
+  margin: 0 0 16px;
+  padding: 16px 18px;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  overflow-x: auto;
+  box-shadow: var(--shadow);
+}
+
+.prose pre code {
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--code-text);
+}
+
+/* The language tag doubles as a hint that the block is runnable code rather
+   than quoted output. */
+.prose pre[data-lang]::before {
+  content: attr(data-lang);
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.objective {
+  font-size: 15.5px;
+  color: var(--on-surface-variant);
+  margin: 6px 0 0;
+  max-width: 72ch;
+}
+
+/* ------------------------------------------------------------------ *\
+ * Hints
+\* ------------------------------------------------------------------ */
+
+.hints {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+  padding: 22px 24px;
+  box-shadow: var(--shadow);
+}
+
+.hints h3 { margin-top: 0; }
+
+.hint-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+
+.hint-tier {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  background: var(--surface-2);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.hint-tier.unlocked { background: var(--surface); }
+.hint-tier.unlocked:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }
+
+/* A locked hint still shows, greyed, so the ladder is visible — the learner
+   can see help exists and what it costs before spending an attempt on it. */
+.hint-tier.locked { opacity: 0.72; }
+
+.hint-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--text-heading);
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hint-tier.locked .hint-header { cursor: not-allowed; color: var(--text-dim); }
+
+.hint-header:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}
+
+.hint-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.hint-label::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--warning);
+  flex-shrink: 0;
+}
+
+.hint-tier.locked .hint-label::before { background: var(--outline-variant); }
+
+.hint-chevron {
+  color: var(--text-dim);
+  font-size: 18px;
+  line-height: 1;
+  transition: transform 160ms ease;
+}
+
+.hint-chevron.open { transform: rotate(90deg); }
+
+.hint-body {
+  padding: 0 16px 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.hint-lock { font-size: 12.5px; }
+
+/* ------------------------------------------------------------------ *\
+ * Buttons — carry more weight than the surrounding prose
+\* ------------------------------------------------------------------ */
+
+.btn {
+  padding: 11px 20px;
+  border-radius: var(--radius-full);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  transition: background 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.btn:not(:disabled):active { transform: translateY(1px); }
+
+.btn:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.checkpoint-section .btn,
+.reveal .btn { margin-top: 4px; }

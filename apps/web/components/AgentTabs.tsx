@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { AGENT_ORDER, type AgentKind } from '@ai-edu/core';
+import { renderMarkdown } from '@/lib/markdown';
 
 export interface AgentPane {
   status: 'pending' | 'streaming' | 'complete' | 'error';
@@ -251,7 +252,10 @@ function Answer({ text, streaming }: { text: string; streaming: boolean }) {
         block.type === 'code' ? (
           <CodeBlock key={i} content={block.content} lang={block.lang} />
         ) : (
-          <span key={i}>{block.content}</span>
+          // Rendered, not raw. `renderMarkdown` builds React elements, so a tag
+          // in model output stays text — the invariant is about raw HTML, not
+          // about leaving `### heading` on screen for the learner to decode.
+          <Fragment key={i}>{renderMarkdown(block.content, `a${i}`)}</Fragment>
         ),
       )}
       {streaming && <span className="caret" aria-hidden="true" />}

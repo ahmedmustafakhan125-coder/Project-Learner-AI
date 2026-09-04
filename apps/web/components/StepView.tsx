@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import type { SourceFile, StepContent, StepProgressPatch } from '@ai-edu/api-client';
 
 import { api } from '../lib/api';
 
 import { splitFences } from './AgentTabs';
+import { renderMarkdown } from '@/lib/markdown';
 import { CodeEditor } from './CodeEditor';
 import { CheckpointRunner } from './CheckpointRunner';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -311,21 +312,25 @@ function DraftStatus({ state }: { state: SaveState }) {
 }
 
 /**
- * Same deliberate non-renderer as the answer tabs: model output is untrusted,
- * and a markdown library with raw-HTML support would be an XSS path. Code
- * fences are separated out; everything else renders as plain text nodes.
+ * Instructions and explanations, rendered.
+ *
+ * Still no Markdown library — model output is untrusted and any renderer with
+ * raw-HTML support is an XSS path (CONTEXT.md invariant 5). `renderMarkdown`
+ * builds React elements instead, so a tag in the source stays text because it
+ * only ever becomes a text child. Fences are split out first so code keeps its
+ * own block with a copy button.
  */
 function Markdownish({ text }: { text: string }) {
   const blocks = splitFences(text);
   return (
-    <div className="answer">
+    <div className="prose">
       {blocks.map((block, i) =>
         block.type === 'code' ? (
-          <pre key={i}>
+          <pre key={i} data-lang={block.lang || undefined}>
             <code>{block.content}</code>
           </pre>
         ) : (
-          <span key={i}>{block.content}</span>
+          <Fragment key={i}>{renderMarkdown(block.content, `b${i}`)}</Fragment>
         ),
       )}
     </div>
