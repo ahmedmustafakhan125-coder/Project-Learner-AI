@@ -12,6 +12,7 @@ import { attemptRoutes } from './routes/attempts.js';
 import { attachmentRoutes } from './routes/attachments.js';
 import { interviewRoutes } from './routes/interview.js';
 import { projectRoutes } from './routes/projects.js';
+import { threadRoutes } from './routes/threads.js';
 
 export async function buildServer() {
   const env = loadEnv();
@@ -66,6 +67,7 @@ export async function buildServer() {
   await app.register(agentRoutes);
   await app.register(attemptRoutes);
   await app.register(projectRoutes);
+  await app.register(threadRoutes);
 
   return app;
 }

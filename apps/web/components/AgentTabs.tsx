@@ -1,11 +1,11 @@
 'use client';
 
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { AGENT_ORDER, type AgentKind } from '@ai-edu/core';
 import { renderMarkdown } from '@/lib/markdown';
 
 export interface AgentPane {
-  status: 'pending' | 'streaming' | 'complete' | 'error';
+  status: 'pending' | 'streaming' | 'complete' | 'error' | 'cancelled';
   text: string;
   error: string | null;
 }
@@ -63,27 +63,71 @@ const AGENT_METADATA: Record<
   },
 };
 
-export function AgentTabs({ panes }: { panes: AgentPanes }) {
-  const [viewMode, setViewMode] = useState<'grid' | 'tabbed'>('grid');
+/*
+ * Raw status keys used to reach the screen verbatim — a learner watching four
+ * cards read "pending" learns nothing about whether the app is stuck. Each
+ * status now carries its own words and its own colour token, so the state is
+ * legible without decoding jargon and never renders low-contrast grey on white.
+ */
+const STATUS_LABEL: Record<AgentPane['status'], string> = {
+  pending: 'Queued',
+  streaming: 'Writing',
+  complete: 'Ready',
+  error: 'Failed',
+  cancelled: 'Stopped',
+};
+
+function statusColor(status: AgentPane['status'], accent: string): string {
+  if (status === 'error') return 'var(--danger)';
+  if (status === 'cancelled') return 'var(--warn)';
+  if (status === 'complete') return 'var(--success)';
+  if (status === 'pending') return 'var(--text-dim)';
+  return accent;
+}
+
+export interface AgentTabsProps {
+  panes: AgentPanes;
+  /**
+   * True once nothing is still streaming. Drives the automatic hand-off from
+   * the four-up grid (useful while all four write at once) to the tabbed
+   * reading view (useful once there is a finished answer to actually read).
+   */
+  complete?: boolean;
+}
+
+export function AgentTabs({ panes, complete = false }: AgentTabsProps) {
+  const [viewMode, setViewMode] = useState<'grid' | 'tabbed'>(complete ? 'tabbed' : 'grid');
   const [activeTab, setActiveTab] = useState<AgentKind>('simple');
 
+  /*
+   * Watching four answers race is the point of the grid; reading one of them is
+   * the point of the tabs. Switching on completion — and back on the next run —
+   * gives each view the phase it is actually good at. A manual toggle still
+   * wins until the phase changes again, because this fires on the flip only.
+   */
+  useEffect(() => {
+    setViewMode(complete ? 'tabbed' : 'grid');
+  }, [complete]);
+
   return (
-    <div style={{ marginTop: '36px' }}>
+    <div className="agent-results">
       <div className="view-mode-bar">
-        <div className="view-mode-toggle">
+        <div className="view-mode-toggle" role="group" aria-label="Answer layout">
           <button
             type="button"
             className={`view-mode-btn ${viewMode === 'grid' ? 'active' : ''}`}
+            aria-pressed={viewMode === 'grid'}
             onClick={() => setViewMode('grid')}
           >
-            Grid View
+            Grid view
           </button>
           <button
             type="button"
             className={`view-mode-btn ${viewMode === 'tabbed' ? 'active' : ''}`}
+            aria-pressed={viewMode === 'tabbed'}
             onClick={() => setViewMode('tabbed')}
           >
-            Tabbed View
+            Tabbed view
           </button>
         </div>
       </div>
@@ -96,26 +140,31 @@ export function AgentTabs({ panes }: { panes: AgentPanes }) {
         </div>
       ) : (
         <div className="tabs">
-          <div className="tablist" role="tablist" aria-label="Specialist Answers">
+          <div className="tablist" role="tablist" aria-label="Specialist answers">
             {AGENT_ORDER.map((agent) => {
               const meta = AGENT_METADATA[agent];
+              const pane = panes[agent];
               const isSelected = activeTab === agent;
               return (
                 <button
                   key={agent}
+                  type="button"
                   role="tab"
                   className="tab"
+                  style={{ ['--tab-accent' as string]: meta.accentColor }}
                   aria-selected={isSelected}
                   aria-controls={`panel-${agent}`}
                   id={`tab-${agent}`}
                   onClick={() => setActiveTab(agent)}
                 >
-                  <span className={`ping-indicator`} style={{ backgroundColor: meta.accentColor, color: meta.accentColor }} />
-                  <span className="agent-icon">{meta.icon}</span>
-                  <div className="agent-name">
+                  <span className="tab-glyph" style={{ color: meta.accentColor }}>
+                    {meta.icon}
+                  </span>
+                  <span className="agent-name">
                     <span className="agent-title">{meta.title}</span>
                     <span className="agent-role">{meta.role}</span>
-                  </div>
+                  </span>
+                  <StatusDot pane={pane} accent={meta.accentColor} />
                 </button>
               );
             })}
@@ -135,6 +184,81 @@ export function AgentTabs({ panes }: { panes: AgentPanes }) {
   );
 }
 
+/** The one dot that says "this tab is still writing" without stealing the label. */
+function StatusDot({ pane, accent }: { pane: AgentPane; accent: string }) {
+  const color = statusColor(pane.status, accent);
+  return (
+    <span
+      className={`tab-status-dot ${pane.status === 'streaming' ? 'ping-indicator' : ''}`}
+      style={{ backgroundColor: color, color }}
+      title={STATUS_LABEL[pane.status]}
+      aria-label={STATUS_LABEL[pane.status]}
+    />
+  );
+}
+
+function StatusPill({ pane, accent }: { pane: AgentPane; accent: string }) {
+  const color = statusColor(pane.status, accent);
+  return (
+    <span className="agent-card-status-pill" style={{ color, borderColor: color }}>
+      <span
+        className={`tab-status-dot ${pane.status === 'streaming' ? 'ping-indicator' : ''}`}
+        style={{ backgroundColor: color, color }}
+        aria-hidden="true"
+      />
+      {STATUS_LABEL[pane.status]}
+    </span>
+  );
+}
+
+/** Everything below the header, shared by the grid card and the tab panel. */
+function PaneBody({ agent, pane }: { agent: AgentKind; pane: AgentPane }) {
+  return (
+    <>
+      {pane.status === 'error' && (
+        <div className="notice error" style={{ marginTop: 0 }}>
+          <strong>This angle failed.</strong> {pane.error ?? 'The specialist did not respond.'}
+        </div>
+      )}
+
+      {pane.status === 'cancelled' && (
+        <div className="notice warn" style={{ marginTop: 0 }}>
+          You stopped this answer{pane.text ? ' — what arrived first is kept below.' : '.'}
+        </div>
+      )}
+
+      {pane.status === 'pending' && (
+        <p className="loading-line">
+          <span className="loading-dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+          Waiting to start…
+        </p>
+      )}
+
+      {pane.status === 'streaming' && !pane.text && (
+        <p className="loading-line">
+          <span className="loading-dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+          Reasoning…
+        </p>
+      )}
+
+      {pane.text && (
+        <>
+          <Answer text={pane.text} streaming={pane.status === 'streaming'} />
+          {agent === 'practice' && pane.status === 'complete' && <Exercise markdown={pane.text} />}
+        </>
+      )}
+    </>
+  );
+}
+
 function AgentCard({ agent, pane }: { agent: AgentKind; pane: AgentPane }) {
   const meta = AGENT_METADATA[agent];
 
@@ -142,57 +266,23 @@ function AgentCard({ agent, pane }: { agent: AgentKind; pane: AgentPane }) {
     <article className={`glass-panel ${meta.borderClass} agent-card`}>
       <div
         className="agent-card-ambient"
-        style={{
-          background: meta.ambientBg,
-          top: agent === 'simple' || agent === 'concepts' ? '-40px' : 'auto',
-          bottom: agent === 'industry' ? '-40px' : 'auto',
-          right: agent === 'simple' ? '-40px' : 'auto',
-          left: agent === 'industry' ? '-40px' : 'auto',
-        }}
+        style={{ background: meta.ambientBg, top: '-40px', right: '-40px' }}
       />
 
       <header className="agent-card-header">
         <div className="agent-card-title-group">
-          <span className="agent-card-icon">{meta.icon}</span>
+          <span className="agent-card-icon" style={{ color: meta.accentColor }}>
+            {meta.icon}
+          </span>
           <h2 className="agent-card-title">{meta.title}</h2>
-          <span style={{ fontSize: '11px', color: 'var(--text-faint)' }}>{meta.role}</span>
+          <span className="agent-card-role">{meta.role}</span>
         </div>
 
-        <div className="agent-card-status-pill">
-          <span
-            className="ping-indicator"
-            style={{
-              backgroundColor: pane.status === 'error' ? 'var(--danger)' : pane.status === 'complete' ? 'var(--success)' : meta.accentColor,
-              color: pane.status === 'error' ? 'var(--danger)' : pane.status === 'complete' ? 'var(--success)' : meta.accentColor,
-            }}
-          />
-          <span style={{ color: meta.accentColor }}>{pane.status}</span>
-        </div>
+        <StatusPill pane={pane} accent={meta.accentColor} />
       </header>
 
       <div className="agent-card-body">
-        {pane.status === 'error' && (
-          <div className="notice error" style={{ margin: 0 }}>
-            {pane.error}
-          </div>
-        )}
-
-        {pane.status === 'pending' && (
-          <p className="skeleton">Waiting to start parallel reasoning…</p>
-        )}
-
-        {pane.status !== 'pending' && !pane.text && (
-          <p className="skeleton">
-            Generating stream<span className="caret" />
-          </p>
-        )}
-
-        {pane.text && (
-          <>
-            <Answer text={pane.text} streaming={pane.status === 'streaming'} />
-            {agent === 'practice' && pane.status === 'complete' && <Exercise markdown={pane.text} />}
-          </>
-        )}
+        <PaneBody agent={agent} pane={pane} />
       </div>
     </article>
   );
@@ -203,38 +293,18 @@ function Pane({ agent, pane }: { agent: AgentKind; pane: AgentPane }) {
 
   return (
     <div>
-      <div className="pane-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '14px', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '20px' }}>{meta.icon}</span>
-          <h2 style={{ fontSize: '18px', margin: 0, color: meta.accentColor }}>{meta.title}</h2>
-          <span className="muted" style={{ fontSize: '12px' }}>({meta.role})</span>
+      <div className="pane-header">
+        <div className="pane-header-title">
+          <span className="pane-header-icon" style={{ color: meta.accentColor }}>
+            {meta.icon}
+          </span>
+          <h2 style={{ color: meta.accentColor }}>{meta.title}</h2>
+          <span className="pane-header-role">{meta.role}</span>
         </div>
-        <div className="agent-card-status-pill">
-          <span className="ping-indicator" style={{ backgroundColor: meta.accentColor, color: meta.accentColor }} />
-          <span style={{ color: meta.accentColor }}>{pane.status}</span>
-        </div>
+        <StatusPill pane={pane} accent={meta.accentColor} />
       </div>
 
-      {pane.status === 'error' && (
-        <div className="notice error">
-          <strong>This angle failed:</strong> {pane.error}
-        </div>
-      )}
-
-      {pane.status === 'pending' && <p className="skeleton">Waiting to start parallel reasoning…</p>}
-
-      {pane.status !== 'pending' && !pane.text && (
-        <p className="skeleton">
-          Generating perspective<span className="caret" />
-        </p>
-      )}
-
-      {pane.text && (
-        <>
-          <Answer text={pane.text} streaming={pane.status === 'streaming'} />
-          {agent === 'practice' && pane.status === 'complete' && <Exercise markdown={pane.text} />}
-        </>
-      )}
+      <PaneBody agent={agent} pane={pane} />
     </div>
   );
 }
@@ -277,32 +347,14 @@ function CodeBlock({ content, lang }: { content: string; lang: string }) {
   };
 
   return (
-    <div style={{ position: 'relative', margin: '14px 0' }}>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          background: 'var(--surface-3)',
-          border: '1px solid var(--border-strong)',
-          borderBottom: 'none',
-          padding: '6px 14px',
-          borderRadius: '10px 10px 0 0',
-          fontSize: '11px',
-          color: 'var(--text-dim)',
-          fontFamily: 'var(--mono)',
-        }}
-      >
+    <div className="code-block">
+      <div className="code-block-head">
         <span>{lang || 'code'}</span>
-        <button
-          onClick={() => void copy()}
-          className="btn ghost"
-          style={{ padding: '2px 8px', fontSize: '11px', height: '22px' }}
-        >
+        <button type="button" onClick={() => void copy()} className="code-block-copy">
           {copied ? '✓ Copied' : 'Copy'}
         </button>
       </div>
-      <pre style={{ margin: 0, borderRadius: '0 0 10px 10px' }}>
+      <pre>
         <code>{content}</code>
       </pre>
     </div>
@@ -345,18 +397,17 @@ function Exercise({ markdown }: { markdown: string }) {
   if (!html) return null;
 
   return (
-    <div className="exercise" style={{ marginTop: '16px', borderRadius: '12px', overflow: 'hidden' }}>
-      <div style={{ padding: '8px 14px', background: 'rgba(0,0,0,0.6)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-        <span style={{ fontSize: '11.5px', color: 'var(--secondary)' }}>
-          Isolated Sandbox Preview
-        </span>
+    <div className="exercise">
+      <div className="exercise-head">
+        <span className="exercise-dot" aria-hidden="true" />
+        Isolated sandbox preview
       </div>
       <iframe
         title="Practice exercise"
         sandbox="allow-scripts"
         srcDoc={html}
         referrerPolicy="no-referrer"
-        style={{ width: '100%', height: '360px', border: 'none', background: '#ffffff' }}
+        className="exercise-frame"
       />
     </div>
   );

@@ -106,7 +106,8 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
     /* ---- persist the question and four placeholder rows ---- */
 
-    const messageId = await persistQuestion(user.id, threadId, screened);
+    const persisted = await persistQuestion(user.id, threadId, screened);
+    const messageId = persisted.messageId;
 
     /* ---- open the SSE stream ---- */
 
@@ -132,7 +133,15 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
 
-    send('meta', { messageId, model: provider.modelId, agents: AGENT_ORDER });
+    // The thread id goes back to the browser so a follow-up question lands in
+    // the same conversation instead of spawning a new row in the history rail
+    // for every single question.
+    send('meta', {
+      messageId,
+      threadId: persisted.threadId,
+      model: provider.modelId,
+      agents: AGENT_ORDER,
+    });
 
     // Aborting on disconnect is what actually stops tokens being spent. The
     // fan-out detaches its in-flight work when the consumer walks away, so
@@ -222,12 +231,39 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
  * Persistence
  * ------------------------------------------------------------------ */
 
+interface PersistedQuestion {
+  messageId: string;
+  /** Null only when the thread insert itself failed. */
+  threadId: string | null;
+}
+
 async function persistQuestion(
   userId: string,
   threadId: string | null,
   compiled: z.infer<typeof CompiledQuery>,
-): Promise<string> {
-  let resolvedThreadId = threadId;
+): Promise<PersistedQuestion> {
+  /*
+   * A supplied thread id is client input and has to be proved to belong to the
+   * caller before anything is written under it. `db()` uses the service-role
+   * key and bypasses RLS, so without this check any learner could post another
+   * learner's thread id and append messages to their conversation. An id that
+   * does not check out is not an error — it is simply treated as a new
+   * conversation, which is also what happens when a thread has since been
+   * deleted from another tab.
+   */
+  let resolvedThreadId: string | null = null;
+
+  if (threadId) {
+    const { data } = await db()
+      .from('threads')
+      .select('id')
+      .eq('id', threadId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    resolvedThreadId = data?.id ?? null;
+  }
+
+  const startedNewThread = !resolvedThreadId;
 
   if (!resolvedThreadId) {
     const { data } = await db()
@@ -273,7 +309,19 @@ async function persistQuestion(
     }
   }
 
-  return messageId;
+  // A thread's position in the history rail is its `updated_at`, and the
+  // column only defaults on insert — without this touch every follow-up sinks
+  // the conversation the learner is actively working in.
+  if (!startedNewThread && resolvedThreadId) {
+    const { error: touchErr } = await db()
+      .from('threads')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', resolvedThreadId)
+      .eq('user_id', userId);
+    if (touchErr) console.error('[agents] failed to touch thread:', touchErr.message);
+  }
+
+  return { messageId, threadId: resolvedThreadId };
 }
 
 interface FinaliseArgs {
