@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { AGENT_LABELS, AGENT_ORDER, type AgentKind } from '@ai-edu/core';
+import { AGENT_ORDER, type AgentKind } from '@ai-edu/core';
 
 export interface AgentPane {
   status: 'pending' | 'streaming' | 'complete' | 'error';
@@ -33,32 +33,32 @@ const AGENT_METADATA: Record<
     title: 'Conceptual Guide',
     role: 'Intuitive Theory & Mechanism',
     borderClass: 'border-gradient-primary',
-    ambientBg: 'rgba(59, 130, 246, 0.25)',
-    accentColor: 'var(--primary)',
+    ambientBg: 'var(--agent-conceptual-bg)',
+    accentColor: 'var(--agent-conceptual)',
   },
   industry: {
     icon: '✦',
     title: 'Practical Engineer',
     role: 'Production Systems & Real Code',
     borderClass: 'border-gradient-tertiary',
-    ambientBg: 'rgba(76, 215, 246, 0.25)',
-    accentColor: 'var(--tertiary)',
+    ambientBg: 'var(--agent-practical-bg)',
+    accentColor: 'var(--agent-practical)',
   },
   practice: {
     icon: '✦',
     title: 'Interactive Sandbox',
     role: 'Hands-on Runnable Exercise',
     borderClass: 'border-gradient-secondary',
-    ambientBg: 'rgba(208, 188, 255, 0.25)',
-    accentColor: 'var(--secondary)',
+    ambientBg: 'var(--agent-interactive-bg)',
+    accentColor: 'var(--agent-interactive)',
   },
   concepts: {
     icon: '✦',
     title: 'Key Takeaways',
     role: 'Core Facts & Gotchas',
     borderClass: 'border-gradient-warning',
-    ambientBg: 'rgba(251, 191, 36, 0.25)',
-    accentColor: 'var(--warning)',
+    ambientBg: 'var(--agent-takeaways-bg)',
+    accentColor: 'var(--agent-takeaways)',
   },
 };
 
