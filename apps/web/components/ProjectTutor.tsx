@@ -356,12 +356,13 @@ export function ProjectTutor({
       />
 
       {/*
-        The way out, on the edge the learner's eye is already on.
-        There is a small close control in the header too, but it sits in the
-        very corner of the window against the page chrome and reads as part of
-        the browser rather than part of the panel. This is a full-height strip
-        against the code the panel is covering, pointing at where the drawer
-        goes when it closes.
+        The way out: a tab hanging off the edge the panel is covering.
+
+        It was a full-height strip, which read as a wall rather than a control
+        and made the panel look 26px narrower than it was. A small tab in the
+        same place, and of the same shape, as the rail that opens the drawer
+        means one object in one position - press it to open, press it to close
+        - instead of two unrelated affordances at opposite ends of the panel.
       */}
       <button
         type="button"

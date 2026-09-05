@@ -132,6 +132,9 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
+  /* The bar is out of flow now, so the first screenful is reserved here.
+     `box-sizing: border-box` above keeps this out of the 100vh. */
+  padding-top: var(--nav-height);
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -294,9 +297,22 @@ body > * {
 /* Navigation Bar                                                     */
 /* ------------------------------------------------------------------ */
 
+/*
+ * Fixed, not sticky.
+ *
+ * Sticky kept it on screen but left it in flow, so it shared the page's
+ * stacking rules with everything else - and `body > *` puts the whole of
+ * `<main>` at `z-index: 1`, which traps the tutor drawer inside it. The bar
+ * then painted OVER the drawer at 85% opacity, and because it is translucent
+ * the drawer's header showed through it as a smear rather than being cleanly
+ * hidden. Pinned, with the drawer starting below it, the two never share a
+ * pixel and neither has to win.
+ */
 .lumina-navbar {
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
   z-index: 100;
   background: var(--nav-bg);
   backdrop-filter: blur(12px);
@@ -2953,9 +2969,16 @@ select.control option {
  * not survive on a white card.
 \* ================================================================== */
 
-/* The navbar is sticky and 68px tall; the rail hangs off its bottom edge. */
+/*
+ * The height of the fixed navigation bar: the 68px container plus its 1px
+ * bottom border. Everything that hangs off the bar's bottom edge - the
+ * conversation rail here, the tutor drawer, the page's own top padding -
+ * measures from this, so it is one number rather than several guesses.
+ *
+ * It said 68px, which left the rail sitting on top of the bar's border.
+ */
 :root {
-  --nav-height: 68px;
+  --nav-height: 69px;
   --rail-width: 288px;
 }
 
@@ -4683,7 +4706,9 @@ select.control option {
 .tutor-rail {
   position: fixed;
   right: 0;
-  top: 50%;
+  /* Centred in the page area, not the window: half the bar's height lower
+     than dead centre, so it lines up with the close tab it turns into. */
+  top: calc(50% + var(--nav-height) / 2);
   transform: translateY(-50%);
   z-index: 40;
   display: flex;
@@ -4732,7 +4757,9 @@ select.control option {
 
 .tutor-panel {
   position: fixed;
-  top: 0;
+  /* Below the bar, never behind it. The bar is translucent, so overlapping
+     did not hide the drawer - it blended the two into an unreadable smear. */
+  top: var(--nav-height);
   right: 0;
   bottom: 0;
   z-index: 45;
@@ -4746,7 +4773,10 @@ select.control option {
   /* No backdrop: the whole point is reading the answer and the code together,
      and dimming the page would defeat that. The shadow carries the layering. */
   box-shadow: -12px 0 40px -12px rgba(15, 23, 42, 0.25);
-  overflow: hidden;
+  /* Visible so the close tab can hang off the left edge. The containment
+     that mattered has moved to `.tutor-body`, which is what actually holds
+     content. */
+  overflow: visible;
 }
 
 /*
@@ -4758,7 +4788,7 @@ select.control option {
 @supports (height: 100dvh) {
   .tutor-panel {
     bottom: auto;
-    height: 100dvh;
+    height: calc(100dvh - var(--nav-height));
   }
 }
 
@@ -4803,23 +4833,37 @@ body[data-tutor-resizing='true'] {
  * and impossible to miss. The arrow points where the drawer goes.
  */
 .tutor-close-handle {
-  flex: 0 0 26px;
+  position: absolute;
+  left: -24px;
+  /* Level with the rail it replaces, so opening and closing happen in the
+     same place on the screen rather than the control jumping. */
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  width: 24px;
+  height: 72px;
   display: grid;
   place-items: center;
   padding: 0;
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1;
   cursor: pointer;
-  color: var(--text-faint);
-  background: var(--surface-3);
-  border: none;
-  border-right: 1px solid var(--border);
-  transition: color 150ms ease, background 150ms ease;
+  color: var(--text-dim);
+  background: var(--surface);
+  /* Flush with the panel: only the outer corners are rounded, which is what
+     makes it read as a tab hanging off the edge rather than a floating pill. */
+  border: 1px solid var(--border);
+  border-right: none;
+  border-radius: var(--radius-xl) 0 0 var(--radius-xl);
+  box-shadow: -4px 0 16px -6px rgba(15, 23, 42, 0.18);
+  transition: color 150ms ease, background 150ms ease, width 150ms ease;
 }
 
 .tutor-close-handle:hover {
   color: var(--primary);
-  background: var(--surface);
+  background: var(--surface-3);
+  width: 28px;
+  left: -28px;
 }
 
 .tutor-close-handle:focus-visible {
@@ -4827,12 +4871,14 @@ body[data-tutor-resizing='true'] {
   outline-offset: -3px;
 }
 
-/* Everything that is not the strip. */
+/* Everything that is not the grip. */
 .tutor-body {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  /* Was on `.tutor-panel`, which now has to stay visible for the close tab. */
+  overflow: hidden;
 }
 
 /*
@@ -5032,6 +5078,14 @@ body[data-tutor-resizing='true'] {
 
   .tutor-resize {
     display: none;
+  }
+
+  /* At full width there is no outside to hang off, so the tab tucks in. */
+  .tutor-close-handle,
+  .tutor-close-handle:hover {
+    left: 0;
+    border-left: none;
+    border-radius: 0 var(--radius-xl) var(--radius-xl) 0;
   }
 }
 

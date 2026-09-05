@@ -98,8 +98,29 @@ const PANEL = `
   </div>
 </aside>`;
 
+/**
+ * The navigation bar, as `NavHeader` renders it.
+ *
+ * Present because the reported bug is an interaction between the two: the bar
+ * is `rgba(255,255,255,0.85)` with a backdrop blur, so when the drawer ran
+ * underneath it the drawer's header showed THROUGH the bar as a smear. A
+ * fixture without a bar cannot see that, which is why the first version of
+ * this suite passed while the bug was still on screen.
+ */
+const NAVBAR = `
+<header class="lumina-navbar" id="navbar">
+  <div class="lumina-nav-container">
+    <a class="lumina-brand" href="/">Project Learner</a>
+    <nav class="lumina-nav-links"><a class="lumina-nav-link" href="/projects">Projects</a></nav>
+    <div class="lumina-nav-actions" id="navactions">
+      <span class="user-chip">admin</span>
+      <button type="button" class="btn-nav-signin">Sign out</button>
+    </div>
+  </div>
+</header>`;
+
 const PAGE = `<!DOCTYPE html><html><head><style>${CSS}</style></head>
-<body><main style="height:3000px">page content behind the drawer</main>${PANEL}</body></html>`;
+<body>${NAVBAR}<main style="height:3000px">page content behind the drawer</main>${PANEL}</body></html>`;
 
 let server: Server;
 let browser: Browser;
@@ -133,6 +154,22 @@ const overflowOf = (page: Page, id: string) =>
     const el = document.getElementById(sel)!;
     return el.scrollWidth - el.clientWidth;
   }, id);
+
+/**
+ * The narrowest the drawer can be dragged, which is the case that matters.
+ *
+ * Assertions about clipping are worth most at the worst width: content that
+ * fits at 400px says nothing about 320px, and 320px is a width the learner can
+ * actually choose. It also keeps the mutation check below honest - the drawer
+ * grew 26px when the close strip became a floating tab, and at the wider size
+ * the old `white-space: pre` happened to fit this particular block, so the
+ * check quietly stopped proving anything.
+ */
+const MIN_DRAWER = 320;
+const narrow = (page: Page) =>
+  page.evaluate((px) => {
+    document.getElementById('panel')!.style.setProperty('--tutor-w', `${px}px`);
+  }, MIN_DRAWER);
 
 describe('fenced code in an answer', () => {
   it('is not cut off at the edge of the drawer', async () => {
@@ -173,10 +210,18 @@ describe('fenced code in an answer', () => {
     await page.close();
   });
 
+  it('is not cut off at the narrowest width either', async () => {
+    const page = await openPanel();
+    await narrow(page);
+    expect(await overflowOf(page, 'fence')).toBeLessThanOrEqual(1);
+    await page.close();
+  });
+
   it('still clips under the old rule, so this test knows what it protects', async () => {
     // If `white-space: pre` stops clipping on its own, the fix above has become
     // decorative and someone should find out why before deleting it.
     const page = await openPanel();
+    await narrow(page);
     await page.evaluate(() => {
       const pre = document.getElementById('fence')!;
       pre.style.whiteSpace = 'pre';
@@ -308,6 +353,135 @@ describe('the resize grip', () => {
     }));
     expect(gripShown).toBe(false);
     expect(panelWidth).toBe(600);
+    await page.close();
+  });
+});
+
+describe('the drawer and the navigation bar', () => {
+  it('starts below the bar instead of underneath it', async () => {
+    // The reported bug. The bar is 85% opaque, so an overlap did not hide the
+    // drawer - it blended the two, and the drawer's header read as a smudge
+    // across the account buttons.
+    const page = await openPanel();
+    const gap = await page.evaluate(() => {
+      const nav = document.getElementById('navbar')!.getBoundingClientRect();
+      const panel = document.getElementById('panel')!.getBoundingClientRect();
+      return panel.top - nav.bottom;
+    });
+    expect(gap).toBeGreaterThanOrEqual(0);
+    await page.close();
+  });
+
+  it('leaves the account controls completely uncovered', async () => {
+    const page = await openPanel();
+    const covered = await page.evaluate(() => {
+      const actions = document.getElementById('navactions')!.getBoundingClientRect();
+      const panel = document.getElementById('panel')!.getBoundingClientRect();
+      const overlapX = Math.min(actions.right, panel.right) - Math.max(actions.left, panel.left);
+      const overlapY = Math.min(actions.bottom, panel.bottom) - Math.max(actions.top, panel.top);
+      return overlapX > 0 && overlapY > 0;
+    });
+    expect(covered).toBe(false);
+    await page.close();
+  });
+
+  it('keeps the bar pinned when the page is scrolled', async () => {
+    const page = await openPanel();
+    await page.evaluate(() => window.scrollTo(0, 1200));
+    const { navTop, panelTop } = await page.evaluate(() => ({
+      navTop: document.getElementById('navbar')!.getBoundingClientRect().top,
+      panelTop: document.getElementById('panel')!.getBoundingClientRect().top,
+    }));
+    expect(navTop).toBe(0);
+    // And the drawer stays put with it, rather than sliding up under the bar.
+    expect(panelTop).toBeGreaterThanOrEqual(navTop + 60);
+    await page.close();
+  });
+
+  it('does not hide the top of the page behind the pinned bar', async () => {
+    // Taking the bar out of flow without reserving its height would put the
+    // first line of every page underneath it.
+    const page = await openPanel();
+    const clear = await page.evaluate(() => {
+      const nav = document.getElementById('navbar')!.getBoundingClientRect();
+      const main = document.querySelector('main')!.getBoundingClientRect();
+      return main.top - nav.bottom;
+    });
+    expect(clear).toBeGreaterThanOrEqual(0);
+    await page.close();
+  });
+
+  it('reaches the bottom of the window even though it starts lower', async () => {
+    const page = await openPanel();
+    const short = await page.evaluate(
+      () => window.innerHeight - document.getElementById('panel')!.getBoundingClientRect().bottom,
+    );
+    expect(Math.abs(short)).toBeLessThanOrEqual(1);
+    await page.close();
+  });
+});
+
+describe('the close tab', () => {
+  it('is a small tab, not a full-height strip', async () => {
+    const page = await openPanel();
+    const { height, panelHeight, width } = await page.evaluate(() => {
+      const tab = document.querySelector('.tutor-close-handle')!.getBoundingClientRect();
+      const panel = document.getElementById('panel')!.getBoundingClientRect();
+      return { height: tab.height, panelHeight: panel.height, width: tab.width };
+    });
+    expect(height).toBeLessThan(panelHeight / 3);
+    expect(height).toBeGreaterThan(40);
+    expect(width).toBeGreaterThanOrEqual(20);
+    await page.close();
+  });
+
+  it('sits in the middle of the panel edge', async () => {
+    const page = await openPanel();
+    const offCentre = await page.evaluate(() => {
+      const tab = document.querySelector('.tutor-close-handle')!.getBoundingClientRect();
+      const panel = document.getElementById('panel')!.getBoundingClientRect();
+      return Math.abs(tab.top + tab.height / 2 - (panel.top + panel.height / 2));
+    });
+    expect(offCentre).toBeLessThanOrEqual(1);
+    await page.close();
+  });
+
+  it('hangs off the outside edge, where the page it covers is', async () => {
+    const page = await openPanel();
+    const protrusion = await page.evaluate(() => {
+      const tab = document.querySelector('.tutor-close-handle')!.getBoundingClientRect();
+      const panel = document.getElementById('panel')!.getBoundingClientRect();
+      return panel.left - tab.left;
+    });
+    expect(protrusion).toBeGreaterThan(0);
+    await page.close();
+  });
+
+  it('opens and closes in the same place, so the control does not jump', async () => {
+    // The rail that opens the drawer and the tab that closes it should be the
+    // same object as far as the learner is concerned.
+    const page = await openPanel();
+    const drift = await page.evaluate(() => {
+      const tab = document.querySelector('.tutor-close-handle')!.getBoundingClientRect();
+      // The rail is not rendered while the panel is open, so it is measured by
+      // building one with the same class.
+      const rail = document.createElement('button');
+      rail.className = 'tutor-rail';
+      document.body.appendChild(rail);
+      const railBox = rail.getBoundingClientRect();
+      rail.remove();
+      return Math.abs(tab.top + tab.height / 2 - (railBox.top + railBox.height / 2));
+    });
+    expect(drift).toBeLessThanOrEqual(1);
+    await page.close();
+  });
+
+  it('stays on screen when the drawer fills a narrow window', async () => {
+    const page = await openPanel(600, 800);
+    const off = await page.evaluate(
+      () => document.querySelector('.tutor-close-handle')!.getBoundingClientRect().left,
+    );
+    expect(off).toBeGreaterThanOrEqual(0);
     await page.close();
   });
 });
