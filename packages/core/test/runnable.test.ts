@@ -102,3 +102,95 @@ describe('groundCheckpoint', () => {
     expect(groundCheckpoint(already, [file('main.py', 'import fastapi')])).toBe(already);
   });
 });
+
+/**
+ * Languages the sandbox cannot execute at all.
+ *
+ * The import scan asks whether the sandbox can resolve what a file pulls in.
+ * It could never catch a project written in a language the sandbox does not
+ * run, because there were no imports it recognised to scan: a Java project
+ * kept `runtime: "web"`, the sandbox was handed a project with no scripts in
+ * it, executed nothing, and every test failed with its own failureMessage on
+ * correct work.
+ */
+describe('a project the runtime cannot execute', () => {
+  const web = (tests: number) => ({
+    requiredFiles: [],
+    requiredSymbols: [],
+    runtime: 'web' as const,
+    tests: Array.from({ length: tests }, (_, i) => ({
+      name: `t${i}`,
+      code: 'true',
+      failureMessage: 'no',
+    })),
+  });
+
+  it('drops the tests for a Java project', () => {
+    const grounded = groundCheckpoint(web(2), [
+      { path: 'Main.java', contents: 'public class Main {}' },
+      { path: 'Todo.java', contents: 'public class Todo {}' },
+    ]);
+    expect(grounded.runtime).toBe('none');
+    expect(grounded.tests).toEqual([]);
+  });
+
+  it('drops the tests for C++, Go, Rust and C#', () => {
+    for (const path of ['main.cpp', 'main.go', 'main.rs', 'Program.cs']) {
+      const grounded = groundCheckpoint(web(1), [{ path, contents: 'int main() {}' }]);
+      expect(grounded.runtime, path).toBe('none');
+    }
+  });
+
+  it('drops the tests when python is claimed but nothing is python', () => {
+    const grounded = groundCheckpoint(
+      { ...web(1), runtime: 'python' },
+      [{ path: 'Main.java', contents: 'public class Main {}' }],
+    );
+    expect(grounded.runtime).toBe('none');
+  });
+
+  /* ---- and must not fire on projects that DO run ---- */
+
+  it('keeps the tests for a web project', () => {
+    const grounded = groundCheckpoint(web(2), [
+      { path: 'index.html', contents: '<html></html>' },
+      { path: 'app.js', contents: 'const a = 1;' },
+    ]);
+    expect(grounded.runtime).toBe('web');
+    expect(grounded.tests).toHaveLength(2);
+  });
+
+  it('keeps the tests for a page with no separate script file', () => {
+    // The executable part is inside the HTML, which the sandbox runs.
+    const grounded = groundCheckpoint(web(1), [
+      { path: 'index.html', contents: '<html><script>const a = 1;</script></html>' },
+    ]);
+    expect(grounded.runtime).toBe('web');
+  });
+
+  it('keeps the tests for a python project', () => {
+    const grounded = groundCheckpoint({ ...web(1), runtime: 'python' }, [
+      { path: 'main.py', contents: 'def main(): pass' },
+    ]);
+    expect(grounded.runtime).toBe('python');
+  });
+
+  it('keeps the tests for a step that only touches a stylesheet', () => {
+    /*
+     * The reason grounding is done against the whole project rather than the
+     * step's own files. This step owns nothing executable; the project it sits
+     * in is an ordinary web app and its tests run fine.
+     */
+    const grounded = groundCheckpoint(web(1), [
+      { path: 'index.html', contents: '<html></html>' },
+      { path: 'app.js', contents: 'const a = 1;' },
+      { path: 'styles.css', contents: '.a {}' },
+    ]);
+    expect(grounded.runtime).toBe('web');
+  });
+
+  it('leaves a checkpoint that never had tests alone', () => {
+    const grounded = groundCheckpoint(web(0), [{ path: 'Main.java', contents: 'x' }]);
+    expect(grounded.runtime).toBe('web');
+  });
+});

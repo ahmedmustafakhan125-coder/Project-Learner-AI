@@ -4669,37 +4669,49 @@ select.control option {
  * without costing the editor any width.
  * ------------------------------------------------------------------ */
 
-.project-layout {
-  grid-template-columns: 300px minmax(0, 1fr) auto;
-}
+/*
+ * The layout does not know about the tutor.
+ *
+ * It was a third grid column, which meant opening it squeezed the editor -
+ * the one part of the page the learner is actually working in. It is now a
+ * tab fixed to the right edge and a drawer that slides over the page, so the
+ * width of the code never depends on whether the chat is open.
+ */
 
-.project-layout.with-tutor {
-  grid-template-columns: 300px minmax(0, 1fr) minmax(320px, 380px);
-}
-
-/* ---- collapsed: the rail ---- */
+/* ---- collapsed: a tab on the edge of the window ---- */
 
 .tutor-rail {
-  position: sticky;
-  top: 24px;
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 40;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  width: 44px;
-  padding: 14px 0;
+  gap: 8px;
+  width: 34px;
+  padding: 16px 0;
   cursor: pointer;
   color: var(--text-dim);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow);
-  transition: color 150ms ease, border-color 150ms ease;
+  /* Flush with the edge: only the inner corners are rounded. */
+  border-right: none;
+  border-radius: var(--radius-xl) 0 0 var(--radius-xl);
+  box-shadow: -4px 0 16px -6px rgba(15, 23, 42, 0.12);
+  transition: color 150ms ease, background 150ms ease, width 150ms ease;
 }
 
 .tutor-rail:hover {
   color: var(--primary);
-  border-color: var(--border-strong);
+  background: var(--surface-3);
+  width: 38px;
+}
+
+.tutor-rail:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
 }
 
 .tutor-rail-icon {
@@ -4719,17 +4731,19 @@ select.control option {
 /* ---- expanded: the panel ---- */
 
 .tutor-panel {
-  position: sticky;
-  top: 24px;
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 45;
+  width: min(400px, 92vw);
   display: flex;
   flex-direction: column;
-  /* Tall enough to hold a conversation, short enough to keep the composer on
-     screen without scrolling the page. */
-  max-height: calc(100vh - 48px);
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2xl);
-  box-shadow: var(--shadow);
+  border-left: 1px solid var(--border-strong);
+  /* No backdrop: the whole point is reading the answer and the code together,
+     and dimming the page would defeat that. The shadow carries the layering. */
+  box-shadow: -12px 0 40px -12px rgba(15, 23, 42, 0.25);
   overflow: hidden;
 }
 
@@ -4872,33 +4886,24 @@ select.control option {
   outline-offset: 1px;
 }
 
-/* The step navigator already collapses here; a third column cannot fit
-   either, so the tutor becomes a full-width block under the step. */
-@media (max-width: 1200px) {
-  .project-layout,
-  .project-layout.with-tutor {
-    grid-template-columns: minmax(0, 1fr);
+/*
+ * On a narrow screen the drawer covers the page, which is the right trade:
+ * there is no room to show code and conversation at once, and a tab pinned to
+ * the edge stays reachable either way.
+ */
+@media (max-width: 760px) {
+  .tutor-panel {
+    width: 100vw;
   }
+}
 
-  .tutor-panel,
-  .tutor-rail {
-    position: static;
-    max-height: none;
-  }
-
-  .tutor-rail {
-    flex-direction: row;
-    justify-content: center;
-    width: 100%;
-    padding: 10px 0;
-  }
-
-  .tutor-rail-label {
-    writing-mode: horizontal-tb;
-    transform: none;
-  }
-
-  .tutor-log {
-    max-height: 55vh;
-  }
+/* Rewriting a step that came out wrong. Quiet on purpose: it costs a
+   generation and replaces instructions the learner may be halfway through. */
+.step-regenerate {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+  font-size: 12.5px;
 }

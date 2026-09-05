@@ -87,6 +87,16 @@ export interface StepViewProps {
    * on the server; it just was not on screen until a reload.
    */
   onStateChange?: (patch: Partial<StepContent>) => void;
+  /**
+   * Write this step again, because it came out wrong.
+   *
+   * A step was generated once and the cached copy served forever, so a bad
+   * expansion — a file it never wrote, a checkpoint nothing can satisfy —
+   * left the learner stuck on it with no way forward but abandoning the
+   * project. The server repairs what it can detect on its own; this is for
+   * everything only a person notices.
+   */
+  onRegenerate?: () => void;
 }
 
 export function StepView({
@@ -98,6 +108,7 @@ export function StepView({
   onPassed,
   onGateInputChanged,
   onStateChange,
+  onRegenerate,
 }: StepViewProps) {
   // Everything below is seeded from the server. A step the learner has already
   // worked on reopens where they left it: the explanation they unlocked stays
@@ -411,6 +422,35 @@ export function StepView({
         <section className="notice info">
           <strong>Write this step yourself.</strong> Build it in your own editor, then continue.
         </section>
+      )}
+
+      {/*
+        Deliberately quiet, and placed after the work rather than beside it.
+        Rewriting costs a generation and replaces instructions the learner may
+        be halfway through, so it should be findable when something is wrong
+        and easy to ignore when nothing is.
+      */}
+      {!locked && onRegenerate && (
+        <div className="step-regenerate">
+          <span className="muted">Something wrong with this step?</span>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              if (
+                window.confirm(
+                  'Write this step again from scratch?\n\n' +
+                    'The instructions, starting files and checkpoint are replaced. ' +
+                    'Your own code is kept.',
+                )
+              ) {
+                onRegenerate();
+              }
+            }}
+          >
+            Rewrite it
+          </button>
+        </div>
       )}
 
       <section className="reveal">

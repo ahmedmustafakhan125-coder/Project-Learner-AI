@@ -460,12 +460,20 @@ export class ApiClient {
     return this.request<{ ok: boolean }>(`/api/projects/${id}`, { method: 'DELETE' });
   }
 
-  /** Phase B. Idempotent — an already-expanded step is returned from storage. */
+  /**
+   * Phase B. Idempotent — an already-expanded step is returned from storage.
+   *
+   * `regenerate` writes the step again from scratch, for when it came out
+   * wrong. It costs a generation and is rate limited with the rest of them.
+   * The learner's draft is untouched: it lives on the progress row, not on the
+   * step, so rewriting the step cannot discard their work.
+   */
   async expandStep(
     projectId: string,
     stepIndex: number,
+    regenerate = false,
   ): Promise<{ step: StepContent; cached: boolean }> {
-    return this.post(`/api/projects/${projectId}/steps/${stepIndex}/expand`, {});
+    return this.post(`/api/projects/${projectId}/steps/${stepIndex}/expand`, { regenerate });
   }
 
   /** What to fetch next: what blocks the learner, and what to warm in the background. */

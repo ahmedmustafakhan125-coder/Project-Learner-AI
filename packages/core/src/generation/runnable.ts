@@ -217,17 +217,51 @@ export function unrunnableImports(
 }
 
 /**
+ * Whether this runtime has anything at all it could execute.
+ *
+ * The scan above asks "can the sandbox resolve what these files import". This
+ * asks the question underneath it, which nothing asked: are any of these files
+ * even in a language the sandbox runs?
+ *
+ * They frequently are not. A Java, C++, Go, Rust or C# project has no `.js`,
+ * no `.html` and no `.py` anywhere in it, so a checkpoint left on
+ * `runtime: "web"` handed the sandbox a project with no scripts, it executed
+ * nothing, and every test failed with its own failureMessage — on correct
+ * work, on every attempt, with no way for the learner to tell why. The import
+ * scan could not catch it because there were no imports it understood to scan.
+ */
+export function hasExecutableFiles(
+  files: readonly SourceFile[],
+  runtime: Checkpoint['runtime'],
+): boolean {
+  if (runtime === 'none') return false;
+  if (runtime === 'python') return files.some((file) => PY_FILE.test(file.path));
+  return files.some((file) => JS_FILE.test(file.path) || HTML_FILE.test(file.path));
+}
+
+/**
  * Turns off automatic checking for a step the sandbox could never have run.
  *
  * The tests go with it. Keeping tests the runner will skip only preserves the
  * illusion that the step is verified, and they are written against an
  * environment that does not exist.
+ *
+ * `files` should be the whole project as this step leaves it, not just the
+ * files the step itself touches. A step that only edits a stylesheet has no
+ * executable file of its own, and judging it alone would strip the tests from
+ * a perfectly runnable web project; the sandbox is handed the entire project
+ * at check time, so that is what the decision has to be made against.
  */
 export function groundCheckpoint(
   checkpoint: Checkpoint,
   files: readonly SourceFile[],
 ): Checkpoint {
   if (checkpoint.runtime === 'none' || checkpoint.tests.length === 0) return checkpoint;
+
+  // Nothing in a language this runtime can execute.
+  if (!hasExecutableFiles(files, checkpoint.runtime)) {
+    return { ...checkpoint, runtime: 'none', tests: [] };
+  }
 
   const missing = unrunnableImports(files, checkpoint.runtime);
   if (missing.length === 0) return checkpoint;

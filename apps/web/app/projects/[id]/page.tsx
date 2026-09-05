@@ -98,6 +98,29 @@ function ProjectShell() {
     [projectId],
   );
 
+  /**
+   * Write this step again, because it came out wrong.
+   *
+   * Lives here rather than in StepView because the page owns the cache: the
+   * rewritten step has to replace the cached copy or the learner would keep
+   * seeing the broken one until a reload.
+   */
+  const regenerateStep = useCallback(
+    async (index: number): Promise<void> => {
+      setLoadingStep(index);
+      setError(null);
+      try {
+        const { step } = await api.expandStep(projectId, index, true);
+        setSteps((prev) => ({ ...prev, [index]: step }));
+      } catch (err) {
+        setError(describe(err));
+      } finally {
+        setLoadingStep(null);
+      }
+    },
+    [projectId],
+  );
+
   const ensureStep = useCallback(
     async (index: number, blocking: boolean): Promise<void> => {
       if (steps[index] || inFlight.current.has(index)) return;
@@ -187,7 +210,7 @@ function ProjectShell() {
 
       {error && <div className="notice error">{error}</div>}
 
-      <div className={`project-layout ${tutorOpen ? 'with-tutor' : ''}`}>
+      <div className="project-layout">
         <nav className="step-nav" aria-label="Steps">
           <ol>
             {detail.steps.map((step) => (
@@ -270,6 +293,7 @@ function ProjectShell() {
               blockedBy={activeStep?.unlocked ? null : active - 1}
               onDraftSaved={(files) => patchStep(active, { draftFiles: files })}
               onStateChange={(patch) => patchStep(active, patch)}
+              onRegenerate={() => void regenerateStep(active)}
               onPassed={() => void advance(active)}
               onGateInputChanged={() => setProgressToken((t) => t + 1)}
             />
