@@ -13,6 +13,11 @@ import {
   type ExpansionContext,
   type Violation,
 } from './verifyExpansion.js';
+import {
+  hasSeriousInstructionIssue,
+  verifyInstructions,
+  type InstructionIssue,
+} from './verifyInstructions.js';
 import type { PacingDirective } from '../pacing/types.js';
 import { renderPacingDirective } from '../pacing/types.js';
 
@@ -38,13 +43,72 @@ const SYSTEM = `You write one step of a project-based programming tutorial. The 
 
 You are given the whole project blueprint and told which step to expand. Everything you write must fit the steps around it: do not re-do earlier work, do not pull in later work.
 
-## Instructions
+## Instructions — the most important thing you write
 
-Say what to build and what "done" looks like, concretely enough that the learner can tell when they have got there. Reference the exact files and names from the blueprint.
+This is what the learner reads and works from; everything else in the step exists to support it. Vague instructions are the single most common way a good project becomes a bad one. The learner cannot tell what to type, so they guess, fail the checkpoint, and have no way to work out why.
 
-Do NOT include the solution. Describe what the code must do, not the code that does it. Naming a function they should write is fine; writing its body is not.
+Write them in exactly this shape, using these three headings:
 
-Where there is a trap — an easy mistake, a confusing error message, an ordering that matters — warn about it before they hit it, in one line.
+### What you're building
+
+One or two sentences saying what the running program does after this step that it did not do before. Not "we will set up state management" — "the list stops resetting when you switch screens".
+
+### Your tasks
+
+A numbered list. One item per discrete piece of work, each naming ONE file in bold. Every item must be something the learner can do and then check. Each one states:
+
+- the exact file the work happens in
+- the exact name of everything they must define — function, class, constant, element id, CSS class, table column — spelled the way the checkpoint will look for it
+- the signature: what it takes and what it returns
+- the specific API or technique to use, wherever there is a right one
+- the trap, if there is one, in one line, at the point they would hit it
+
+### Done when
+
+One or two facts the learner can observe by running it. "Adding a todo and reloading the page keeps it" — not "the persistence layer works".
+
+## Naming is a contract, not a suggestion
+
+Every identifier in checkpoint.requiredSymbols MUST appear in the instructions, spelled identically. The checkpoint greps for those exact strings, so a symbol you graded on but never named is a step the learner cannot pass except by guessing which word you had in mind.
+
+Every file in this step's creates and edits must be named in the instructions too. A file they are graded on but never told to write is the same failure.
+
+## What "exact" means
+
+This is generic. Do not write it:
+
+  Set up the project structure and install the dependencies you need. Create the
+  main application file and add the basic scaffolding, then make sure everything
+  runs correctly before moving on.
+
+Every sentence there is true of almost any step of almost any project, which is what makes it useless. This is the same step written exactly:
+
+  ### What you're building
+
+  A database that survives a restart, so the task list is still there when the
+  app reopens.
+
+  ### Your tasks
+
+  1. **package.json** — add \`expo-sqlite\` to \`dependencies\` at \`^14.0.0\`. Do not
+     run \`npm install\` yet; step 6 needs the lockfile unchanged.
+  2. **db/schema.js** — export \`initDb()\`. It takes no arguments and returns the
+     opened database handle. Open \`todos.db\` with \`SQLite.openDatabaseSync\`, then
+     run a \`CREATE TABLE IF NOT EXISTS\` for a \`tasks\` table with columns \`id\`
+     (INTEGER PRIMARY KEY), \`title\` (TEXT NOT NULL) and \`done\` (INTEGER DEFAULT 0).
+  3. **App.js** — call \`initDb()\` exactly once, inside a \`useEffect\` with an empty
+     dependency array, and keep the handle in a \`useRef\`. Calling it on every
+     render reopens the database and the app locks up on the second one.
+
+  ### Done when
+
+  You add a task, force-quit the app, reopen it, and the task is still listed.
+
+Notice what changed: every task names its file, every name the checkpoint wants is written out, the signature is given, and "done" is something the learner can see rather than something they have to take on trust.
+
+Do NOT include the solution. Naming a function, its parameters and its return value is direction. Writing its body is the answer, and writing that is the learner's job.
+
+Steps with nothing to install and nothing to run still get this treatment. A setup step's tasks are the exact commands, the exact file paths they create, and the exact output that means it worked — those are knowable, and "set up your environment" is a step nobody can tell they have finished.
 
 ## Starter files — you are continuing a codebase, not starting one
 
@@ -67,7 +131,7 @@ Never shown before the step passes; used to check the learner's approach and to 
 
 ## Checkpoint
 
-requiredFiles / requiredSymbols are the cheap first pass — do the files exist, did they write anything at all.
+requiredFiles / requiredSymbols are the cheap first pass — do the files exist, did they write anything at all. Every symbol you list here must be one the instructions above named, spelled the same way. These are matched literally against the learner's code with comments stripped, so list identifiers they will actually type — a function name, a class, an element id — and not a description of one.
 
 tests are deterministic assertions run in a browser sandbox against their code. They must pass for a correct solution and fail for the obvious wrong ones. No network, no timing dependence, no randomness. failureMessage must say what was actually wrong — "expected total to be 6 but got 5, check whether the last item is included" not "test failed".
 
@@ -120,11 +184,28 @@ export interface ExpandStepOptions {
    * slow model, which is how a prompt regression goes unnoticed for weeks.
    */
   onViolations?: (violations: Violation[], willRetry: boolean) => void;
+  /**
+   * Told when the instructions do not say enough to work from.
+   *
+   * Separate from `onViolations` because the remedy is different: a file
+   * violation is repaired, an instruction problem can only be re-asked. If the
+   * second attempt is no better the step ships as written, so these are the
+   * ones worth watching — they are the only defects that reach the learner.
+   */
+  onInstructionIssues?: (issues: InstructionIssue[], willRetry: boolean) => void;
 }
 
 export async function expandStep(options: ExpandStepOptions): Promise<ExpandedStep> {
-  const { provider, blueprint, stepIndex, priorFiles = [], directive, signal, onViolations } =
-    options;
+  const {
+    provider,
+    blueprint,
+    stepIndex,
+    priorFiles = [],
+    directive,
+    signal,
+    onViolations,
+    onInstructionIssues,
+  } = options;
 
   const stub = blueprint.steps[stepIndex];
   if (!stub) {
@@ -180,6 +261,21 @@ export async function expandStep(options: ExpandStepOptions): Promise<ExpandedSt
 
   let step = await call();
 
+  /** Everything wrong with an answer: the file manifest and the prose alike. */
+  const inspect = (candidate: ExpandedStep) => {
+    const files = verifyExpansion(candidate, context);
+    const instructions = verifyInstructions(candidate, {
+      stub,
+      checkpoint: candidate.checkpoint,
+    });
+    return {
+      files,
+      instructions,
+      serious: hasSeriousViolation(files) || hasSeriousInstructionIssue(instructions),
+      count: files.length + instructions.length,
+    };
+  };
+
   /*
    * One retry, and only for damage a repair cannot honestly undo.
    *
@@ -192,32 +288,45 @@ export async function expandStep(options: ExpandStepOptions): Promise<ExpandedSt
    * The retry is a trailing turn so the blueprint above it stays byte-identical
    * and keeps reading from the cache.
    */
-  let violations = verifyExpansion(step, context);
-  if (hasSeriousViolation(violations)) {
-    onViolations?.(violations, true);
+  let report = inspect(step);
+
+  if (report.serious) {
+    if (report.files.length > 0) onViolations?.(report.files, true);
+    if (report.instructions.length > 0) onInstructionIssues?.(report.instructions, true);
+
     messages.push({
       role: 'user' as const,
-      content: [{ type: 'text' as const, text: renderViolations(violations) }],
+      content: [
+        {
+          type: 'text' as const,
+          text: renderViolations([...report.files, ...report.instructions]),
+        },
+      ],
     });
 
     try {
       const retried = await call();
-      const retriedViolations = verifyExpansion(retried, context);
+      const retriedReport = inspect(retried);
       // Keep whichever answer is closer to the plan. A retry that comes back
       // worse than the original is not an improvement worth adopting.
-      if (retriedViolations.length < violations.length) {
+      if (retriedReport.count < report.count) {
         step = retried;
-        violations = retriedViolations;
+        report = retriedReport;
       }
     } catch {
       // The first answer is repairable, and a failed retry is not a reason to
       // lose it. Better a repaired step than no step.
     }
-
-    if (violations.length > 0) onViolations?.(violations, false);
-  } else if (violations.length > 0) {
-    onViolations?.(violations, false);
   }
+
+  /*
+   * Reported after the retry as well as before it, so what is logged is what
+   * the learner actually got. File violations are about to be repaired away;
+   * instruction issues are not, and a step that still has one here is a step
+   * that shipped generic.
+   */
+  if (report.files.length > 0) onViolations?.(report.files, false);
+  if (report.instructions.length > 0) onInstructionIssues?.(report.instructions, false);
 
   /*
    * Repair regardless of whether a retry ran, and regardless of what it

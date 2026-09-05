@@ -25,6 +25,7 @@ export * from './generation/expand.js';
 export * from './generation/prefetch.js';
 export * from './generation/runnable.js';
 export * from './generation/verifyExpansion.js';
+export * from './generation/verifyInstructions.js';
 export * from './checkpoint/preflight.js';
 
 export * from './progress/unlock.js';

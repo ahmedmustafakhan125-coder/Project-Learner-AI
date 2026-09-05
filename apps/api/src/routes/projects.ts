@@ -564,6 +564,29 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
               'expansion did not match its file manifest',
             );
           },
+          /*
+           * Worth its own line, and worth watching more closely than the file
+           * violations above. Those are repaired before the step is stored, so
+           * nothing reaches the learner. Prose cannot be repaired - a step
+           * still carrying an instruction issue here is one that shipped
+           * generic, and `willRetry: false` is the moment that became true.
+           */
+          onInstructionIssues: (issues, willRetry) => {
+            request.log.warn(
+              {
+                stepIndex,
+                willRetry,
+                issues: issues.map((i) => ({
+                  code: i.code,
+                  detail: i.detail,
+                  severity: i.severity,
+                })),
+              },
+              willRetry
+                ? 'step instructions were too vague to work from'
+                : 'step instructions shipped with unresolved issues',
+            );
+          },
         });
 
         await db()
