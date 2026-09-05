@@ -214,6 +214,33 @@ export interface StepContent {
   pacingDirective: PacingDirective | null;
 }
 
+/* ---- the project tutor ---- */
+
+export interface TutorTranscriptTurn {
+  role: 'user' | 'assistant';
+  content: string;
+  /** Which step it was asked on. Null when asked from the finished view. */
+  stepIndex: number | null;
+  /** True when this answer contained code the gate had opened. */
+  revealedCode: boolean;
+  at: string;
+}
+
+/** How close a step is to earning the code. Displayed, never enforced here. */
+export interface TutorGate {
+  unlocked: boolean;
+  score: number;
+  threshold: number;
+  /** What is still outstanding, in the learner's words. */
+  missing: string[];
+}
+
+export type TutorStreamEvent =
+  | { kind: 'meta'; turnIndex: number; unlocked: boolean; missing: string[] }
+  | { kind: 'delta'; text: string }
+  | { kind: 'done'; text: string }
+  | { kind: 'error'; message: string };
+
 /** Whether the assembled project contains every file the blueprint planned. */
 export interface CompletenessReport {
   complete: boolean;
@@ -624,6 +651,75 @@ export class ApiClient {
           break;
       }
     }
+  }
+
+  /* ---- the project tutor ---- */
+
+  /**
+   * Ask the tutor about the project.
+   *
+   * One stream, one conversation spanning the whole project. Whether the answer
+   * may contain code is decided by the server from stored counters; `meta`
+   * reports which mode the answer came back in and what is still outstanding if
+   * it was withheld, so the panel can say "not yet, because" rather than
+   * leaving the model to improvise a refusal.
+   */
+  async *askTutor(options: {
+    projectId: string;
+    stepIndex: number | null;
+    message: string;
+    signal?: AbortSignal;
+  }): AsyncIterable<TutorStreamEvent> {
+    const token = await this.getToken();
+
+    const stream = streamSSE({
+      url: `${this.baseUrl}/api/projects/${options.projectId}/tutor`,
+      token,
+      body: { stepIndex: options.stepIndex, message: options.message },
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+
+    for await (const message of stream) {
+      const payload = safeParse(message.data);
+      if (!payload) continue;
+
+      switch (message.event) {
+        case 'meta':
+          yield {
+            kind: 'meta',
+            ...(payload as { turnIndex: number; unlocked: boolean; missing: string[] }),
+          };
+          break;
+        case 'delta':
+          yield { kind: 'delta', text: (payload as { text: string }).text };
+          break;
+        case 'done':
+          yield { kind: 'done', text: (payload as { text: string }).text };
+          break;
+        case 'error':
+        case 'fatal':
+          yield { kind: 'error', message: (payload as { message: string }).message };
+          break;
+      }
+    }
+  }
+
+  /** The whole project's tutor transcript, oldest first. */
+  async getTutorThread(projectId: string): Promise<TutorTranscriptTurn[]> {
+    const { turns } = await this.get<{ turns: TutorTranscriptTurn[] }>(
+      `/api/projects/${projectId}/tutor`,
+    );
+    return turns;
+  }
+
+  /**
+   * How close this step is to earning the code.
+   *
+   * Advisory. The same answer is computed again from the same rows on every
+   * ask, so this endpoint is what the panel displays, never what decides.
+   */
+  async getTutorGate(projectId: string, stepIndex: number): Promise<TutorGate> {
+    return this.get<TutorGate>(`/api/projects/${projectId}/tutor/gate/${stepIndex}`);
   }
 
   /** Every specialist's follow-up thread on one question. */

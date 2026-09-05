@@ -260,18 +260,23 @@ export function hasSeriousViolation(violations: readonly Violation[]): boolean {
 }
 
 /**
- * The violations, written for the model rather than for a log.
+ * The faults, written for the model rather than for a log.
  *
- * Fed back as a trailing turn on the retry. Naming the specific files is what
- * makes a second call worth paying for — "try again" produces another guess,
- * while "solutionFiles omitted src/store.js" produces the file.
+ * Fed back as a trailing turn on the retry. Naming the specific files and
+ * symbols is what makes a second call worth paying for - "try again" produces
+ * another guess, while "solutionFiles omitted src/store.js" produces the file.
+ *
+ * Typed on `message` alone so instruction problems render through this same
+ * path. They are a different kind of defect with a different remedy, but from
+ * the model's side both are one list of things to fix in one more answer, and
+ * splitting them into two blocks would only invite it to address one of them.
  */
-export function renderViolations(violations: readonly Violation[]): string {
+export function renderViolations(faults: ReadonlyArray<{ message: string }>): string {
   const lines = [
     '<expansion_rejected>',
-    'Your previous answer did not follow this step’s file manifest. Fix exactly these ' +
-      'problems and return the whole step again:',
-    ...violations.map((violation) => `- ${violation.message}`),
+    'Your previous answer did not meet this step requirements. Fix exactly these problems ' +
+      'and return the whole step again:',
+    ...faults.map((fault) => `- ${fault.message}`),
     'Keep everything else about the step as it was. Do not shrink the instructions, the ' +
       'explanation, the alternatives or the hints to make room.',
     '</expansion_rejected>',

@@ -8,6 +8,7 @@ import { ApiError } from '@ai-edu/api-client';
 
 import { AuthGate } from '../../../components/AuthGate';
 import { FinishedProject } from '../../../components/FinishedProject';
+import { ProjectTutor } from '../../../components/ProjectTutor';
 import { StepView } from '../../../components/StepView';
 import { api } from '../../../lib/api';
 
@@ -39,6 +40,23 @@ function ProjectShell() {
   const [error, setError] = useState<string | null>(null);
   /** The finished-project view replaces the step body rather than sitting under it. */
   const [showFinished, setShowFinished] = useState(false);
+  /*
+   * The tutor rail.
+   *
+   * Open state lives here rather than in the panel so it survives switching
+   * steps - the conversation spans the project, and having it close every time
+   * the learner moves would make it feel like a per-step widget.
+   */
+  const [tutorOpen, setTutorOpen] = useState(false);
+  /*
+   * Bumped whenever something the gate reads has changed.
+   *
+   * The tutor and the hint ladder are driven by the same counters, so pressing
+   * submit or opening a hint has to move what the tutor says is outstanding.
+   * A token rather than the values themselves: the page does not own them, it
+   * only knows when they are stale.
+   */
+  const [progressToken, setProgressToken] = useState(0);
 
   // Guards against a re-render firing a second expansion for a step already in
   // flight — that would bill twice for the same generation.
@@ -161,7 +179,7 @@ function ProjectShell() {
 
       {error && <div className="notice error">{error}</div>}
 
-      <div className="project-layout">
+      <div className={`project-layout ${tutorOpen ? 'with-tutor' : ''}`}>
         <nav className="step-nav" aria-label="Steps">
           <ol>
             {detail.steps.map((step) => (
@@ -244,6 +262,7 @@ function ProjectShell() {
               blockedBy={activeStep?.unlocked ? null : active - 1}
               onDraftSaved={(files) => rememberDraft(active, files)}
               onPassed={() => void advance(active)}
+              onGateInputChanged={() => setProgressToken((t) => t + 1)}
             />
           )}
           {/* A locked step beyond the prefetch window has not been written and
@@ -258,6 +277,19 @@ function ProjectShell() {
             </p>
           )}
         </section>
+
+        {/*
+          Docked beside the work rather than floating over it: the learner reads
+          their code and the answer at the same time, and a panel that covers
+          the thing being discussed gets closed to look and reopened to read.
+        */}
+        <ProjectTutor
+          projectId={projectId}
+          stepIndex={showFinished ? null : active}
+          progressToken={progressToken}
+          open={tutorOpen}
+          onOpenChange={setTutorOpen}
+        />
       </div>
     </main>
   );

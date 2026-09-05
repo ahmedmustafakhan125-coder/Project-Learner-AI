@@ -5,6 +5,7 @@ import { expandStep } from '../src/generation/expand.js';
 import type { ProjectBlueprint } from '../src/schemas/project.js';
 import type { ExpandedStep, SourceFile } from '../src/schemas/step.js';
 import type { Violation } from '../src/generation/verifyExpansion.js';
+import type { InstructionIssue } from '../src/generation/verifyInstructions.js';
 
 /**
  * What `expandStep` does when a step comes back not matching its file plan.
@@ -76,9 +77,33 @@ const BLUEPRINT: ProjectBlueprint = {
   ],
 };
 
+/**
+ * Instructions as the prompt now asks for them.
+ *
+ * Realistic on purpose: the fixture used to be the single line "Add
+ * persistence.", which the instruction checks correctly refuse as too thin to
+ * work from. A fixture that could not pass the bar it is testing against would
+ * have made every case below look like a retry.
+ */
+const GOOD_INSTRUCTIONS = `### What you're building
+
+Todos that survive a reload, instead of vanishing every time the page refreshes.
+
+### Your tasks
+
+1. **storage.js** - export \`save(todos)\`. It takes the todos array and returns
+   nothing. Serialise with \`JSON.stringify\` and write it to \`localStorage\`
+   under the key \`todos\`.
+2. **app.js** - call \`save(todos)\` as the last line of \`addTodo\`, after the
+   list has been re-rendered.
+
+### Done when
+
+You add a todo, reload the page, and it is still in the list.`;
+
 function baseStep(overrides: Partial<ExpandedStep> = {}): ExpandedStep {
   return {
-    instructionsMd: 'Add persistence.',
+    instructionsMd: GOOD_INSTRUCTIONS,
     explanationMd: 'localStorage is synchronous.',
     alternatives: [],
     hints: [],
@@ -127,6 +152,7 @@ function scripted(answers: ExpandedStep[]) {
 async function expand(answers: ExpandedStep[]) {
   const { provider, requests, callCount } = scripted(answers);
   const seen: Array<{ violations: Violation[]; willRetry: boolean }> = [];
+  const prose: Array<{ issues: InstructionIssue[]; willRetry: boolean }> = [];
 
   const step = await expandStep({
     provider,
@@ -134,9 +160,10 @@ async function expand(answers: ExpandedStep[]) {
     stepIndex: 1,
     priorFiles: PRIOR_FILES,
     onViolations: (violations, willRetry) => seen.push({ violations, willRetry }),
+    onInstructionIssues: (issues, willRetry) => prose.push({ issues, willRetry }),
   });
 
-  return { step, requests, calls: callCount(), seen };
+  return { step, requests, calls: callCount(), seen, prose };
 }
 
 /* ------------------------------------------------------------------ */
@@ -214,6 +241,80 @@ describe('a step that leaves a hole in the project', () => {
     const { step } = await expand([slightlyBroken, muchWorse]);
     // The first answer's starter files survived; the retry's empty set did not.
     expect(step.starterFiles.map((f) => f.path).sort()).toEqual(['app.js', 'storage.js']);
+  });
+});
+
+describe('a step whose instructions the learner cannot work from', () => {
+  it('is generated a second time', async () => {
+    // Instructions are the one part of a step the learner actually reads, and
+    // unlike a missing file they cannot be repaired afterwards - prose can
+    // only be re-asked for.
+    const vague = baseStep({ instructionsMd: 'Add persistence to the app.' });
+    const { calls } = await expand([vague, baseStep()]);
+    expect(calls).toBe(2);
+  });
+
+  it('is generated again when it grades on a symbol it never named', () => {
+    // The trap this closes: the learner reads "write a function that saves the
+    // todos" while the grader greps for the literal string `persistTodos`.
+    const mismatched = baseStep({
+      checkpoint: {
+        requiredFiles: [],
+        requiredSymbols: ['persistTodos'],
+        tests: [],
+        runtime: 'web',
+      },
+    });
+    return expand([mismatched, baseStep()]).then(({ calls, prose }) => {
+      expect(calls).toBe(2);
+      expect(prose[0]!.issues.map((i) => i.code)).toContain('ungraded_symbol');
+      expect(prose[0]!.willRetry).toBe(true);
+    });
+  });
+
+  it('tells the model which symbol was missing', async () => {
+    const mismatched = baseStep({
+      checkpoint: {
+        requiredFiles: [],
+        requiredSymbols: ['persistTodos'],
+        tests: [],
+        runtime: 'web',
+      },
+    });
+    const { requests } = await expand([mismatched, baseStep()]);
+    expect(requests[1]!.text).toContain('persistTodos');
+  });
+
+  it('ships the step anyway when the retry is no better', async () => {
+    /*
+     * Prose cannot be repaired, so there has to be an end to it. A step with
+     * weak instructions is still a step; blocking the learner on a second bad
+     * roll would be worse than the instructions are.
+     */
+    const vague = baseStep({ instructionsMd: 'Add persistence to the app.' });
+    const { step, calls, prose } = await expand([vague, vague]);
+
+    expect(calls).toBe(2);
+    expect(step.instructionsMd).toBe('Add persistence to the app.');
+    // Reported a second time, with willRetry false, so what is logged is what
+    // the learner actually got.
+    expect(prose.at(-1)!.willRetry).toBe(false);
+  });
+
+  it('costs nothing extra when the instructions are only shapeless', async () => {
+    // Missing headings are cosmetic: prose can carry a task list and a finish
+    // line without them, and re-asking over a heading is the waste the retry
+    // policy exists to avoid.
+    const shapeless = baseStep({
+      // Long enough to clear the length floor and specific enough to name both
+      // files - it simply has no headings and no numbered list.
+      instructionsMd: (
+        'Write save(todos) in storage.js so the array is written to localStorage, ' +
+        'then call it from addTodo in app.js so the list survives a reload. '
+      ).repeat(3),
+    });
+    const { calls } = await expand([shapeless]);
+    expect(calls).toBe(1);
   });
 });
 

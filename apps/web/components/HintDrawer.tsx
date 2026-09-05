@@ -24,6 +24,16 @@ export interface HintDrawerProps {
   hintCount: number;
   attemptCount: number;
   startedAt: number | null;
+  /**
+   * True once this step's checkpoint has passed.
+   *
+   * Opens the whole ladder. The gate exists so a learner cannot skip the
+   * thinking by reading the answer first; once they have solved it that reason
+   * is spent, and the tier-3 hint is often the clearest account of the
+   * technique in the entire step. The server applies the same rule, so this is
+   * the visible half rather than the enforcing one.
+   */
+  passed?: boolean;
   /** Tiers opened on an earlier visit. A spent hint stays spent. */
   openedTiers?: number[];
   /** Fired the first time a tier is opened, so it survives a reload. */
@@ -49,6 +59,7 @@ export function HintDrawer({
   hintCount,
   attemptCount,
   startedAt,
+  passed = false,
   openedTiers = [],
   onTierOpened,
 }: HintDrawerProps) {
@@ -77,7 +88,16 @@ export function HintDrawer({
       }
 
       setExpanded((prev) => ({ ...prev, [tier]: true }));
-      if (!openedTiers.includes(tier)) onTierOpened?.(tier);
+      /*
+       * A hint read after passing is not help, so it is not spent.
+       *
+       * `hints_opened` is what an attempt's `hints_used` is derived from, and
+       * that feeds the pacing model. Recording a hint the learner opened while
+       * reading back over work they had already finished would report a
+       * struggle that did not happen, and the next step would be scaffolded
+       * down for it.
+       */
+      if (!passed && !openedTiers.includes(tier)) onTierOpened?.(tier);
 
       // Already cached — nothing to fetch.
       if (cache[tier] !== undefined) return;
@@ -95,7 +115,7 @@ export function HintDrawer({
         setLoading((prev) => ({ ...prev, [tier]: false }));
       }
     },
-    [expanded, cache, projectId, stepIndex, openedTiers, onTierOpened],
+    [expanded, cache, projectId, stepIndex, passed, openedTiers, onTierOpened],
   );
 
   // Tiers carried over from a previous visit are open but empty — their text
@@ -129,10 +149,16 @@ export function HintDrawer({
   return (
     <section className="hints">
       <h3>Hints</h3>
+      {passed && (
+        <p className="muted hints-unlocked">
+          All open now that you have passed - the later ones explain the technique in full.
+        </p>
+      )}
       <div className="hint-list">
         {tiers.map((threshold, i) => {
           const tier = i + 1;
           const unlocked =
+            passed ||
             attemptCount >= threshold.attempts ||
             elapsed >= threshold.minutes * 60_000;
 

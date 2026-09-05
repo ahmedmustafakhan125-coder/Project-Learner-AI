@@ -4657,3 +4657,248 @@ select.control option {
   font-family: var(--mono);
   font-size: 12.5px;
 }
+
+/* ------------------------------------------------------------------ *
+ * The project tutor
+ *
+ * A third column rather than an overlay. The learner reads their code and
+ * the answer at the same time, and a floating panel over the editor gets
+ * closed to look at the code and reopened to read the answer.
+ *
+ * Collapsed it is a narrow rail, so the affordance is always visible
+ * without costing the editor any width.
+ * ------------------------------------------------------------------ */
+
+.project-layout {
+  grid-template-columns: 300px minmax(0, 1fr) auto;
+}
+
+.project-layout.with-tutor {
+  grid-template-columns: 300px minmax(0, 1fr) minmax(320px, 380px);
+}
+
+/* ---- collapsed: the rail ---- */
+
+.tutor-rail {
+  position: sticky;
+  top: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 44px;
+  padding: 14px 0;
+  cursor: pointer;
+  color: var(--text-dim);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow);
+  transition: color 150ms ease, border-color 150ms ease;
+}
+
+.tutor-rail:hover {
+  color: var(--primary);
+  border-color: var(--border-strong);
+}
+
+.tutor-rail-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* Reads bottom-to-top so it sits in the rail without wrapping. */
+.tutor-rail-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+/* ---- expanded: the panel ---- */
+
+.tutor-panel {
+  position: sticky;
+  top: 24px;
+  display: flex;
+  flex-direction: column;
+  /* Tall enough to hold a conversation, short enough to keep the composer on
+     screen without scrolling the page. */
+  max-height: calc(100vh - 48px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.tutor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tutor-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tutor-collapse {
+  padding: 2px 6px;
+  font-size: 12px;
+  color: var(--text-faint);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.tutor-collapse:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+
+.tutor-empty {
+  padding: 16px 14px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.tutor-empty p {
+  margin: 0 0 10px;
+}
+
+/* The one element that scrolls: the composer and the gate line stay put. */
+.tutor-log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 14px;
+}
+
+.tutor-divider {
+  margin: 14px 0 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  text-align: center;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.tutor-turn {
+  margin: 12px 0;
+}
+
+.tutor-who {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--text-faint);
+  text-transform: uppercase;
+}
+
+.tutor-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.tutor-turn-user .tutor-text {
+  padding: 8px 10px;
+  color: var(--text);
+  background: var(--surface-3);
+  border-radius: var(--radius-xl);
+}
+
+.tutor-text.answer p {
+  margin: 0 0 8px;
+}
+
+.tutor-text.answer pre {
+  overflow-x: auto;
+  font-size: 12px;
+}
+
+.tutor-error {
+  margin: 0 14px 10px;
+}
+
+/* ---- the gate ---- */
+
+.tutor-gate {
+  padding: 9px 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  background: var(--surface-3);
+  border-top: 1px solid var(--border);
+}
+
+.tutor-gate.unlocked {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.tutor-composer {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.tutor-composer textarea {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  resize: none;
+}
+
+.tutor-composer textarea:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+/* The step navigator already collapses here; a third column cannot fit
+   either, so the tutor becomes a full-width block under the step. */
+@media (max-width: 1200px) {
+  .project-layout,
+  .project-layout.with-tutor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tutor-panel,
+  .tutor-rail {
+    position: static;
+    max-height: none;
+  }
+
+  .tutor-rail {
+    flex-direction: row;
+    justify-content: center;
+    width: 100%;
+    padding: 10px 0;
+  }
+
+  .tutor-rail-label {
+    writing-mode: horizontal-tb;
+    transform: none;
+  }
+
+  .tutor-log {
+    max-height: 55vh;
+  }
+}
