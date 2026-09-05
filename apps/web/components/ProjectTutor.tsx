@@ -196,136 +196,156 @@ export function ProjectTutor({
 
   return (
     <aside className="tutor-panel" aria-label="Project tutor">
-      <header className="tutor-head">
-        <span className="tutor-title">
-          <span aria-hidden="true">✦</span> Tutor
-        </span>
-        <button
-          type="button"
-          className="tutor-collapse"
-          onClick={() => onOpenChange(false)}
-          aria-label="Close the tutor"
-          title="Close"
-        >
-          ✕
-        </button>
-      </header>
+      {/*
+        The way out, on the edge the learner's eye is already on.
+        There is a small close control in the header too, but it sits in the
+        very corner of the window against the page chrome and reads as part of
+        the browser rather than part of the panel. This is a full-height strip
+        against the code the panel is covering, pointing at where the drawer
+        goes when it closes.
+      */}
+      <button
+        type="button"
+        className="tutor-close-handle"
+        onClick={() => onOpenChange(false)}
+        aria-label="Close the tutor"
+        title="Close the tutor"
+      >
+        <span aria-hidden="true">&rsaquo;</span>
+      </button>
 
-      {turns.length === 0 && !streaming && (
-        <div className="tutor-empty">
-          <p>
-            I can see this project and every file you have written in it. Ask me what is
-            going wrong, what something means, or what to try next.
-          </p>
-          <p className="muted">
-            I will not write the step&apos;s code for you until you have really had a go at
-            it — everything else is fair game.
-          </p>
-        </div>
-      )}
+      <div className="tutor-body">
+        <header className="tutor-head">
+          <span className="tutor-title">
+            <span aria-hidden="true">✦</span> Tutor
+          </span>
+          <button
+            type="button"
+            className="tutor-collapse"
+            onClick={() => onOpenChange(false)}
+            aria-label="Close the tutor"
+            title="Close"
+          >
+            ✕
+          </button>
+        </header>
 
-      <div className="tutor-log" ref={logRef}>
-        {turns.map((turn, i) => {
-          const movedStep = i > 0 && turns[i - 1]!.stepIndex !== turn.stepIndex;
-          return (
-            <div key={i}>
-              {movedStep && turn.stepIndex !== null && (
-                <div className="tutor-divider">Step {turn.stepIndex + 1}</div>
-              )}
-              <div className={`tutor-turn tutor-turn-${turn.role}`}>
-                <span className="tutor-who">{turn.role === 'user' ? 'You' : 'Tutor'}</span>
-                {turn.role === 'user' ? (
-                  <p className="tutor-text">{turn.content}</p>
-                ) : (
-                  <div className="tutor-text answer">
-                    <Rendered text={turn.content} keyPrefix={`t${i}`} />
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-
-        {streaming !== null && (
-          <div className="tutor-turn tutor-turn-assistant">
-            <span className="tutor-who">Tutor</span>
-            {streaming ? (
-              <div className="tutor-text answer">
-                <Rendered text={streaming} keyPrefix="ts" />
-                <span className="caret" aria-hidden="true" />
-              </div>
-            ) : (
-              <p className="loading-line">
-                <span className="loading-dots" aria-hidden="true">
-                  <i />
-                  <i />
-                  <i />
-                </span>
-                Reading your code…
-              </p>
-            )}
+        {turns.length === 0 && !streaming && (
+          <div className="tutor-empty">
+            <p>
+              I can see this project and every file you have written in it. Ask me what is
+              going wrong, what something means, or what to try next.
+            </p>
+            <p className="muted">
+              I will not write the step&apos;s code for you until you have really had a go at
+              it — everything else is fair game.
+            </p>
           </div>
         )}
-      </div>
 
-      {error && <div className="notice error tutor-error">{error}</div>}
+        <div className="tutor-log" ref={logRef}>
+          {turns.map((turn, i) => {
+            const movedStep = i > 0 && turns[i - 1]!.stepIndex !== turn.stepIndex;
+            return (
+              <div key={i}>
+                {movedStep && turn.stepIndex !== null && (
+                  <div className="tutor-divider">Step {turn.stepIndex + 1}</div>
+                )}
+                <div className={`tutor-turn tutor-turn-${turn.role}`}>
+                  <span className="tutor-who">{turn.role === 'user' ? 'You' : 'Tutor'}</span>
+                  {turn.role === 'user' ? (
+                    <p className="tutor-text">{turn.content}</p>
+                  ) : (
+                    <div className="tutor-text answer">
+                      <Rendered text={turn.content} keyPrefix={`t${i}`} />
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
 
-      {/*
-        What the gate is still waiting for.
-        A composite score is opaque by nature - a number going up tells nobody
-        what to do - so the panel shows the outstanding items instead, and the
-        tutor never has to refuse without saying why.
-      */}
-      {gate && !gate.unlocked && gate.missing.length > 0 && (
-        <div className="tutor-gate">
-          <strong>Code is held back for now.</strong>
-          <span className="muted"> Still to go: {gate.missing.join(', ')}.</span>
+          {streaming !== null && (
+            <div className="tutor-turn tutor-turn-assistant">
+              <span className="tutor-who">Tutor</span>
+              {streaming ? (
+                <div className="tutor-text answer">
+                  <Rendered text={streaming} keyPrefix="ts" />
+                  <span className="caret" aria-hidden="true" />
+                </div>
+              ) : (
+                <p className="loading-line">
+                  <span className="loading-dots" aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  Reading your code…
+                </p>
+              )}
+            </div>
+          )}
         </div>
-      )}
-      {gate?.unlocked && (
-        <div className="tutor-gate unlocked">
-          <strong>Code is open on this step.</strong>
-          <span className="muted"> Ask for the part you are stuck on.</span>
-        </div>
-      )}
 
-      <div className="tutor-composer">
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={
-            stepIndex === null
-              ? 'Ask about the finished project…'
-              : `Ask about step ${stepIndex + 1}…`
-          }
-          rows={2}
-          disabled={busy}
-          onKeyDown={(e) => {
-            // Enter sends, Shift+Enter is a newline. Most questions are a line.
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              void send();
-            }
-          }}
-        />
-        {busy ? (
-          <button
-            type="button"
-            className="btn danger"
-            onClick={() => abortRef.current?.abort()}
-          >
-            ■ Stop
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="btn primary"
-            onClick={() => void send()}
-            disabled={!draft.trim()}
-          >
-            Ask
-          </button>
+        {error && <div className="notice error tutor-error">{error}</div>}
+
+        {/*
+          What the gate is still waiting for.
+          A composite score is opaque by nature - a number going up tells nobody
+          what to do - so the panel shows the outstanding items instead, and the
+          tutor never has to refuse without saying why.
+        */}
+        {gate && !gate.unlocked && gate.missing.length > 0 && (
+          <div className="tutor-gate">
+            <strong>Code is held back for now.</strong>
+            <span className="muted"> Still to go: {gate.missing.join(', ')}.</span>
+          </div>
         )}
+        {gate?.unlocked && (
+          <div className="tutor-gate unlocked">
+            <strong>Code is open on this step.</strong>
+            <span className="muted"> Ask for the part you are stuck on.</span>
+          </div>
+        )}
+
+        <div className="tutor-composer">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={
+              stepIndex === null
+                ? 'Ask about the finished project…'
+                : `Ask about step ${stepIndex + 1}…`
+            }
+            rows={2}
+            disabled={busy}
+            onKeyDown={(e) => {
+              // Enter sends, Shift+Enter is a newline. Most questions are a line.
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+          />
+          {busy ? (
+            <button
+              type="button"
+              className="btn danger"
+              onClick={() => abortRef.current?.abort()}
+            >
+              ■ Stop
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => void send()}
+              disabled={!draft.trim()}
+            >
+              Ask
+            </button>
+          )}
+        </div>
       </div>
     </aside>
   );

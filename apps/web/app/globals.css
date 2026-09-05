@@ -4737,14 +4737,55 @@ select.control option {
   bottom: 0;
   z-index: 45;
   width: min(400px, 92vw);
+  /* A row now: the collapse strip, then everything else in a column. */
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   background: var(--surface);
   border-left: 1px solid var(--border-strong);
   /* No backdrop: the whole point is reading the answer and the code together,
      and dimming the page would defeat that. The shadow carries the layering. */
   box-shadow: -12px 0 40px -12px rgba(15, 23, 42, 0.25);
   overflow: hidden;
+}
+
+/*
+ * The collapse strip, down the edge facing the code.
+ *
+ * Full height rather than a corner button: the panel covers the thing the
+ * learner was reading, so the way to uncover it should be against that edge
+ * and impossible to miss. The arrow points where the drawer goes.
+ */
+.tutor-close-handle {
+  flex: 0 0 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-faint);
+  background: var(--surface-3);
+  border: none;
+  border-right: 1px solid var(--border);
+  transition: color 150ms ease, background 150ms ease;
+}
+
+.tutor-close-handle:hover {
+  color: var(--primary);
+  background: var(--surface);
+}
+
+.tutor-close-handle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -3px;
+}
+
+/* Everything that is not the strip. */
+.tutor-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .tutor-head {
@@ -4906,4 +4947,29 @@ select.control option {
   gap: 10px;
   margin-top: 20px;
   font-size: 12.5px;
+}
+
+/* A button that has to read as a link, because it sits mid-sentence. */
+.linklike {
+  padding: 0;
+  font: inherit;
+  color: var(--primary);
+  text-decoration: underline;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.linklike:hover {
+  color: var(--primary-bright);
+}
+
+.linklike:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.step-ask-tutor {
+  margin-top: 18px;
 }

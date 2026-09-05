@@ -294,6 +294,7 @@ function ProjectShell() {
               onDraftSaved={(files) => patchStep(active, { draftFiles: files })}
               onStateChange={(patch) => patchStep(active, patch)}
               onRegenerate={() => void regenerateStep(active)}
+              onAskTutor={() => setTutorOpen(true)}
               onPassed={() => void advance(active)}
               onGateInputChanged={() => setProgressToken((t) => t + 1)}
             />

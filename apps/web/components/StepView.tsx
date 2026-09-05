@@ -97,6 +97,8 @@ export interface StepViewProps {
    * everything only a person notices.
    */
   onRegenerate?: () => void;
+  /** Opens the tutor panel. The page owns whether it is showing. */
+  onAskTutor?: () => void;
 }
 
 export function StepView({
@@ -109,6 +111,7 @@ export function StepView({
   onGateInputChanged,
   onStateChange,
   onRegenerate,
+  onAskTutor,
 }: StepViewProps) {
   // Everything below is seeded from the server. A step the learner has already
   // worked on reopens where they left it: the explanation they unlocked stays
@@ -531,10 +534,22 @@ export function StepView({
         )}
       </section>
 
-      <p className="muted">
-        Stuck? <a href={`/ask?project=${projectId}`}>Ask about this step</a> — the four
-        specialists already know what you are building.
-      </p>
+      {/*
+        This used to send the learner to the four-specialist fan-out, and told
+        them those specialists "already know what you are building". They do
+        not: the fan-out gets the interview context and never sees a line of
+        their code. The tutor does — the whole project, every file they have
+        written — so this points there instead, and the claim is now true.
+      */}
+      {onAskTutor && (
+        <p className="muted step-ask-tutor">
+          Stuck?{' '}
+          <button type="button" className="linklike" onClick={onAskTutor}>
+            Ask the tutor
+          </button>{' '}
+          — it can see this project and every file you have written in it.
+        </p>
+      )}
     </article>
   );
 }
