@@ -96,6 +96,29 @@ export function StepView({
 
   const hasCheckpoint = step.checkpoint && step.checkpoint.runtime !== undefined;
 
+  /*
+   * The project around this step.
+   *
+   * `editorFiles` is only what this step owns. `priorFiles` is everything the
+   * earlier steps built, and until it arrived the learner opened step 3 of a
+   * todo list to a lone `app.js` — no page, no stylesheet, nothing to read and
+   * nothing for a checkpoint test to touch.
+   *
+   * They are shown but not editable. The step that creates a file is the step
+   * that grades it, so letting step 3 rewrite step 1's markup would let a
+   * passing step stop passing with no record of why.
+   *
+   * A path appearing in both is this step's: `edits` means the step was handed
+   * that file to change, and the editable copy has to win or the learner's work
+   * would be overwritten by the version they started from.
+   */
+  const ownPaths = new Set(editorFiles.map((file) => file.path));
+  const inheritedFiles = step.priorFiles.filter((file) => !ownPaths.has(file.path));
+  // Order matters for the sandbox: it mounts the page these files describe, so
+  // the project reads the way it would on disk rather than diff-first.
+  const projectFiles = [...inheritedFiles, ...editorFiles];
+  const readOnlyPaths = inheritedFiles.map((file) => file.path);
+
   /* ---- saving ----
      The editor is the learner's workspace, not a submission, so it saves on a
      debounce as they type. Everything else here — unlocking the explanation,
@@ -185,7 +208,11 @@ export function StepView({
 
       <Markdownish text={step.instructionsMd} />
 
-      {step.starterFiles.length > 0 && (
+      {/*
+        Shown only while the step is locked. Once the editor is mounted it holds
+        these same files and the preview is just a second, staler copy of them.
+      */}
+      {locked && step.starterFiles.length > 0 && (
         <section className="starter">
           <h3>Starting files</h3>
           <p className="muted">
@@ -215,10 +242,15 @@ export function StepView({
       ) : hasCheckpoint ? (
         <section className="checkpoint-section">
           <CodeEditor
-            files={editorFiles}
+            files={projectFiles}
+            readOnlyPaths={readOnlyPaths}
             onChange={(files) => {
-              setEditorFiles(files);
-              queueSave(files);
+              // Only this step's files come back. A read-only tab cannot emit a
+              // change, but filtering here means a future editor bug cannot
+              // quietly promote an inherited file into this step's draft.
+              const next = files.filter((file) => ownPaths.has(file.path));
+              setEditorFiles(next);
+              queueSave(next);
               if (!startedAt) setStartedAt(Date.now());
             }}
           />
@@ -233,7 +265,17 @@ export function StepView({
               projectId={projectId}
               stepIndex={step.stepIndex}
               checkpoint={step.checkpoint}
-              files={editorFiles}
+              /*
+                The whole project goes to the sandbox — it builds a real page
+                out of these files, and a test asserting on the markup is
+                testing the project rather than this step's diff. Only
+                `submittedFiles` is this step's own work; the server merges the
+                earlier files back in from its own copy rather than trusting
+                the browser's.
+              */
+              files={projectFiles}
+              submittedFiles={editorFiles}
+              starterFiles={step.starterFiles}
               attemptCount={attemptCount}
               onAttempt={() => {
                 // Every run counts, not just the one that finally passes —

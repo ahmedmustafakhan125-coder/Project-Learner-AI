@@ -22,7 +22,25 @@ vi.mock('@ai-edu/llm', () => ({
   collectStream: async () => ({ text: '', events: [] }),
 }));
 
+/**
+ * The submit gate, as this suite drives it.
+ *
+ * The rule itself is `preflightSubmission` in packages/core and is covered
+ * there. What these tests own is the ROUTE's half of the contract: a refusal
+ * must produce a 422 and must NOT write an attempt row, because the attempt
+ * count is what the hint ladder unlocks on.
+ */
+const { mockPreflight } = vi.hoisted(() => ({
+  mockPreflight: vi.fn<() => { code: string; message: string; details: string[] } | null>(
+    () => null,
+  ),
+}));
+
 vi.mock('@ai-edu/core', async () => ({
+  preflightSubmission: mockPreflight,
+  // Layer 2 strips comments before searching. Identity is enough here: what it
+  // strips is core's business, and core tests it.
+  stripComments: (source: string) => source,
   // Imported inside the factory: vi.mock is hoisted above the file's imports,
   // so a top-level `z` is not in scope here.
   AgentKind: (await import('zod')).z.enum(['simple', 'industry', 'practice', 'concepts']),
@@ -141,6 +159,8 @@ describe('POST /api/projects/:id/steps/:index/attempt', () => {
       mockDb[key].mockReturnThis();
     }
     mockDb.maybeSingle.mockResolvedValue({ data: null, error: null });
+    // clearAllMocks above wipes the implementation too, so restore the default.
+    mockPreflight.mockReturnValue(null);
   });
 
   it('returns passed: true with solution files when all checks pass', async () => {
@@ -182,6 +202,95 @@ describe('POST /api/projects/:id/steps/:index/attempt', () => {
     expect(body.passed).toBe(true);
     expect(body.solutionFiles).toHaveLength(1);
     expect(body.solutionFiles[0].path).toBe('main.py');
+  });
+
+  /* ---------------- the submit gate ---------------- */
+
+  it('refuses a submission the gate rejects, and records no attempt', async () => {
+    /*
+     * The whole point of refusing rather than failing. Attempt count is what
+     * the hint ladder unlocks on, so a junk submission that got recorded was a
+     * way to buy hints without writing code: press submit three times on the
+     * untouched starter files and tier 3 opened itself.
+     */
+    mockPreflight.mockReturnValue({
+      code: 'unchanged',
+      message: 'This is the starting code, unchanged. Fill in the part marked TODO, then submit.',
+      details: ['main.py'],
+    });
+
+    setupDbResponses([
+      { data: { id: 'proj-1' } },
+      {
+        data: {
+          id: 'step-1',
+          checkpoint: { requiredFiles: ['main.py'], requiredSymbols: [], runtime: 'python', hints: [] },
+          solution_files: [],
+          starter_files: [{ path: 'main.py', contents: '# TODO' }],
+        },
+      },
+      { data: null },
+    ]);
+    mockDb.insert.mockResolvedValue({ error: null });
+
+    const app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-1/steps/0/attempt',
+      headers: { authorization: 'Bearer test-token', 'content-type': 'application/json' },
+      payload: { submittedFiles: [{ path: 'main.py', contents: '# TODO' }] },
+    });
+
+    expect(res.statusCode).toBe(422);
+    const body = JSON.parse(res.body);
+    expect(body.error).toBe('not_an_attempt');
+    expect(body.reason).toBe('unchanged');
+    expect(body.message).toMatch(/TODO/);
+
+    // The assertion that matters: nothing was written.
+    expect(mockDb.insert).not.toHaveBeenCalled();
+  });
+
+  it('checks the gate before it grades anything', async () => {
+    // A refusal must not depend on the checkpoint passing or failing - it is
+    // the question asked before that one.
+    mockPreflight.mockReturnValue({
+      code: 'symbols_in_comments',
+      message: '"def hello" only appears in a comment. It has to be in the code itself.',
+      details: ['def hello'],
+    });
+
+    setupDbResponses([
+      { data: { id: 'proj-1' } },
+      {
+        data: {
+          id: 'step-1',
+          checkpoint: {
+            requiredFiles: ['main.py'],
+            requiredSymbols: ['def hello'],
+            runtime: 'python',
+            hints: [],
+          },
+          solution_files: [],
+          starter_files: [],
+        },
+      },
+      { data: null },
+    ]);
+    mockDb.insert.mockResolvedValue({ error: null });
+
+    const app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-1/steps/0/attempt',
+      headers: { authorization: 'Bearer test-token', 'content-type': 'application/json' },
+      // Raw text contains the symbol, so the old substring layer 2 passed this.
+      payload: { submittedFiles: [{ path: 'main.py', contents: '# def hello' }] },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(JSON.parse(res.body).reason).toBe('symbols_in_comments');
+    expect(mockDb.insert).not.toHaveBeenCalled();
   });
 
   it('returns passed: false with error message when files are missing', async () => {

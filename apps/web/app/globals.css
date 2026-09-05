@@ -4473,3 +4473,178 @@ select.control option {
   flex: none;
   white-space: nowrap;
 }
+
+/* ------------------------------------------------------------------ *
+ * Deleting a project
+ *
+ * The card itself is an <a>, so the delete control is a sibling laid over
+ * it rather than a child of it. Hover and focus-within reveal it: always-on
+ * would put a destructive control permanently under the cursor of a grid
+ * people scan, and hiding it entirely would make it undiscoverable.
+ * ------------------------------------------------------------------ */
+
+.project-card-wrap {
+  position: relative;
+}
+
+.project-card-delete {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-faint);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  opacity: 0;
+  transition: opacity 150ms ease, color 150ms ease, background 150ms ease;
+}
+
+.project-card-wrap:hover .project-card-delete,
+.project-card-wrap:focus-within .project-card-delete {
+  opacity: 1;
+}
+
+/* Never hidden from the keyboard: opacity 0 is still tabbable, and a control
+   you can focus but not see is worse than one that is always visible. */
+.project-card-delete:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.project-card-delete:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: currentColor;
+}
+
+/* Coarse pointers have no hover, so the control would be unreachable. */
+@media (hover: none) {
+  .project-card-delete {
+    opacity: 1;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Confirmation dialog
+ * ------------------------------------------------------------------ */
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.dialog {
+  width: min(460px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-2xl);
+  box-shadow: 0 24px 60px -12px rgba(15, 23, 42, 0.35);
+  padding: 24px;
+}
+
+.dialog h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.dialog p {
+  margin: 0 0 16px;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.dialog-field {
+  display: block;
+  margin-bottom: 20px;
+  font-size: 13px;
+}
+
+.dialog-field span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text-dim);
+}
+
+.dialog-field input {
+  width: 100%;
+  padding: 9px 12px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+}
+
+.dialog-field input:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* ------------------------------------------------------------------ *
+ * A refused submission
+ *
+ * Visually distinct from a failed checkpoint run on purpose: nothing was
+ * recorded and no attempt was spent, so presenting it as a failure would
+ * tell the learner they tried and got it wrong.
+ * ------------------------------------------------------------------ */
+
+.cp-refusal {
+  margin-bottom: 12px;
+}
+
+.cp-refusal p {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+}
+
+.cp-refusal-list {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+/* ------------------------------------------------------------------ *
+ * Destructive button
+ *
+ * `.btn.danger` was referenced before it existed - the follow-up chat's Stop
+ * control has always carried the class and rendered as an ordinary button.
+ * A destructive action that looks identical to a neutral one is a UI that
+ * tells the learner nothing about what is about to happen.
+ * ------------------------------------------------------------------ */
+
+.btn.danger {
+  color: var(--danger-ink);
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
+}
+
+.btn.danger:hover:not(:disabled) {
+  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+}

@@ -172,6 +172,19 @@ export interface StepContent {
   explanationMd: string;
   alternatives: Alternative[];
   starterFiles: SourceFile[];
+  /**
+   * The rest of the project, as this step finds it.
+   *
+   * `starterFiles` is only what this step creates or edits, so on its own it
+   * presents step 3 of a todo list as a lone `app.js` with no page around it.
+   * These are the files earlier steps produced — the learner's own code where
+   * they wrote it, the reference where they did not — and they are read-only
+   * in the editor: the step that owns a file is the step that grades it.
+   *
+   * The checkpoint runs against both sets together. A test asserting on the
+   * markup is testing the project, not the diff.
+   */
+  priorFiles: SourceFile[];
   checkpoint: Checkpoint;
   hintCount: number;
   /** Attempts already recorded on this step. Drives the hint gate on mount. */
@@ -388,6 +401,16 @@ export class ApiClient {
 
   async getProject(id: string): Promise<ProjectDetail> {
     return this.get<ProjectDetail>(`/api/projects/${id}`);
+  }
+
+  /**
+   * Delete a project and everything under it.
+   *
+   * Irreversible, and it takes the learner's own code with it: their attempts,
+   * their drafts, their progress. Callers are expected to confirm first.
+   */
+  async deleteProject(id: string): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>(`/api/projects/${id}`, { method: 'DELETE' });
   }
 
   /** Phase B. Idempotent — an already-expanded step is returned from storage. */

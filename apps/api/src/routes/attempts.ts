@@ -1,10 +1,19 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { Checkpoint, scorePacing, type PaceState, type AttemptSummary } from '@ai-edu/core';
+import {
+  Checkpoint,
+  preflightSubmission,
+  scorePacing,
+  stripComments,
+  type PaceState,
+  type AttemptSummary,
+  type SourceFile,
+} from '@ai-edu/core';
 
 import { requireAuth, userOf } from '../auth.js';
 import { db } from '../db.js';
 import { canAttempt, loadProgress } from '../progress.js';
+import { priorFilesFor } from '../projectFiles.js';
 import { rateLimitConfig } from '../rateLimit.js';
 
 /**
@@ -80,14 +89,39 @@ function checkRequiredFiles(
   return { ok: missing.length === 0, missing };
 }
 
-/** Layer 2 — every required symbol must appear somewhere in the submitted code. */
+/**
+ * Layer 2 - every required symbol must appear in the submitted CODE.
+ *
+ * Comments are stripped first. This used to search the raw text, so
+ * `// addTodo, renderList` satisfied the entire layer - which, on a step whose
+ * checkpoint was downgraded to `runtime: "none"`, was the entire check.
+ *
+ * String contents are deliberately kept: a required symbol is very often a
+ * selector or a key, and `getElementById('todo-list')` has to keep counting.
+ */
 function checkRequiredSymbols(
   requiredSymbols: string[],
   submitted: Array<{ path: string; contents: string }>,
 ): { ok: boolean; missing: string[] } {
-  const haystack = submitted.map((f) => f.contents).join('\n');
+  const haystack = submitted.map((f) => stripComments(f.contents, f.path)).join('\n');
   const missing = requiredSymbols.filter((sym) => !haystack.includes(sym));
   return { ok: missing.length === 0, missing };
+}
+
+/**
+ * The project as the checkpoint sees it: the earlier steps' files, overlaid
+ * with what this step submitted.
+ *
+ * The earlier files come from the server's own copy, never from the request.
+ * The browser holds them read-only, but "the client had them greyed out" is not
+ * an access control - a submission naming `index.html` with whatever contents
+ * it liked would otherwise walk straight past a required-symbol check.
+ */
+function mergeProject(prior: SourceFile[], submitted: SubmittedFile[]): SubmittedFile[] {
+  const byPath = new Map<string, SubmittedFile>();
+  for (const file of prior) byPath.set(file.path, file);
+  for (const file of submitted) byPath.set(file.path, file);
+  return [...byPath.values()];
 }
 
 /* ------------------------------------------------------------------ */
@@ -184,7 +218,7 @@ export async function attemptRoutes(app: FastifyInstance): Promise<void> {
       // 2. Load the step (need checkpoint + solution_files)
       const { data: step } = await db()
         .from('project_steps')
-        .select('id, checkpoint, solution_files')
+        .select('id, checkpoint, solution_files, starter_files')
         .eq('project_id', project.id)
         .eq('step_index', stepIndex)
         .maybeSingle();
@@ -218,10 +252,56 @@ export async function attemptRoutes(app: FastifyInstance): Promise<void> {
       }
       const checkpoint = checkpointResult.data;
 
-      // 3. Static verification (Layer 1 + Layer 2)
-      const fileCheck = checkRequiredFiles(checkpoint.requiredFiles, files);
+      /*
+       * 3a. Is this an attempt at all?
+       *
+       * Before anything is graded or recorded. A submission that is the starter
+       * files unchanged, an empty file, or required symbols pasted into a
+       * comment is refused here and NO attempt row is written for it.
+       *
+       * Not writing the row is the point, not a detail. The hint ladder and the
+       * pacing model both key off the attempt count, so a junk submission that
+       * counted was a way to unlock help without doing the work - press submit
+       * three times on untouched scaffolding and the hints opened themselves.
+       * Refusing it costs the learner nothing except the shortcut.
+       */
+      const starterFiles = Array.isArray(step.starter_files)
+        ? toFiles(step.starter_files as Array<{ path?: string; contents?: string }>)
+        : [];
+
+      const refusal = preflightSubmission({
+        submitted: files,
+        starter: starterFiles,
+        requiredFiles: checkpoint.requiredFiles,
+        requiredSymbols: checkpoint.requiredSymbols,
+      });
+
+      if (refusal) {
+        return reply.code(422).send({
+          error: 'not_an_attempt',
+          reason: refusal.code,
+          message: refusal.message,
+          details: refusal.details,
+        });
+      }
+
+      /*
+       * 3b. Static verification (Layer 1 + Layer 2), against the whole project.
+       *
+       * `files` is only what this step owns. The checkpoint asks whether the
+       * PROJECT does the thing, and a required file or symbol very often lives
+       * in something an earlier step created - which is why checking the diff
+       * alone failed correct work on every step after the first.
+       *
+       * The earlier files are loaded from the database, not taken from the
+       * request, so a hand-rolled submission cannot supply its own.
+       */
+      const priorFiles = await priorFilesFor(project.id, user.id, stepIndex);
+      const projectFiles = mergeProject(priorFiles, files);
+
+      const fileCheck = checkRequiredFiles(checkpoint.requiredFiles, projectFiles);
       const symbolCheck = fileCheck.ok
-        ? checkRequiredSymbols(checkpoint.requiredSymbols, files)
+        ? checkRequiredSymbols(checkpoint.requiredSymbols, projectFiles)
         : { ok: false, missing: [] }; // skip symbols when files already fail
 
       /*

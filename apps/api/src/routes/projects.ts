@@ -223,6 +223,66 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ projects: data ?? [] });
   });
 
+  /* ---------------- delete ---------------- */
+
+  /**
+   * Delete a project and everything under it.
+   *
+   * A hard delete, and it takes real work with it: the steps, every attempt,
+   * the drafts, the enrollment. That is deliberate - an archive flag the
+   * learner cannot see is a library that fills up with things they thought
+   * they had thrown away. The browser confirms by making them type the title.
+   *
+   * The cascade is the schema's, not this handler's. `project_steps` and
+   * `enrollments` cascade from `projects`; `step_attempts` and `step_progress`
+   * cascade from `project_steps`. Deleting the root row is sufficient and
+   * deleting the children by hand here would only be a second, driftable copy
+   * of that rule.
+   *
+   * `threads.project_id` is ON DELETE SET NULL rather than cascade, which is
+   * correct and worth not "fixing": a question the learner asked while building
+   * this is still their question, and their transcript should not disappear
+   * because they cleared out a project.
+   *
+   * `db()` holds the service-role key and bypasses RLS, so the `user_id` filter
+   * is the only thing standing between one learner and another's projects. It
+   * is in the WHERE clause rather than a prior existence check on purpose:
+   * checking first and deleting after is two statements and a race.
+   */
+  app.delete<{ Params: { id: string } }>(
+    '/api/projects/:id',
+    { preHandler: requireAuth },
+    async (request, reply) => {
+      const user = userOf(request);
+
+      if (!z.string().uuid().safeParse(request.params.id).success) {
+        return reply.code(400).send({ error: 'bad_request', message: 'Invalid project id.' });
+      }
+
+      const { data, error } = await db()
+        .from('projects')
+        .delete()
+        .eq('id', request.params.id)
+        .eq('user_id', user.id)
+        .select('id')
+        .maybeSingle();
+
+      if (error) {
+        request.log.error({ err: error.message }, 'failed to delete project');
+        return reply
+          .code(500)
+          .send({ error: 'delete_failed', message: 'Could not delete that project.' });
+      }
+      // No row matched: it does not exist, or it is not theirs. The same answer
+      // for both, so this cannot be used to probe for other learners' ids.
+      if (!data) {
+        return reply.code(404).send({ error: 'not_found', message: 'Project not found.' });
+      }
+
+      return reply.send({ ok: true });
+    },
+  );
+
   app.get<{ Params: { id: string } }>(
     '/api/projects/:id',
     { preHandler: requireAuth },
@@ -347,7 +407,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         // The attempt history travels with the step. The hint gate is enforced
         // here against these rows, so a client that cannot see them counts from
         // zero after every reload and re-locks hints the learner has earned.
-        const [{ data: attempts }, { data: progress }] = await Promise.all([
+        const [{ data: attempts }, { data: progress }, priorFiles] = await Promise.all([
           db()
             .from('step_attempts')
             .select('created_at, passed')
@@ -362,11 +422,24 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
             .eq('step_id', step.id)
             .eq('user_id', user.id)
             .maybeSingle(),
+          /*
+           * The rest of the project, as this step finds it.
+           *
+           * The expansion prompt has always received this — it is what stops a
+           * step restarting the project instead of continuing it — but the
+           * browser never did, so the editor showed ONLY the files this step
+           * creates or edits. On step 3 of a todo list that is `app.js` alone:
+           * `index.html` was neither visible nor editable, and the checkpoint
+           * sandbox never received it either, so any test that touched the page
+           * failed on a submission that was correct.
+           */
+          priorFilesFor(project.id, user.id, stepIndex),
         ]);
 
         return reply.send({
           step: {
             ...toExpansionPayload(step),
+            priorFiles,
             attemptCount: attempts?.length ?? 0,
             firstAttemptAt: attempts?.[0]?.created_at ?? null,
             draftFiles:
@@ -503,6 +576,9 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
             explanationMd: expansion.explanationMd,
             alternatives: expansion.alternatives,
             starterFiles: expansion.starterFiles,
+            // Already loaded above for the prompt; the browser needs the same
+            // view so the learner can read the project they are building on.
+            priorFiles,
             checkpoint: expansion.checkpoint,
             hintCount: expansion.hints.length,
             attemptCount: 0,
