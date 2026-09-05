@@ -189,8 +189,17 @@ export interface StepContent {
   hintCount: number;
   /** Attempts already recorded on this step. Drives the hint gate on mount. */
   attemptCount: number;
-  /** ISO timestamp of the first attempt — what the hint gate's clock runs from. */
+  /** ISO timestamp of the first attempt. */
   firstAttemptAt: string | null;
+  /**
+   * When the learner opened this step. What the hint clock runs from.
+   *
+   * It used to run from the first attempt, which made the ladder's "or N
+   * minutes" half unreachable for the case it exists for: a learner who cannot
+   * work out how to begin has submitted nothing, so their clock had not
+   * started and no hint would ever open on time.
+   */
+  startedAt: string | null;
   /**
    * The editor as the learner last left it, or null if they have not started.
    * What the step opens with, in place of the starter files.
@@ -275,6 +284,8 @@ export interface StepProgressPatch {
   revealed?: boolean;
   lastRun?: CheckpointRun | null;
   hintsOpened?: number[];
+  /** The learner has opened this step. Starts the hint clock, once. */
+  started?: boolean;
 }
 
 export interface ExpansionPlan {

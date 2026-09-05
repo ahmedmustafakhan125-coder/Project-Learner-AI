@@ -3,6 +3,8 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import type { SourceFile, StepContent, StepProgressPatch } from '@ai-edu/api-client';
 
+import { composeWorkspace } from '@ai-edu/core';
+
 import { api } from '../lib/api';
 
 import { splitFences } from './AgentTabs';
@@ -74,6 +76,17 @@ export interface StepViewProps {
    * it loaded when it opened.
    */
   onGateInputChanged?: () => void;
+  /**
+   * Reports state the page caches, so it survives leaving the step.
+   *
+   * The project page keeps expanded steps in a map and this component is keyed
+   * per step, so switching away unmounts it and coming back remounts against
+   * the object fetched at page load. Everything the learner spent in between —
+   * hints opened, the explanation revealed, the checkpoint passed — was read
+   * back from that stale copy and appeared to have been undone. It was still
+   * on the server; it just was not on screen until a reload.
+   */
+  onStateChange?: (patch: Partial<StepContent>) => void;
 }
 
 export function StepView({
@@ -84,6 +97,7 @@ export function StepView({
   onDraftSaved,
   onPassed,
   onGateInputChanged,
+  onStateChange,
 }: StepViewProps) {
   // Everything below is seeded from the server. A step the learner has already
   // worked on reopens where they left it: the explanation they unlocked stays
@@ -107,8 +121,20 @@ export function StepView({
   // stored attempt history, so a client that restarts its count at zero on
   // every mount keeps hints locked that the learner has already earned.
   const [attemptCount, setAttemptCount] = useState(step.attemptCount);
+  /*
+   * When this step's hint clock started.
+   *
+   * Seeded from `startedAt`, not from the first attempt. The old seed made the
+   * ladder's "or N minutes" branch dead for the learner it exists for: someone
+   * who cannot work out how to begin has submitted nothing, so there was no
+   * clock and no hint ever opened on time.
+   */
   const [startedAt, setStartedAt] = useState<number | null>(
-    step.firstAttemptAt ? new Date(step.firstAttemptAt).getTime() : null,
+    step.startedAt
+      ? new Date(step.startedAt).getTime()
+      : step.firstAttemptAt
+        ? new Date(step.firstAttemptAt).getTime()
+        : null,
   );
 
   const hasCheckpoint = step.checkpoint && step.checkpoint.runtime !== undefined;
@@ -116,25 +142,17 @@ export function StepView({
   /*
    * The project around this step.
    *
-   * `editorFiles` is only what this step owns. `priorFiles` is everything the
-   * earlier steps built, and until it arrived the learner opened step 3 of a
-   * todo list to a lone `app.js` — no page, no stylesheet, nothing to read and
-   * nothing for a checkpoint test to touch.
-   *
-   * They are shown but not editable. The step that creates a file is the step
-   * that grades it, so letting step 3 rewrite step 1's markup would let a
-   * passing step stop passing with no record of why.
-   *
-   * A path appearing in both is this step's: `edits` means the step was handed
-   * that file to change, and the editable copy has to win or the learner's work
-   * would be overwritten by the version they started from.
+   * `editorFiles` is only what this step owns; `priorFiles` is everything the
+   * earlier steps built. The rules for combining them - own files first, own
+   * copy wins on a shared path, paths normalised - live in `composeWorkspace`
+   * because getting the order wrong is invisible: the tab bar simply opens on
+   * somebody else's read-only file and the editor refuses to type.
    */
-  const ownPaths = new Set(editorFiles.map((file) => file.path));
-  const inheritedFiles = step.priorFiles.filter((file) => !ownPaths.has(file.path));
-  // Order matters for the sandbox: it mounts the page these files describe, so
-  // the project reads the way it would on disk rather than diff-first.
-  const projectFiles = [...inheritedFiles, ...editorFiles];
-  const readOnlyPaths = inheritedFiles.map((file) => file.path);
+  const workspace = composeWorkspace({
+    ownFiles: editorFiles,
+    priorFiles: step.priorFiles,
+  });
+  const ownPaths = new Set(workspace.ownPaths);
 
   /* ---- saving ----
      The editor is the learner's workspace, not a submission, so it saves on a
@@ -144,8 +162,27 @@ export function StepView({
   const pendingRef = useRef<SourceFile[] | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /** Keeps the page's cached copy of this step in step with what was saved. */
+  const reportRef = useRef(onStateChange);
+  reportRef.current = onStateChange;
+
   const persist = useCallback(
     (patch: StepProgressPatch) => {
+      /*
+       * Reported optimistically, alongside the write rather than after it.
+       *
+       * The local state has already moved, so the cache should match what is
+       * on screen. A failed write costs a re-click next visit either way, and
+       * waiting for the round trip would leave the cache stale for exactly as
+       * long as it takes a learner to click a hint and switch steps.
+       */
+      const cached: Partial<StepContent> = {};
+      if (patch.files) cached.draftFiles = patch.files;
+      if (patch.revealed) cached.revealed = true;
+      if (patch.lastRun !== undefined) cached.lastRun = patch.lastRun;
+      if (patch.hintsOpened) cached.hintsOpened = patch.hintsOpened;
+      if (Object.keys(cached).length > 0) reportRef.current?.(cached);
+
       void api.saveProgress(projectId, step.stepIndex, patch).catch(() => {
         // Losing one of these costs the learner a re-click on their next visit,
         // not their work. The editor's own save state reports separately.
@@ -196,6 +233,25 @@ export function StepView({
     },
     [],
   );
+
+  /*
+   * The step is open in front of them: start the clock.
+   *
+   * Sent on mount rather than on the first edit, because the learner who most
+   * needs a timed hint is the one who has not worked out what to type. The
+   * server keeps the first value it is given, so a mount tomorrow does not
+   * push the clock forward.
+   *
+   * Skipped when the step is locked (no editor is mounted) or already started.
+   */
+  useEffect(() => {
+    if (locked || startedAt !== null) return;
+    const now = Date.now();
+    setStartedAt(now);
+    reportRef.current?.({ startedAt: new Date(now).toISOString() });
+    persist({ started: true });
+    // Keyed on the step alone: this is the "opened" edge, fired once.
+  }, [projectId, step.stepIndex, locked]);
 
   return (
     <article className="step">
@@ -259,8 +315,9 @@ export function StepView({
       ) : hasCheckpoint ? (
         <section className="checkpoint-section">
           <CodeEditor
-            files={projectFiles}
-            readOnlyPaths={readOnlyPaths}
+            files={workspace.files}
+            readOnlyPaths={workspace.readOnlyPaths}
+            initialPath={workspace.initialPath}
             onChange={(files) => {
               // Only this step's files come back. A read-only tab cannot emit a
               // change, but filtering here means a future editor bug cannot
@@ -290,7 +347,7 @@ export function StepView({
                 earlier files back in from its own copy rather than trusting
                 the browser's.
               */
-              files={projectFiles}
+              files={workspace.files}
               submittedFiles={editorFiles}
               starterFiles={step.starterFiles}
               attemptCount={attemptCount}
@@ -298,13 +355,20 @@ export function StepView({
                 // Every run counts, not just the one that finally passes —
                 // hints exist for the learner who is stuck, and gating them on
                 // a pass would only ever unlock them once they no longer help.
-                setAttemptCount((c) => c + 1);
-                // The server times the hint gate from the first attempt; match it.
+                setAttemptCount((c) => {
+                  const next = c + 1;
+                  reportRef.current?.({ attemptCount: next });
+                  return next;
+                });
                 setStartedAt((at) => at ?? Date.now());
                 onGateInputChanged?.();
               }}
               onPass={() => {
                 setPassed(true);
+                // Cached too, or navigating away and back would present a
+                // passed step as unattempted: hints re-locked, explanation
+                // hidden, the checkpoint offering to run again.
+                reportRef.current?.({ passed: true, revealed: true });
                 /*
                  * The explanation opens itself now.
                  *
