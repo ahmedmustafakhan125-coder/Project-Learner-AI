@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import type { ProjectDetail, SourceFile, StepContent } from '@ai-edu/api-client';
+import type { ProjectDetail, StepContent } from '@ai-edu/api-client';
 import { ApiError } from '@ai-edu/api-client';
 
 import { AuthGate } from '../../../components/AuthGate';
@@ -132,12 +132,20 @@ function ProjectShell() {
     [projectId, steps],
   );
 
-  // Keeps the cached step in step with what the learner has saved, so returning
-  // to a step reopens their work rather than the scaffolding.
-  const rememberDraft = useCallback((index: number, files: SourceFile[]): void => {
+  /**
+   * Keeps the cached step in step with what the learner has done.
+   *
+   * Steps are cached here and `StepView` is keyed per step, so switching away
+   * unmounts it and coming back remounts against whatever was fetched at page
+   * load. Without this, everything spent in between — hints opened, the
+   * explanation revealed, the checkpoint passed — was read back from the stale
+   * copy and looked undone. It was on the server the whole time; it simply was
+   * not on screen again until a reload.
+   */
+  const patchStep = useCallback((index: number, patch: Partial<StepContent>): void => {
     setSteps((prev) => {
       const step = prev[index];
-      return step ? { ...prev, [index]: { ...step, draftFiles: files } } : prev;
+      return step ? { ...prev, [index]: { ...step, ...patch } } : prev;
     });
   }, []);
 
@@ -260,7 +268,8 @@ function ProjectShell() {
               projectId={projectId}
               locked={!activeStep?.unlocked}
               blockedBy={activeStep?.unlocked ? null : active - 1}
-              onDraftSaved={(files) => rememberDraft(active, files)}
+              onDraftSaved={(files) => patchStep(active, { draftFiles: files })}
+              onStateChange={(patch) => patchStep(active, patch)}
               onPassed={() => void advance(active)}
               onGateInputChanged={() => setProgressToken((t) => t + 1)}
             />

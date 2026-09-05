@@ -419,7 +419,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
           // have not started, and the step opens as written.
           db()
             .from('step_progress')
-            .select('files, revealed_at, last_run, hints_opened')
+            .select('files, revealed_at, last_run, hints_opened, started_at')
             .eq('step_id', step.id)
             .eq('user_id', user.id)
             .maybeSingle(),
@@ -443,6 +443,9 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
             priorFiles,
             attemptCount: attempts?.length ?? 0,
             firstAttemptAt: attempts?.[0]?.created_at ?? null,
+            // What the hint clock actually runs from. Falls back to the first
+            // attempt for rows written before `started_at` existed.
+            startedAt: (progress?.started_at as string | null) ?? attempts?.[0]?.created_at ?? null,
             draftFiles:
               Array.isArray(progress?.files) && progress.files.length > 0 ? progress.files : null,
             // Passing is the attempts table's business, not the progress row's:
@@ -628,6 +631,8 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
             hintCount: expansion.hints.length,
             attemptCount: 0,
             firstAttemptAt: null,
+            // Set by the first progress ping once the learner opens the step.
+            startedAt: null,
             draftFiles: null,
             passed: false,
             revealed: false,

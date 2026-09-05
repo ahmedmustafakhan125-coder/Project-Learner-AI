@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
+import { describeHintLock, hintTierState } from '@ai-edu/core';
+
 import { api } from '../lib/api';
 
 /**
@@ -40,11 +42,6 @@ export interface HintDrawerProps {
   onTierOpened?: (tier: number) => void;
 }
 
-const TIER_THRESHOLDS = [
-  { attempts: 1, minutes: 5 },
-  { attempts: 2, minutes: 10 },
-  { attempts: 3, minutes: 15 },
-] as const;
 
 /**
  * Progressive hint drawer.
@@ -144,7 +141,7 @@ export function HintDrawer({
   if (hintCount === 0) return null;
 
   const elapsed = startedAt ? Date.now() - startedAt : 0;
-  const tiers = TIER_THRESHOLDS.slice(0, hintCount);
+  const tiers = Array.from({ length: hintCount }, (_, i) => i);
 
   return (
     <section className="hints">
@@ -155,12 +152,12 @@ export function HintDrawer({
         </p>
       )}
       <div className="hint-list">
-        {tiers.map((threshold, i) => {
+        {tiers.map((_, i) => {
           const tier = i + 1;
-          const unlocked =
-            passed ||
-            attemptCount >= threshold.attempts ||
-            elapsed >= threshold.minutes * 60_000;
+          // The same function the server gates on, so the panel cannot promise
+          // a hint the request will then be refused.
+          const state = hintTierState({ tier, attemptCount, elapsedMs: elapsed, passed });
+          const unlocked = state.unlocked;
 
           return (
             <div key={tier} className={`hint-tier ${unlocked ? 'unlocked' : 'locked'}`}>
@@ -177,12 +174,7 @@ export function HintDrawer({
                     &#8250;
                   </span>
                 ) : (
-                  <LockMessage
-                    attemptsNeeded={threshold.attempts}
-                    minutesNeeded={threshold.minutes}
-                    attemptCount={attemptCount}
-                    elapsed={elapsed}
-                  />
+                  <span className="hint-lock muted">{describeHintLock(state)}</span>
                 )}
               </button>
 
@@ -202,39 +194,5 @@ export function HintDrawer({
         })}
       </div>
     </section>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-
-function LockMessage({
-  attemptsNeeded,
-  minutesNeeded,
-  attemptCount,
-  elapsed,
-}: {
-  attemptsNeeded: number;
-  minutesNeeded: number;
-  attemptCount: number;
-  elapsed: number;
-}) {
-  const attemptsRemaining = attemptsNeeded - attemptCount;
-  const msRemaining = minutesNeeded * 60_000 - elapsed;
-
-  const parts: string[] = [];
-  if (attemptsRemaining > 0) {
-    parts.push(
-      `${attemptsRemaining} more attempt${attemptsRemaining === 1 ? '' : 's'}`,
-    );
-  }
-  if (msRemaining > 0) {
-    const mins = Math.ceil(msRemaining / 60_000);
-    parts.push(`${mins} min`);
-  }
-
-  return (
-    <span className="hint-lock muted">
-      Available after {parts.join(' or ')}
-    </span>
   );
 }

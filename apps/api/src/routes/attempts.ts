@@ -2,6 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
   Checkpoint,
+  attemptsRequiredFor,
+  describeHintLock,
+  hintTierState,
+  msRequiredFor,
   preflightSubmission,
   scorePacing,
   stripComments,
@@ -69,6 +73,14 @@ const ProgressBody = z.object({
     .optional(),
   /** Hint tiers the learner has opened. */
   hintsOpened: z.array(z.number().int().min(1).max(3)).optional(),
+  /**
+   * The learner has opened this step and the editor is in front of them.
+   *
+   * Starts the hint clock. Sent once on mount rather than inferred from the
+   * first edit, because a learner who cannot work out how to begin is exactly
+   * the one the timed hints are for, and they have not typed anything.
+   */
+  started: z.boolean().optional(),
 });
 
 const HintsQuery = z.object({
@@ -451,6 +463,25 @@ export async function attemptRoutes(app: FastifyInstance): Promise<void> {
       // explanation to be taken back; it is reporting a state it has not loaded.
       if (parsed.data.revealed) patch['revealed_at'] = new Date().toISOString();
 
+      /*
+       * The clock starts once and stays started.
+       *
+       * Read first so a later ping cannot push it forward: StepView sends this
+       * on every mount, and a learner returning to a step tomorrow has not
+       * restarted it - they have been stuck since yesterday, and the hints
+       * should reflect that.
+       */
+      if (parsed.data.started) {
+        const { data: existing } = await db()
+          .from('step_progress')
+          .select('started_at')
+          .eq('step_id', step.id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (!existing?.started_at) patch['started_at'] = new Date().toISOString();
+      }
+
       const { error } = await db()
         .from('step_progress')
         .upsert(patch, { onConflict: 'user_id,step_id' });
@@ -643,26 +674,54 @@ export async function attemptRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const attemptCount = attempts?.length ?? 0;
+
+      /*
+       * Elapsed time runs from when the learner OPENED the step.
+       *
+       * It used to run from their first attempt, which made the whole "or N
+       * minutes" half of the gate dead code for the case it was written for: a
+       * learner who cannot work out how to start has submitted nothing, so
+       * their clock had not begun and no hint would ever unlock on time. The
+       * only way to reach a timed hint was to have already used the attempts
+       * branch that would have unlocked it anyway.
+       *
+       * The first attempt is still the fallback, for rows written before
+       * `started_at` existed.
+       */
+      const { data: progressRow } = await db()
+        .from('step_progress')
+        .select('started_at')
+        .eq('step_id', step.id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
       const firstAttemptAt = attempts?.[0]?.created_at ? new Date(attempts[0].created_at).getTime() : null;
-      const elapsedMs = firstAttemptAt ? Date.now() - firstAttemptAt : 0;
+      const startedAt = progressRow?.started_at
+        ? new Date(progressRow.started_at as string).getTime()
+        : firstAttemptAt;
+      const elapsedMs = startedAt ? Date.now() - startedAt : 0;
 
-      // Gating rules: tier N requires N attempts OR N*5 min elapsed
-      const requiredAttempts = requestedTier;
-      const requiredMs = requestedTier * 5 * 60 * 1000;
+      /*
+       * One rule, shared with the browser.
+       *
+       * This used to be an inline calculation here and a threshold table in
+       * HintDrawer. They agreed, but nothing made them, and the failure mode of
+       * drift is the worst kind: the panel says a hint is available and the
+       * server refuses it.
+       */
+      const tier = hintTierState({ tier: requestedTier, attemptCount, elapsedMs });
 
-      const unlocked = attemptCount >= requiredAttempts || elapsedMs >= requiredMs;
-
-      if (!unlocked) {
-        const attemptsRemaining = Math.max(0, requiredAttempts - attemptCount);
-        const minutesRemaining = Math.max(0, Math.ceil((requiredMs - elapsedMs) / 60_000));
+      if (!tier.unlocked) {
         return reply.code(403).send({
           error: 'hint_locked',
-          message: `Tier ${requestedTier} requires ${requiredAttempts} attempt(s) or ${requiredMs / 60_000} min elapsed. ` +
-            `${attemptsRemaining} attempt(s) or ~${minutesRemaining} min remaining.`,
+          message:
+            `${describeHintLock(tier)}. Tier ${requestedTier} opens after ` +
+            `${attemptsRequiredFor(requestedTier)} attempt(s) or ` +
+            `${msRequiredFor(requestedTier) / 60_000} minutes on this step.`,
           attemptsUsed: attemptCount,
-          attemptsRequired: requiredAttempts,
+          attemptsRequired: attemptsRequiredFor(requestedTier),
           elapsedMs,
-          requiredMs,
+          requiredMs: msRequiredFor(requestedTier),
         });
       }
 

@@ -32,5 +32,7 @@ export * from './tutor/ask.js';
 export * from './checkpoint/preflight.js';
 
 export * from './progress/unlock.js';
+export * from './progress/workspace.js';
+export * from './progress/hints.js';
 
 export * from './pacing/index.js';

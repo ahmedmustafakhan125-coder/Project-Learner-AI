@@ -56,6 +56,15 @@ interface CodeEditorProps {
   files: Array<{ path: string; contents: string }>;
   onChange: (files: Array<{ path: string; contents: string }>) => void;
   readOnlyPaths?: string[];
+  /**
+   * The tab to open on.
+   *
+   * Without this the editor opened on `files[0]`, and once the whole project
+   * reached the tab bar that was a read-only file from some earlier step - so
+   * a learner opened step 3 looking at step 1's `index.html`, greyed out, with
+   * their own file several tabs along.
+   */
+  initialPath?: string | null;
 }
 
 const EXT_TO_LANG: Record<string, string> = {
@@ -76,14 +85,27 @@ function detectLanguage(path: string): string {
   return EXT_TO_LANG[ext] ?? 'plaintext';
 }
 
-export function CodeEditor({ files, onChange, readOnlyPaths = [] }: CodeEditorProps) {
-  const [selectedPath, setSelectedPath] = useState(files[0]?.path ?? '');
+export function CodeEditor({
+  files,
+  onChange,
+  readOnlyPaths = [],
+  initialPath = null,
+}: CodeEditorProps) {
+  const [selectedPath, setSelectedPath] = useState(initialPath ?? files[0]?.path ?? '');
 
   const readOnlySet = new Set(readOnlyPaths);
-  // Falls back to the first file when the selection is no longer in `files` —
-  // a stale path from a previous file set would otherwise render an empty
-  // editor body with no tab looking active.
-  const activeFile = files.find(f => f.path === selectedPath) ?? files[0];
+  /*
+   * Falls back to the file the caller nominated, then to the first tab.
+   *
+   * A stale path from a previous file set would otherwise render an empty
+   * editor body with no tab looking active — and falling back to `files[0]`
+   * alone puts the learner on a read-only file, which is the thing
+   * `initialPath` exists to prevent.
+   */
+  const activeFile =
+    files.find((f) => f.path === selectedPath) ??
+    files.find((f) => f.path === initialPath) ??
+    files[0];
   const activePath = activeFile?.path ?? '';
   const isReadOnly = readOnlySet.has(activePath);
 
@@ -108,7 +130,11 @@ export function CodeEditor({ files, onChange, readOnlyPaths = [] }: CodeEditorPr
             onClick={() => setSelectedPath(f.path)}
           >
             {f.path}
-            {readOnlySet.has(f.path) && <span className="code-editor-readonly">ro</span>}
+            {readOnlySet.has(f.path) && (
+              <span className="code-editor-readonly" title="From an earlier step — read-only">
+                read-only
+              </span>
+            )}
           </button>
         ))}
       </div>
