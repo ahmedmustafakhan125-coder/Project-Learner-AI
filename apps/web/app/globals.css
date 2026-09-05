@@ -4736,8 +4736,9 @@ select.control option {
   right: 0;
   bottom: 0;
   z-index: 45;
-  width: min(400px, 92vw);
-  /* A row now: the collapse strip, then everything else in a column. */
+  /* Set by the drag grip; the fallback is the width it always had. */
+  width: var(--tutor-w, min(400px, 92vw));
+  /* A row now: the grip, the collapse strip, then everything else. */
   display: flex;
   flex-direction: row;
   background: var(--surface);
@@ -4746,6 +4747,52 @@ select.control option {
      and dimming the page would defeat that. The shadow carries the layering. */
   box-shadow: -12px 0 40px -12px rgba(15, 23, 42, 0.25);
   overflow: hidden;
+}
+
+/*
+ * `bottom: 0` measures the LARGE viewport, which on a phone includes the strip
+ * the browser's own toolbar sits over - so the composer rendered underneath it
+ * and the bottom of the panel was unreachable. `dvh` tracks what is actually
+ * visible.
+ */
+@supports (height: 100dvh) {
+  .tutor-panel {
+    bottom: auto;
+    height: 100dvh;
+  }
+}
+
+/*
+ * Drag to widen.
+ *
+ * A fixed 400px is right for a question and wrong for an answer with a CMake
+ * block in it, and the panel cannot know which is coming. Wrapping (below)
+ * means nothing is ever hidden at any width; this is so that reading it does
+ * not have to be a chore.
+ */
+.tutor-resize {
+  flex: 0 0 6px;
+  padding: 0;
+  cursor: col-resize;
+  background: transparent;
+  border: none;
+  border-right: 1px solid transparent;
+  transition: background 150ms ease;
+  touch-action: none;
+}
+
+.tutor-resize:hover,
+.tutor-resize:focus-visible,
+.tutor-resize[data-dragging='true'] {
+  background: var(--primary);
+  outline: none;
+}
+
+/* While dragging, the cursor must not flicker back to a text caret over the
+   page, and a stray selection must not follow the pointer. */
+body[data-tutor-resizing='true'] {
+  cursor: col-resize;
+  user-select: none;
 }
 
 /*
@@ -4788,6 +4835,20 @@ select.control option {
   flex-direction: column;
 }
 
+/*
+ * Everything that is not the log is `flex: 0 0 auto`.
+ *
+ * As flex children they defaulted to shrinkable, so on a short window the
+ * browser compressed the composer and the gate line instead of scrolling the
+ * transcript - the text stayed its own size and simply overflowed its box.
+ */
+.tutor-head,
+.tutor-error,
+.tutor-gate,
+.tutor-composer {
+  flex: 0 0 auto;
+}
+
 .tutor-head {
   display: flex;
   align-items: center;
@@ -4817,8 +4878,9 @@ select.control option {
   background: var(--surface-3);
 }
 
+/* Horizontal padding now comes from `.tutor-log`, which it sits inside. */
 .tutor-empty {
-  padding: 16px 14px;
+  padding: 12px 0;
   font-size: 13px;
   line-height: 1.55;
 }
@@ -4832,6 +4894,9 @@ select.control option {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* Vertically only. Anything wide enough to scroll this sideways is a
+     wrapping bug in the content, and a second scrollbar would hide it. */
+  overflow-x: hidden;
   padding: 4px 14px;
 }
 
@@ -4847,6 +4912,9 @@ select.control option {
 
 .tutor-turn {
   margin: 12px 0;
+  /* Without this a long unbroken token sets the floor for the flex column and
+     pushes the whole turn past the edge of the panel. */
+  min-width: 0;
 }
 
 .tutor-who {
@@ -4863,6 +4931,9 @@ select.control option {
   margin: 0;
   font-size: 13px;
   line-height: 1.6;
+  /* URLs and dotted identifiers have no break opportunity in them, and the
+     panel is narrow enough that one of either overflows it. */
+  overflow-wrap: anywhere;
 }
 
 .tutor-turn-user .tutor-text {
@@ -4876,9 +4947,30 @@ select.control option {
   margin: 0 0 8px;
 }
 
+/*
+ * Fenced code wraps here, where it scrolls everywhere else.
+ *
+ * `.answer pre` is `white-space: pre` with `overflow-x: auto`, which is right
+ * in an 800px column and wrong in a 400px drawer: a CMake block came out cut
+ * off mid-URL behind a nested horizontal scrollbar, so the learner could not
+ * read a repository address without dragging a 4px bar with their mouse. The
+ * indentation that `pre` was protecting is worth less than the line being
+ * legible at all.
+ */
 .tutor-text.answer pre {
-  overflow-x: auto;
   font-size: 12px;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  /* Kept as a backstop. With the two rules above it should never engage - if
+     it ever does, something is setting a width and that is worth seeing. */
+  overflow-x: auto;
+  tab-size: 2;
+}
+
+/* Inline code is a chip, and a chip holding a URL is the same problem. */
+.tutor-text.answer :not(pre) > code {
+  overflow-wrap: anywhere;
 }
 
 .tutor-error {
@@ -4934,7 +5026,12 @@ select.control option {
  */
 @media (max-width: 760px) {
   .tutor-panel {
+    /* Wins over the custom property: there is no width left to choose. */
     width: 100vw;
+  }
+
+  .tutor-resize {
+    display: none;
   }
 }
 

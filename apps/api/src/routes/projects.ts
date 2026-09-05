@@ -12,10 +12,10 @@ import {
   parseStoredBlueprint,
   planExpansion,
   hasSeriousViolation,
+  readPaceState,
   scorePacing,
   verifyExpansion,
   verifyProjectComplete,
-  type PaceState,
   type AttemptSummary,
   type ProjectArtifact,
   type SourceFile,
@@ -536,50 +536,51 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      // Compute pacing directive from previous step's attempts
+      /*
+       * A pacing directive is a nicety: it tunes how the next step is written.
+       * Expansion is the thing the learner is waiting for, so nothing in here
+       * is allowed to stop it - a thrown pacing error used to take the whole
+       * step generation with it and leave the page with no step at all.
+       */
       let directive = null;
-      if (stepIndex > 0) {
-        const { data: enrollment } = await db()
-          .from('enrollments')
-          .select('pace_state')
-          .eq('project_id', project.id)
-          .eq('user_id', user.id)
-          .maybeSingle();
+      try {
+        if (stepIndex > 0) {
+          const { data: enrollment } = await db()
+            .from('enrollments')
+            .select('pace_state')
+            .eq('project_id', project.id)
+            .eq('user_id', user.id)
+            .maybeSingle();
 
-        const { data: prevStep } = await db()
-          .from('project_steps')
-          .select('id')
-          .eq('project_id', project.id)
-          .eq('step_index', stepIndex - 1)
-          .maybeSingle();
+          const { data: prevStep } = await db()
+            .from('project_steps')
+            .select('id')
+            .eq('project_id', project.id)
+            .eq('step_index', stepIndex - 1)
+            .maybeSingle();
 
-        if (prevStep) {
-          const { data: prevAttempts } = await db()
-            .from('step_attempts')
-            .select('duration_ms, hints_used, passed')
-            .eq('step_id', prevStep.id)
-            .eq('user_id', user.id);
+          if (prevStep) {
+            const { data: prevAttempts } = await db()
+              .from('step_attempts')
+              .select('duration_ms, hints_used, passed')
+              .eq('step_id', prevStep.id)
+              .eq('user_id', user.id);
 
-          if (prevAttempts && prevAttempts.length > 0) {
-            const summary: AttemptSummary = {
-              attempts: prevAttempts.length,
-              durationMs: prevAttempts.reduce((sum, a) => sum + (a.duration_ms ?? 0), 0),
-              hintsUsed: Math.max(...prevAttempts.map((a) => a.hints_used ?? 0)),
-              passed: true,
-            };
-            const paceState: PaceState = (enrollment?.pace_state as PaceState) ?? {
-              recentAttemptCounts: [],
-              recentDurations: [],
-              // Windowed hint count — see PaceState in packages/core.
-              recentHints: [],
-              hintsUsedTotal: 0,
-              streakPassed: 0,
-              streakFailed: 0,
-            };
-            const result = scorePacing(paceState, summary);
-            directive = result.directive;
+            if (prevAttempts && prevAttempts.length > 0) {
+              const summary: AttemptSummary = {
+                attempts: prevAttempts.length,
+                durationMs: prevAttempts.reduce((sum, a) => sum + (a.duration_ms ?? 0), 0),
+                hintsUsed: Math.max(...prevAttempts.map((a) => a.hints_used ?? 0)),
+                passed: true,
+              };
+              const result = scorePacing(readPaceState(enrollment?.pace_state), summary);
+              directive = result.directive;
+            }
           }
         }
+      } catch (err) {
+        request.log.warn({ err, stepIndex }, 'pacing directive skipped');
+        directive = null;
       }
 
       // The project as this step finds it. Without this the expansion sees

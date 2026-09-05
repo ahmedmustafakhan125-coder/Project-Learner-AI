@@ -7,9 +7,9 @@ import {
   hintTierState,
   msRequiredFor,
   preflightSubmission,
+  readPaceState,
   scorePacing,
   stripComments,
-  type PaceState,
   type AttemptSummary,
   type SourceFile,
 } from '@ai-edu/core';
@@ -566,30 +566,34 @@ export async function attemptRoutes(app: FastifyInstance): Promise<void> {
         .eq('step_id', step.id)
         .eq('user_id', user.id);
 
+      /*
+       * Pacing is advisory, and the advance above has already been written.
+       * Letting anything in here throw would report failure for a step that
+       * did in fact advance - which is exactly what shipped: the enrollment
+       * moved on and the learner was shown
+       * "state.recentAttemptCounts is not iterable" for their trouble.
+       */
       if (allAttempts && allAttempts.length > 0) {
-        const summary: AttemptSummary = {
-          attempts: allAttempts.length,
-          durationMs: allAttempts.reduce((sum, a) => sum + (a.duration_ms ?? 0), 0),
-          hintsUsed: Math.max(...allAttempts.map((a) => a.hints_used ?? 0)),
-          passed: true,
-        };
-        const paceState: PaceState = (enrollment?.pace_state as PaceState) ?? {
-          recentAttemptCounts: [],
-          recentDurations: [],
-          // Windowed hint count. Omitting it compiled locally only because the
-          // cast made TypeScript skip the fallback branch.
-          recentHints: [],
-          hintsUsedTotal: 0,
-          streakPassed: 0,
-          streakFailed: 0,
-        };
-        const result = scorePacing(paceState, summary);
+        try {
+          const summary: AttemptSummary = {
+            attempts: allAttempts.length,
+            durationMs: allAttempts.reduce((sum, a) => sum + (a.duration_ms ?? 0), 0),
+            hintsUsed: Math.max(...allAttempts.map((a) => a.hints_used ?? 0)),
+            passed: true,
+          };
+          const result = scorePacing(readPaceState(enrollment?.pace_state), summary);
 
-        await db()
-          .from('enrollments')
-          .update({ pace_state: result.newState })
-          .eq('project_id', project.id)
-          .eq('user_id', user.id);
+          await db()
+            .from('enrollments')
+            .update({ pace_state: result.newState })
+            .eq('project_id', project.id)
+            .eq('user_id', user.id);
+        } catch (err) {
+          request.log.warn(
+            { err, projectId: project.id, stepIndex },
+            'pacing update failed; advancing anyway',
+          );
+        }
       }
 
       return reply.send({ ok: true, nextStepIndex: stepIndex + 1 });
