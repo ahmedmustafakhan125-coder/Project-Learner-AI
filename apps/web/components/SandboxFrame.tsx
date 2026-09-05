@@ -42,6 +42,10 @@ export function SandboxFrame({
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const readyRef = useRef(false);
+  /* Set when a run was asked for before the frame could serve it — either
+     because it has not loaded yet, or because we just replaced it on purpose.
+     The `ready` handler is what finally fires it. */
+  const pendingExecRef = useRef(false);
 
   /*
    * `generation` forces a genuinely new iframe. It is bumped on timeout, where
@@ -65,6 +69,10 @@ export function SandboxFrame({
       switch (msg.type) {
         case 'ready':
           readyRef.current = true;
+          if (pendingExecRef.current) {
+            pendingExecRef.current = false;
+            execRef.current();
+          }
           break;
         case 'progress':
           onProgress?.(msg.message);
@@ -125,6 +133,12 @@ export function SandboxFrame({
     startTimer();
   }, [runtime, files, tests]);
 
+  // `handleMessage` is registered once per mount and must not be rebuilt every
+  // time the files change, so it reaches `exec` through a ref rather than
+  // closing over it.
+  const execRef = useRef(exec);
+  execRef.current = exec;
+
   /* ---- mount / unmount lifecycle ---- */
   useEffect(() => {
     window.addEventListener('message', handleMessage);
@@ -139,26 +153,38 @@ export function SandboxFrame({
   useEffect(() => {
     if (trigger === 0) return; // skip the initial render
 
+    /*
+     * The web sandbox gets a brand-new document for every run.
+     *
+     * Its learner scripts are real <script> elements now, so top-level `const`,
+     * `let` and `class` declarations land in the frame's global lexical scope
+     * and stay there for the life of the document. Re-running the same
+     * submission in the same frame would fail with "Identifier 'todos' has
+     * already been declared" — reported against the learner's file, for a
+     * mistake they did not make. The first attempt would pass and every one
+     * after it would not, which is the worst possible shape for this bug.
+     *
+     * Remounting is cheap here: the document is a few kilobytes of static HTML
+     * with no runtime to download. Python is deliberately NOT remounted — that
+     * reload is Pyodide, several seconds of wasm, and PY_LOAD already evicts
+     * the previous run's modules from sys.modules.
+     */
+    if (runtime === 'web') {
+      readyRef.current = false;
+      pendingExecRef.current = true;
+      setGeneration((g) => g + 1);
+      return;
+    }
+
     if (readyRef.current) {
       exec();
-    } else {
-      // Sandbox not ready yet — wait for `ready`, then exec once.
-      const waitForReady = (ev: MessageEvent) => {
-        const frame = iframeRef.current;
-        if (!frame || ev.source !== frame.contentWindow) return;
-        if (ev.data?.type === 'ready') {
-          readyRef.current = true;
-          window.removeEventListener('message', waitForReady);
-          exec();
-        }
-      };
-      window.addEventListener('message', waitForReady);
-      // Cleanup if component unmounts before ready fires.
-      return () => window.removeEventListener('message', waitForReady);
+      return;
     }
-    // Intentionally keyed on `trigger` alone: this effect is the "run now" edge,
-    // not a subscription to every value `exec` happens to close over.
-  }, [trigger]);
+    // Not loaded yet. `ready` will fire it.
+    pendingExecRef.current = true;
+    // Intentionally keyed on the run edge, not on everything `exec` closes
+    // over: this is "run now", not a subscription.
+  }, [trigger, runtime]);
 
   return (
     <iframe

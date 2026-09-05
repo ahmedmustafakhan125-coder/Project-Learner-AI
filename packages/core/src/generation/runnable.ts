@@ -58,6 +58,49 @@ export const PY_STDLIB: ReadonlySet<string> = new Set(PY_STDLIB_NAMES.split(',')
 
 const PY_FILE = /\.py$/i;
 const JS_FILE = /\.(js|mjs)$/i;
+const HTML_FILE = /\.html?$/i;
+
+/**
+ * Module syntax, which a classic <script> cannot execute.
+ *
+ * The web sandbox mounts the submission as a real page and runs its scripts as
+ * classic <script> elements. There is no bundler, no import map and no module
+ * resolver behind them, so `import`/`export` is a hard SyntaxError however the
+ * file is loaded — including for a RELATIVE import, which `jsBareSpecifiers`
+ * deliberately ignores because it resolves inside the project.
+ *
+ * That gap is why this exists. A step whose starter files were written as ES
+ * modules used to keep `runtime: "web"` and its tests, then fail every run with
+ * a syntax error the learner did not write and could not fix.
+ */
+export const ES_MODULE_SYNTAX =
+  /^\s*(?:export\s|export\s*\{|import\s+[\w{*]|import\s*['"]|import\s*\()/m;
+
+/**
+ * Script URLs an HTML file loads from somewhere other than the project.
+ *
+ * The sandbox serves the submission and nothing else — `connect-src` names only
+ * the app origin, and there is no server behind a relative path either. A page
+ * pulling React or Tailwind off a CDN cannot run here, and the checkpoint has
+ * to know that before it writes tests against a library that will never load.
+ *
+ * Regex rather than a parser for the same reason the Python import scan is
+ * line-based: this only has to be good enough to notice a <script src>, and
+ * `packages/core` compiles without the DOM lib, so there is no DOMParser here.
+ */
+export function htmlExternalScripts(source: string): string[] {
+  const external = new Set<string>();
+
+  for (const match of source.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi)) {
+    const src = match[1]?.trim();
+    if (!src) continue;
+    if (/^(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(src) || src.startsWith('data:')) {
+      external.add(src.split('/').slice(0, 3).join('/'));
+    }
+  }
+
+  return [...external];
+}
 
 /**
  * Top-level module names a Python source imports.
@@ -121,6 +164,26 @@ export function jsBareSpecifiers(source: string): string[] {
 }
 
 /**
+ * The body of every inline <script> in an HTML file.
+ *
+ * These execute now — the sandbox runs them as real script elements, in
+ * document order — so they are subject to exactly the same limits as a `.js`
+ * file and have to be scanned alongside them. Before the sandbox built a page,
+ * nothing in an HTML file ran and nothing in one was worth reading.
+ */
+export function htmlInlineScripts(source: string): string[] {
+  const bodies: string[] = [];
+
+  for (const match of source.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
+    if (/\bsrc\s*=/i.test(match[1] ?? '')) continue;
+    const body = match[2] ?? '';
+    if (body.trim()) bodies.push(body);
+  }
+
+  return bodies;
+}
+
+/**
  * Imports in these files that the sandbox for `runtime` cannot resolve.
  *
  * Empty means the step is runnable as written.
@@ -138,6 +201,15 @@ export function unrunnableImports(
       }
     } else if (runtime === 'web' && JS_FILE.test(file.path)) {
       for (const spec of jsBareSpecifiers(file.contents)) missing.add(spec);
+      // A relative import passes the bare-specifier scan and still cannot run.
+      if (ES_MODULE_SYNTAX.test(file.contents)) missing.add('ES modules (import/export)');
+    } else if (runtime === 'web' && HTML_FILE.test(file.path)) {
+      // The page is executed now, not just carried, so what it pulls in counts.
+      for (const url of htmlExternalScripts(file.contents)) missing.add(url);
+      for (const inline of htmlInlineScripts(file.contents)) {
+        for (const spec of jsBareSpecifiers(inline)) missing.add(spec);
+        if (ES_MODULE_SYNTAX.test(inline)) missing.add('ES modules (import/export)');
+      }
     }
   }
 

@@ -3,7 +3,8 @@
 import { useState, useCallback, useRef } from 'react';
 import { verify } from '@ai-edu/runners';
 import type { LayerResult } from '@ai-edu/runners';
-import type { CheckpointRun } from '@ai-edu/api-client';
+import { preflightSubmission, type PreflightFailure } from '@ai-edu/core';
+import { ApiError, type CheckpointRun } from '@ai-edu/api-client';
 import { SandboxFrame } from './SandboxFrame';
 import { api } from '@/lib/api';
 
@@ -20,7 +21,35 @@ export interface CheckpointRunnerProps {
     tests: Array<{ name: string; code: string; failureMessage: string }>;
     runtime: 'web' | 'python' | 'none';
   };
+  /**
+   * The whole project as it currently stands — this step's work plus every
+   * file the earlier steps produced.
+   *
+   * This is what gets verified and what the sandbox mounts. A checkpoint asks
+   * "does the project do the thing now", and a test that touches the page needs
+   * the page, which lives in a file some earlier step created.
+   */
   files: Array<{ path: string; contents: string }>;
+  /**
+   * Just this step's own files — what is recorded as the attempt.
+   *
+   * Kept separate from `files` because the step that owns a file is the step
+   * that grades it: storing the inherited files here would make every step
+   * claim authorship of the whole project, and `assembleProject` resolves the
+   * finished repository by asking which step each file came from.
+   *
+   * The server does not trust this to be the whole picture — it merges the
+   * earlier files back in from its own copy before verifying.
+   */
+  submittedFiles: Array<{ path: string; contents: string }>;
+  /**
+   * The scaffolding this step handed over.
+   *
+   * Needed to tell work from an untouched starting point, which is the single
+   * most common junk submission and the one the old runner counted as a
+   * real failed attempt.
+   */
+  starterFiles: Array<{ path: string; contents: string }>;
   /**
    * Attempts made on this step, owned by the parent because the hint gate is
    * driven by the same number. Displayed here; counted there.
@@ -104,6 +133,8 @@ export function CheckpointRunner({
   stepIndex,
   checkpoint,
   files,
+  submittedFiles,
+  starterFiles,
   attemptCount,
   onAttempt,
   onPass,
@@ -119,6 +150,15 @@ export function CheckpointRunner({
   const [sandboxTrigger, setSandboxTrigger] = useState(0);
   const [showSandbox, setShowSandbox] = useState(false);
   const [sandboxProgress, setSandboxProgress] = useState<string | null>(null);
+  /*
+   * Why a submission was refused before it became an attempt.
+   *
+   * Distinct from a failed run on purpose. A failure is work that did not pass;
+   * a refusal is not work at all, and it is deliberately NOT recorded - the
+   * hint ladder unlocks on attempt count, so counting junk was a way to buy
+   * help without writing anything.
+   */
+  const [refusal, setRefusal] = useState<PreflightFailure | null>(null);
   const startedAtRef = useRef<number>(0);
 
   /* helpers ---- */
@@ -165,7 +205,7 @@ export function CheckpointRunner({
         const result = await api.submitAttempt(
           projectId,
           stepIndex,
-          files,
+          submittedFiles,
           durationMs,
           testResults,
         );
@@ -175,7 +215,25 @@ export function CheckpointRunner({
         } else {
           settle('failed');
         }
-      } catch {
+      } catch (err) {
+        /*
+         * The server refused it as junk. It is the authority on that rule, and
+         * it can refuse something this component let through - the browser
+         * compares against the starter files it was handed, while the server
+         * compares against the ones it stored.
+         */
+        if (err instanceof ApiError && err.code === 'not_an_attempt') {
+          const body = err.payload as { message?: string; reason?: string; details?: string[] } | null;
+          setRefusal({
+            code: (body?.reason as PreflightFailure['code']) ?? 'unchanged',
+            message: body?.message ?? 'That submission was not accepted.',
+            details: body?.details ?? [],
+          });
+          setStatus('idle');
+          resetLayers();
+          return;
+        }
+
         // The server is the authority on whether a checkpoint passed: it re-runs
         // the static layers and owns the attempt record. If that call fails we
         // do not know the outcome, so the checkpoint does NOT advance — passing
@@ -188,7 +246,7 @@ export function CheckpointRunner({
         settle('failed');
       }
     },
-    [projectId, stepIndex, files, onPass, updateLayer, settle],
+    [projectId, stepIndex, submittedFiles, onPass, updateLayer, settle, resetLayers],
   );
 
   /* ---- sandbox callbacks ---- */
@@ -235,6 +293,27 @@ export function CheckpointRunner({
   /* ---- run pipeline ---- */
 
   const run = useCallback(async () => {
+    /*
+     * Is this an attempt at all?
+     *
+     * Runs before `onAttempt`, before the layers, and before anything reaches
+     * the server. The same rule runs server-side as the authority - this copy
+     * exists so the learner is told immediately rather than after a round trip.
+     */
+    const refused = preflightSubmission({
+      submitted: submittedFiles,
+      starter: starterFiles,
+      requiredFiles: checkpoint.requiredFiles,
+      requiredSymbols: checkpoint.requiredSymbols,
+    });
+    if (refused) {
+      setRefusal(refused);
+      setStatus('idle');
+      resetLayers();
+      return;
+    }
+
+    setRefusal(null);
     startedAtRef.current = Date.now();
     setStatus('running');
     resetLayers();
@@ -298,7 +377,13 @@ export function CheckpointRunner({
         checkpoint.runtime !== 'none' && checkpoint.tests.length > 0;
 
       if (!needsSandbox) {
-        updateLayer(2, { status: 'passed', message: 'No tests — auto-passed.' });
+        // Not "auto-passed". Nothing was executed, and saying so is the honest
+        // description - the file and symbol layers plus the submit gate are the
+        // whole check for these steps.
+        updateLayer(2, {
+          status: 'passed',
+          message: 'No runnable tests for this step — checked files and symbols only.',
+        });
         const durationMs = Date.now() - startedAtRef.current;
         await recordAttempt(true, durationMs);
         return;
@@ -317,7 +402,17 @@ export function CheckpointRunner({
       if (idx >= 0) updateLayer(idx, { status: 'failed', message: msg });
       settle('failed');
     }
-  }, [files, checkpoint, updateLayer, resetLayers, recordAttempt, onAttempt, settle]);
+  }, [
+    files,
+    submittedFiles,
+    starterFiles,
+    checkpoint,
+    updateLayer,
+    resetLayers,
+    recordAttempt,
+    onAttempt,
+    settle,
+  ]);
 
   /* ---- sandbox input ----
      The files go over whole. Concatenating them into one string and handing
@@ -329,6 +424,26 @@ export function CheckpointRunner({
 
   return (
     <div className="checkpoint-runner">
+      {/*
+        A refusal, not a failure.
+        Worth the visual distinction: nothing was recorded, no attempt was
+        spent, and the fix is always the same shape - write the code. Showing it
+        as a failed run would tell the learner they tried and got it wrong.
+      */}
+      {refusal && (
+        <div className="notice warn cp-refusal" role="status">
+          <strong>Not submitted.</strong> {refusal.message}
+          {refusal.details.length > 1 && (
+            <ul className="cp-refusal-list">
+              {refusal.details.map((detail) => (
+                <li key={detail}>{detail}</li>
+              ))}
+            </ul>
+          )}
+          <p className="muted">This does not count as an attempt.</p>
+        </div>
+      )}
+
       {/* Layer results */}
       {status !== 'idle' && (
         <ul className="cp-layers">

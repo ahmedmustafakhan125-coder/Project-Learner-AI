@@ -155,8 +155,11 @@ describe('execution timeout', () => {
 describe('error containment in generated HTML', () => {
   it('wraps learner code and each test so one failure cannot crash the sandbox', () => {
     const web = createSandboxHTML('web');
-    expect(web).toMatch(/try\s*\{[\s\S]*?new Function\(code\)[\s\S]*?\}\s*catch/);
-    expect(web).toMatch(/try\s*\{[\s\S]*?new Function\(t\.code\)[\s\S]*?\}\s*catch/);
+    // Mounting the page is the guarded step for web: the submission's markup
+    // is parsed and transplanted before a single script runs.
+    expect(web).toMatch(/try\s*\{[\s\S]*?mount\(byPath\)[\s\S]*?\}\s*catch/);
+    // Each test is evaluated on its own so one failure is one failed test.
+    expect(web).toMatch(/try\s*\{[\s\S]*?geval\([\s\S]*?t\.code[\s\S]*?\}\s*catch/);
 
     // Loading the submission is writing its files out and then executing the
     // modules among them, so the guarded call is the loader rather than a bare
@@ -169,5 +172,58 @@ describe('error containment in generated HTML', () => {
     for (const html of [web, py]) {
       expect(html).toMatch(/catch[\s\S]*?post\(\{\s*type:\s*'error'/);
     }
+  });
+});
+
+/**
+ * The web sandbox has to share one scope between the learner's code and the
+ * tests, or no test can ever name what the code declared.
+ *
+ * The version this replaced ran `new Function(code)` and then `new
+ * Function(t.code)` — two separate scopes — so every `const`, `let`, `class`,
+ * `function` and `var` the learner wrote was unreachable from the test that
+ * existed to check it. Every `runtime: "web"` test failed regardless of whether
+ * the submission was correct.
+ *
+ * These are spelling checks, like the rest of this file. That the shared scope
+ * actually works is proven by execution in `sandbox-execution.browser.test.ts`.
+ */
+describe('web execution model', () => {
+  const web = createSandboxHTML('web');
+
+  it('evaluates tests at global scope, not in a fresh function scope', () => {
+    // Indirect eval — the binding, not `eval(...)` written literally, which is
+    // a DIRECT eval and would run in the caller's scope instead of the global
+    // one the learner's scripts declared into.
+    expect(web).toMatch(/var\s+geval\s*=\s*eval\s*;/);
+    expect(web).not.toContain('new Function(t.code)');
+    expect(web).not.toContain('new Function(code)');
+  });
+
+  it('runs learner code as real script elements so declarations reach globals', () => {
+    expect(web).toMatch(/document\.createElement\('script'\)/);
+    expect(web).toMatch(/document\.head\.appendChild\(el\)/);
+  });
+
+  it('builds a DOM from the submission before any script runs', () => {
+    expect(web).toContain('new DOMParser().parseFromString');
+    expect(web).toMatch(/document\.body\.innerHTML\s*=\s*doc\.body/);
+  });
+
+  it('fires the lifecycle events scripts wire themselves up on', () => {
+    // Scripts are injected long after the real DOMContentLoaded, so a listener
+    // registered for it would never fire — and that is the most common shape
+    // this code takes.
+    expect(web).toContain("new Event('DOMContentLoaded'");
+    expect(web).toContain("new Event('load')");
+  });
+
+  it('executes inline scripts from the page, not only .js files', () => {
+    expect(web).toMatch(/inline script/);
+  });
+
+  it('reports module syntax rather than failing as the learner’s error', () => {
+    expect(web).toContain('MODULE_SYNTAX');
+    expect(web).toMatch(/ES module syntax/);
   });
 });
