@@ -621,14 +621,26 @@ export class ApiClient {
 
   private async request<T>(path: string, init: RequestInit): Promise<T> {
     const token = await this.getToken();
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      ...init,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-        ...(init.headers ?? {}),
-      },
-    });
+
+    /*
+     * Content-Type is declared only when there is actually a body.
+     *
+     * Sending it on a bodyless request is not merely redundant - Fastify runs
+     * its JSON parser on any request whose content-type says JSON and whose
+     * method may carry a body, and an empty body then fails with
+     * "Body cannot be empty when content-type is set to 'application/json'".
+     * DELETE is exactly that shape, so every DELETE this client made was
+     * rejected with a 400 before it reached its route.
+     */
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+      ...(init.body === undefined || init.body === null
+        ? {}
+        : { 'Content-Type': 'application/json' }),
+      ...((init.headers ?? {}) as Record<string, string>),
+    };
+
+    const response = await fetch(`${this.baseUrl}${path}`, { ...init, headers });
 
     const payload = await response.json().catch(() => null);
 
