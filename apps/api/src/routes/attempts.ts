@@ -622,10 +622,25 @@ export async function attemptRoutes(app: FastifyInstance): Promise<void> {
       // Count attempts and get time since first attempt
       const { data: attempts } = await db()
         .from('step_attempts')
-        .select('id, created_at')
+        .select('id, created_at, passed')
         .eq('step_id', step.id)
         .eq('user_id', user.id)
         .order('attempt_no', { ascending: true });
+
+      /*
+       * A passed step has nothing left to protect.
+       *
+       * The ladder exists so a learner cannot skip the thinking by reading the
+       * answer first. Once they have solved it that reason is spent, and what
+       * is left is reference material about work they have already done - the
+       * tier-3 hint is often the clearest explanation of the technique in the
+       * whole step. Keeping it locked afterwards withholds an explanation from
+       * someone who has earned it, and teaches them the hints were never really
+       * for them.
+       */
+      if ((attempts ?? []).some((attempt) => attempt.passed)) {
+        return reply.send({ tier: requestedTier, text: hint.text });
+      }
 
       const attemptCount = attempts?.length ?? 0;
       const firstAttemptAt = attempts?.[0]?.created_at ? new Date(attempts[0].created_at).getTime() : null;

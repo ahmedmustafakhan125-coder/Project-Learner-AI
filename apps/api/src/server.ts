@@ -14,6 +14,7 @@ import { followUpRoutes } from './routes/followups.js';
 import { interviewRoutes } from './routes/interview.js';
 import { projectRoutes } from './routes/projects.js';
 import { threadRoutes } from './routes/threads.js';
+import { tutorRoutes } from './routes/tutor.js';
 
 export async function buildServer() {
   const env = loadEnv();
@@ -70,6 +71,7 @@ export async function buildServer() {
   await app.register(attemptRoutes);
   await app.register(projectRoutes);
   await app.register(threadRoutes);
+  await app.register(tutorRoutes);
 
   return app;
 }

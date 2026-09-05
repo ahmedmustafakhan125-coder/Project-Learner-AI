@@ -66,6 +66,14 @@ export interface StepViewProps {
    * existed since the beginning and nothing has ever called it.
    */
   onPassed?: () => void;
+  /**
+   * Fired when something the tutor's gate reads has changed.
+   *
+   * Attempts and spent hints feed both the hint ladder and the tutor's reveal,
+   * so the panel has to be told when they move or it keeps reporting the state
+   * it loaded when it opened.
+   */
+  onGateInputChanged?: () => void;
 }
 
 export function StepView({
@@ -75,11 +83,20 @@ export function StepView({
   blockedBy = null,
   onDraftSaved,
   onPassed,
+  onGateInputChanged,
 }: StepViewProps) {
   // Everything below is seeded from the server. A step the learner has already
   // worked on reopens where they left it: the explanation they unlocked stays
   // unlocked, the checkpoint keeps its verdict, the hints they spent stay open.
-  const [revealed, setRevealed] = useState(step.revealed);
+  /*
+   * Passing reveals the explanation, so a passed step reopens with it showing.
+   *
+   * Seeded from both, not just `step.revealed`: a step passed before this
+   * behaviour existed never had the flag written, and would otherwise still
+   * present the learner with a button to reveal something they had earned
+   * weeks ago.
+   */
+  const [revealed, setRevealed] = useState(step.revealed || step.passed);
   // Their own work if they have started this step, the untouched scaffolding if
   // not. Before drafts were saved this always reset to the starter files, so
   // reopening a project quietly discarded everything they had written.
@@ -284,9 +301,22 @@ export function StepView({
                 setAttemptCount((c) => c + 1);
                 // The server times the hint gate from the first attempt; match it.
                 setStartedAt((at) => at ?? Date.now());
+                onGateInputChanged?.();
               }}
               onPass={() => {
                 setPassed(true);
+                /*
+                 * The explanation opens itself now.
+                 *
+                 * It was always gated behind a second button the learner had to
+                 * find and press after passing, which is a click asking "did
+                 * you want the thing this step exists to teach?". The reason
+                 * for holding it back is that an explanation read before the
+                 * learner has wrestled with the problem lands as trivia - and
+                 * passing IS the moment that stops being true.
+                 */
+                setRevealed(true);
+                persist({ revealed: true });
                 // Moves the enrollment forward, which is what opens the next
                 // step. Fired here rather than inside the runner so the runner
                 // stays a checkpoint and knows nothing about navigation.
@@ -302,11 +332,13 @@ export function StepView({
             hintCount={step.hintCount}
             attemptCount={attemptCount}
             startedAt={startedAt}
+            passed={passed}
             openedTiers={hintsOpened}
             onTierOpened={(tier) => {
               const next = [...new Set([...hintsOpened, tier])].sort();
               setHintsOpened(next);
               persist({ hintsOpened: next });
+              onGateInputChanged?.();
             }}
           />
         </section>
@@ -328,6 +360,12 @@ export function StepView({
               Pass the checkpoint to see the explanation
             </button>
           ) : (
+            /*
+             * Only reachable on a step with nothing to run. A checkpoint step
+             * reveals itself on passing, so there is no button left to press;
+             * here there is no pass to wait for, and the learner saying they
+             * have written it is the only signal available.
+             */
             <button
               className="btn"
               onClick={() => {
