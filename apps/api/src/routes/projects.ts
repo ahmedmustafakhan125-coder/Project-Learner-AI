@@ -12,6 +12,7 @@ import {
   parseStoredBlueprint,
   planExpansion,
   scorePacing,
+  verifyProjectComplete,
   type PaceState,
   type AttemptSummary,
   type ProjectArtifact,
@@ -542,6 +543,27 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
           stepIndex,
           priorFiles,
           directive,
+          /*
+           * A step that broke its file manifest is repaired either way, so
+           * nothing here reaches the learner. It is logged because a silent
+           * retry is indistinguishable from a slow model: without this, a
+           * prompt regression that doubles the cost of every expansion looks
+           * exactly like a bad afternoon on the provider's side.
+           */
+          onViolations: (violations, willRetry) => {
+            request.log.warn(
+              {
+                stepIndex,
+                willRetry,
+                violations: violations.map((v) => ({
+                  code: v.code,
+                  path: v.path,
+                  severity: v.severity,
+                })),
+              },
+              'expansion did not match its file manifest',
+            );
+          },
         });
 
         await db()
@@ -676,6 +698,28 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
+      /*
+       * Is this actually the project that was planned?
+       *
+       * Nothing asked before, so a project could reach its final step still
+       * missing a file the blueprint called for and the first anyone knew was
+       * a downloaded repository that does not start.
+       *
+       * Reported, not refused. A learner who has skipped a step is entitled to
+       * download what they have built - what they are not entitled to is being
+       * told it is finished when it is not.
+       */
+      const completeness = verifyProjectComplete(
+        blueprint.finalFileTree.map((file) => file.path),
+        assembled.files,
+      );
+      if (!completeness.complete) {
+        request.log.warn(
+          { projectId: project.id, missing: completeness.missing },
+          'assembled project is missing planned files',
+        );
+      }
+
       const regenerate = request.body?.regenerate === true;
       const cached = project.artifact as ProjectArtifact | null;
 
@@ -683,7 +727,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
       // code they described is still the code. Anything else ships a README
       // that talks about functions the learner has since replaced.
       if (cached && !regenerate && stillDescribes(cached.files, assembled.files)) {
-        return reply.send({ artifact: cached, cached: true });
+        return reply.send({ artifact: cached, cached: true, completeness });
       }
 
       const budget = await checkBudget(user.id);
@@ -751,7 +795,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
       // their project either way, they will just pay for it again next time.
       if (saveErr) request.log.error({ err: saveErr.message }, 'failed to cache project artifact');
 
-      return reply.send({ artifact, cached: false });
+      return reply.send({ artifact, cached: false, completeness });
     },
   );
 

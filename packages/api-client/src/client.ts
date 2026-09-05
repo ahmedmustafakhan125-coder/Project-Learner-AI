@@ -214,6 +214,15 @@ export interface StepContent {
   pacingDirective: PacingDirective | null;
 }
 
+/** Whether the assembled project contains every file the blueprint planned. */
+export interface CompletenessReport {
+  complete: boolean;
+  /** Planned files the finished project does not contain. */
+  missing: string[];
+  /** Files the project has that the plan never mentioned. Not a defect. */
+  unplanned: string[];
+}
+
 export interface PacingDirective {
   adjustment: 'scaffold' | 'insert_micro_step' | 'hold' | 'compress' | 'stretch';
   reason: string;
@@ -490,10 +499,18 @@ export class ApiClient {
    * Cached server-side against the assembled files, so calling this repeatedly
    * on unchanged code costs nothing. `regenerate` forces a rewrite.
    */
+  /**
+   * Whether the assembled project is the project that was planned.
+   *
+   * `missing` lists files the blueprint called for that the code does not have
+   * - almost always steps the learner skipped. Reported rather than enforced:
+   * they are entitled to download what they built, just not to be told it is
+   * finished when it is not.
+   */
   async finishProject(
     projectId: string,
     regenerate = false,
-  ): Promise<{ artifact: ProjectArtifact; cached: boolean }> {
+  ): Promise<{ artifact: ProjectArtifact; cached: boolean; completeness: CompletenessReport }> {
     return this.post(`/api/projects/${projectId}/finish`, { regenerate });
   }
 

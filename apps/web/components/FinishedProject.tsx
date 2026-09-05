@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import type { ProjectArtifact } from '@ai-edu/core';
-import { ApiError } from '@ai-edu/api-client';
+import { ApiError, type CompletenessReport } from '@ai-edu/api-client';
 
 import { renderMarkdown } from '@/lib/markdown';
 import { api } from '../lib/api';
@@ -36,6 +36,14 @@ export function FinishedProject({
   totalSteps,
 }: FinishedProjectProps) {
   const [artifact, setArtifact] = useState<ProjectArtifact | null>(null);
+  /*
+   * Whether this is actually the project that was planned.
+   *
+   * Nothing used to ask. A project could reach its final step still missing a
+   * file the blueprint called for, and the first the learner knew was a
+   * downloaded repository that does not start.
+   */
+  const [completeness, setCompleteness] = useState<CompletenessReport | null>(null);
   const [busy, setBusy] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,7 +54,11 @@ export function FinishedProject({
       setBusy(true);
       setError(null);
       try {
-        const { artifact: built } = await api.finishProject(projectId, regenerate);
+        const { artifact: built, completeness: report } = await api.finishProject(
+          projectId,
+          regenerate,
+        );
+        setCompleteness(report ?? null);
         setArtifact(built);
         setOpenFile(null);
       } catch (err) {
@@ -145,6 +157,23 @@ export function FinishedProject({
 
       {artifact && (
         <>
+          {completeness && !completeness.complete && (
+            <div className="notice warn">
+              <strong>
+                This project is missing {completeness.missing.length} planned file
+                {completeness.missing.length === 1 ? '' : 's'}.
+              </strong>{' '}
+              The blueprint calls for {completeness.missing.length === 1 ? 'a file' : 'files'} no
+              step has produced yet, so what you download will not run as the summary describes.
+              Usually this means a step is still unfinished.
+              <ul className="finished-missing">
+                {completeness.missing.map((path) => (
+                  <li key={path}>{path}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {!artifact.fullyLearnerWritten && artifact.stepsFromReference.length > 0 && (
             <div className="notice warn">
               <strong>

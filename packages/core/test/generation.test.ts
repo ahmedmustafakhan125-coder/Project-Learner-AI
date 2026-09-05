@@ -103,8 +103,31 @@ describe('normaliseBlueprint', () => {
       }),
     );
     // A 1-minute step should have been merged; a 10-hour step gets abandoned.
-    expect(result.steps[0]!.estMinutes).toBeGreaterThanOrEqual(10);
-    expect(result.steps[1]!.estMinutes).toBeLessThanOrEqual(180);
+    // The exact bounds are asserted, not just "within range": the ceiling used
+    // to be 180 and plans came back with every step pinned at exactly it,
+    // making an eight-step beginner project a 24-hour commitment. A loose
+    // assertion here is what let the prompt and the clamp drift apart.
+    expect(result.steps[0]!.estMinutes).toBe(10);
+    expect(result.steps[1]!.estMinutes).toBe(90);
+    // A step already inside the range is left exactly as planned.
+    expect(result.steps[2]!.estMinutes).toBe(45);
+  });
+
+  it('keeps a whole project inside a plausible sitting', () => {
+    // The regression this guards: 8 steps x 180 min = 24 hours, generated for
+    // a beginner, from a prompt that asked for 20-90 minutes a step.
+    const result = normaliseBlueprint(
+      blueprint({
+        steps: Array.from({ length: 8 }, (_, i) => ({
+          title: `step ${i}`,
+          objective: 'o',
+          concepts: [],
+          estMinutes: 180,
+        })),
+      }),
+    );
+    expect(result.steps.every((step) => step.estMinutes <= 90)).toBe(true);
+    expect(result.estimatedHours).toBe(12);
   });
 
   it('deduplicates and trims concepts', () => {
