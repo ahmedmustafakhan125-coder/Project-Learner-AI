@@ -164,9 +164,18 @@ export function normaliseBlueprint(blueprint: ProjectBlueprint): ProjectBlueprin
     title: step.title.trim(),
     objective: step.objective.trim(),
     concepts: [...new Set(step.concepts.map((c) => c.trim()).filter(Boolean))],
-    // A step of 5 minutes is a step that should have been merged; a step of 4
-    // hours will be abandoned halfway.
-    estMinutes: Math.min(180, Math.max(10, Math.round(step.estMinutes))),
+    /*
+     * A step of 5 minutes should have been merged; a step of 3 hours will be
+     * abandoned halfway.
+     *
+     * The ceiling is the 90 minutes the prompt actually asks for. It used to
+     * be 180, and the gap was not theoretical: a plan would come back with
+     * every single step pinned at exactly the clamp, turning an eight-step
+     * beginner project into a twenty-four-hour commitment that no learner was
+     * ever going to finish. A limit the prompt states and the code does not
+     * enforce is a limit the model treats as advice.
+     */
+    estMinutes: Math.min(90, Math.max(10, Math.round(step.estMinutes))),
   }));
 
   // Trust the sum of the steps over the model's own total — the parts are

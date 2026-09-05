@@ -5,6 +5,14 @@ import type { ProjectBlueprint } from '../schemas/project.js';
 import { ExpandedStep, type SourceFile } from '../schemas/step.js';
 import { renderProjectState } from './assemble.js';
 import { groundCheckpoint } from './runnable.js';
+import {
+  hasSeriousViolation,
+  renderViolations,
+  repairExpansion,
+  verifyExpansion,
+  type ExpansionContext,
+  type Violation,
+} from './verifyExpansion.js';
 import type { PacingDirective } from '../pacing/types.js';
 import { renderPacingDirective } from '../pacing/types.js';
 
@@ -104,15 +112,26 @@ export interface ExpandStepOptions {
   /** Adjusts this step based on how the learner has been doing. */
   directive?: PacingDirective | null;
   signal?: AbortSignalLike;
+  /**
+   * Told what was wrong with an expansion that broke its file manifest.
+   *
+   * Called before the retry, so a caller can log the reason a step cost two
+   * generations instead of one. A silent retry is indistinguishable from a
+   * slow model, which is how a prompt regression goes unnoticed for weeks.
+   */
+  onViolations?: (violations: Violation[], willRetry: boolean) => void;
 }
 
 export async function expandStep(options: ExpandStepOptions): Promise<ExpandedStep> {
-  const { provider, blueprint, stepIndex, priorFiles = [], directive, signal } = options;
+  const { provider, blueprint, stepIndex, priorFiles = [], directive, signal, onViolations } =
+    options;
 
   const stub = blueprint.steps[stepIndex];
   if (!stub) {
     throw new Error(`Step ${stepIndex} is outside this project (${blueprint.steps.length} steps).`);
   }
+
+  const context: ExpansionContext = { stub, priorFiles };
 
   const messages = [
     {
@@ -144,19 +163,68 @@ export async function expandStep(options: ExpandStepOptions): Promise<ExpandedSt
     });
   }
 
-  const result = await provider.structured(
-    {
-      model: provider.modelId,
-      maxTokens: 16_000,
-      reasoning: 'high',
-      system: [{ text: SYSTEM, cacheBoundary: true }],
-      messages,
-      ...(signal ? { signal } : {}),
-    },
-    ExpandedStep,
-  );
+  const call = async (): Promise<ExpandedStep> => {
+    const result = await provider.structured(
+      {
+        model: provider.modelId,
+        maxTokens: 16_000,
+        reasoning: 'high',
+        system: [{ text: SYSTEM, cacheBoundary: true }],
+        messages,
+        ...(signal ? { signal } : {}),
+      },
+      ExpandedStep,
+    );
+    return normaliseStep(result.data);
+  };
 
-  return normaliseStep(result.data);
+  let step = await call();
+
+  /*
+   * One retry, and only for damage a repair cannot honestly undo.
+   *
+   * A missing solution file puts a hole in the project from this step onward,
+   * and a clobbered edit means the step's scaffolding would have to be thrown
+   * away to save the learner's code. Both are worth a second generation. A
+   * stray file outside the manifest is not — dropping it is exactly right, and
+   * paying for another call to be told the same thing is waste.
+   *
+   * The retry is a trailing turn so the blueprint above it stays byte-identical
+   * and keeps reading from the cache.
+   */
+  let violations = verifyExpansion(step, context);
+  if (hasSeriousViolation(violations)) {
+    onViolations?.(violations, true);
+    messages.push({
+      role: 'user' as const,
+      content: [{ type: 'text' as const, text: renderViolations(violations) }],
+    });
+
+    try {
+      const retried = await call();
+      const retriedViolations = verifyExpansion(retried, context);
+      // Keep whichever answer is closer to the plan. A retry that comes back
+      // worse than the original is not an improvement worth adopting.
+      if (retriedViolations.length < violations.length) {
+        step = retried;
+        violations = retriedViolations;
+      }
+    } catch {
+      // The first answer is repairable, and a failed retry is not a reason to
+      // lose it. Better a repaired step than no step.
+    }
+
+    if (violations.length > 0) onViolations?.(violations, false);
+  } else if (violations.length > 0) {
+    onViolations?.(violations, false);
+  }
+
+  /*
+   * Repair regardless of whether a retry ran, and regardless of what it
+   * returned. A step is persisted exactly once, so this is the last point at
+   * which the manifest can still be made true.
+   */
+  return repairExpansion(step, context);
 }
 
 /* ------------------------------------------------------------------ *
