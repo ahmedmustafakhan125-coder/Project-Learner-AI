@@ -11,7 +11,9 @@ import {
   groundCheckpoint,
   parseStoredBlueprint,
   planExpansion,
+  hasSeriousViolation,
   scorePacing,
+  verifyExpansion,
   verifyProjectComplete,
   type PaceState,
   type AttemptSummary,
@@ -356,12 +358,22 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
 
   /* ---------------- Phase B: expand one step ---------------- */
 
-  app.post<{ Params: { id: string; index: string } }>(
+  app.post<{ Params: { id: string; index: string }; Body: { regenerate?: boolean } }>(
     '/api/projects/:id/steps/:index/expand',
     { preHandler: requireAuth, config: rateLimitConfig.generation },
     async (request, reply) => {
       const user = userOf(request);
       const stepIndex = Number(request.params.index);
+      /*
+       * The learner is telling us this step came out wrong.
+       *
+       * There was no way to say so. A step was written once and the cached copy
+       * returned forever, so a bad generation — a file it never produced, a
+       * checkpoint that cannot pass — left them stuck on that step with no
+       * recourse but abandoning the project. Rate limited with the rest of
+       * generation, and billed like any other expansion.
+       */
+      const forceRegenerate = request.body?.regenerate === true;
 
       if (!Number.isInteger(stepIndex) || stepIndex < 0) {
         return reply.code(400).send({ error: 'bad_request', message: 'Invalid step index.' });
@@ -403,8 +415,45 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
+      /*
+       * Is the stored copy still worth serving?
+       *
+       * `verifyExpansion` is the same check the generator runs. A step whose
+       * files were repaired into stubs, or which never produced a file its own
+       * checkpoint requires, is not merely imperfect — it cannot be passed, and
+       * returning it again achieves nothing except keeping the learner stuck.
+       *
+       * Only SERIOUS faults trigger this. A stray extra file is repaired on
+       * read and is not worth a generation.
+       */
+      const storedStub = blueprintStub(project.blueprint, stepIndex);
+      let cachedIsUsable = true;
+      if (step.expanded_at && storedStub) {
+        const stored = {
+          instructionsMd: (step.instructions_md as string) ?? '',
+          explanationMd: (step.explanation_md as string) ?? '',
+          alternatives: [],
+          hints: [],
+          checkpoint: Checkpoint.safeParse(step.checkpoint).success
+            ? Checkpoint.parse(step.checkpoint)
+            : { requiredFiles: [], requiredSymbols: [], tests: [], runtime: 'none' as const },
+          starterFiles: (step.starter_files as SourceFile[]) ?? [],
+          solutionFiles: (step.solution_files as SourceFile[]) ?? [],
+        };
+        const priorForCheck = await priorFilesFor(project.id, user.id, stepIndex);
+        cachedIsUsable = !hasSeriousViolation(
+          verifyExpansion(stored, { stub: storedStub, priorFiles: priorForCheck }),
+        );
+        if (!cachedIsUsable) {
+          request.log.warn(
+            { projectId: project.id, stepIndex },
+            'cached step is unusable; regenerating',
+          );
+        }
+      }
+
       // Already done — return it rather than paying to generate it twice.
-      if (step.expanded_at) {
+      if (step.expanded_at && cachedIsUsable && !forceRegenerate) {
         // The attempt history travels with the step. The hint gate is enforced
         // here against these rows, so a client that cannot see them counts from
         // zero after every reload and re-locks hints the learner has earned.
@@ -903,6 +952,24 @@ function stillDescribes(cachedFiles: SourceFile[], assembled: SourceFile[]): boo
  * Solution files are deliberately absent: sending them would hand the learner
  * the answer to a step they have not attempted.
  */
+/**
+ * This step's manifest out of the stored blueprint, or null when there is none.
+ *
+ * Null for a project planned before file plans existed. Those steps have no
+ * contract to be checked against, so the usability check has to skip them
+ * rather than declare them all broken and regenerate an entire back catalogue.
+ */
+function blueprintStub(
+  storedBlueprint: unknown,
+  stepIndex: number,
+): { creates: string[]; edits: string[] } | null {
+  const blueprint = parseStoredBlueprint(storedBlueprint);
+  const stub = blueprint?.steps[stepIndex];
+  if (!stub) return null;
+  if (stub.creates.length === 0 && stub.edits.length === 0) return null;
+  return { creates: stub.creates, edits: stub.edits };
+}
+
 function toExpansionPayload(step: Record<string, unknown>) {
   const stored = (step['checkpoint'] ?? {}) as Record<string, unknown>;
   const hints = Array.isArray(stored['hints']) ? stored['hints'] : [];

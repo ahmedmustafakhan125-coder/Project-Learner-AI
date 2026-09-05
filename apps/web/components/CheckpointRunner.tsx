@@ -85,6 +85,21 @@ const LAYER_LABELS = ['Checking files…', 'Checking symbols…', 'Running tests
 const PASS_LABELS = ['Files found', 'Symbols found', 'Tests passed'] as const;
 
 /**
+ * Where to show a failure the SERVER found and this component did not.
+ *
+ * The two can legitimately disagree. The server re-runs the static layers
+ * against the whole project, assembled from its own copy of the earlier steps'
+ * files, while this component checks what is in the editor. When they differ
+ * the server is right — and its reason used to be discarded, so the learner
+ * saw three green rows and a bare "Not passing yet." with nothing to act on.
+ */
+const SERVER_LAYER_INDEX: Record<string, number> = {
+  file_existence: 0,
+  symbol_check: 1,
+  tests: 2,
+};
+
+/**
  * Rebuilds the three layer rows from a stored run.
  *
  * Anything mid-flight in the stored record is treated as pending: a run that
@@ -212,9 +227,21 @@ export function CheckpointRunner({
         if (allPassed && result.passed) {
           settle('passed');
           onPass(result.solutionFiles);
-        } else {
-          settle('failed');
+          return;
         }
+
+        /*
+         * Show the server's reason when it has one this run did not produce.
+         *
+         * Without this a disagreement rendered as every row passing and no
+         * explanation anywhere — the failure the learner needed to read was in
+         * the response and thrown away.
+         */
+        if (result.message) {
+          const index = SERVER_LAYER_INDEX[result.failedLayer ?? ''] ?? 2;
+          updateLayer(index, { status: 'failed', message: result.message });
+        }
+        settle('failed');
       } catch (err) {
         /*
          * The server refused it as junk. It is the authority on that rule, and

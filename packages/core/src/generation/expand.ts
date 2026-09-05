@@ -67,6 +67,33 @@ A numbered list. One item per discrete piece of work, each naming ONE file in bo
 
 One or two facts the learner can observe by running it. "Adding a todo and reloading the page keeps it" — not "the persistence layer works".
 
+## Give them the syntax, not the answer
+
+A learner can know exactly what a step wants and still be unable to start, because they do not know how the thing is spelled in this language. "Export a function that saves the todos" assumes they know what an export looks like in JavaScript; "add a getter for each field" assumes they have written a Java getter before. Those are the moments people give up, and they are cheap to prevent.
+
+So every task states the DECLARATION in full and leaves the BODY empty. The shape is reference; the logic is the work.
+
+That line runs through the middle of a construct, not around it:
+
+- Say \`public class Todo\` with \`private final String title\`, a constructor taking a title, and a \`String getTitle()\`. Do not write what the constructor assigns.
+- Say \`def load(path: str) -> list[dict]\`, and that it returns an empty list when the file is missing. Do not write the try/except.
+- Say \`export function save(todos)\`, that it takes the array and returns nothing. Do not write the \`localStorage.setItem\` call.
+- Say the SQL is \`CREATE TABLE IF NOT EXISTS tasks\` with \`id INTEGER PRIMARY KEY\`, \`title TEXT NOT NULL\`, \`done INTEGER DEFAULT 0\`. Statements like this ARE the syntax — write them out; there is no logic underneath to withhold.
+
+Match the conventions of the file's own language, and name them where a learner would not know to look:
+
+- Python — snake_case, type hints, a docstring where the module expects one, \`if __name__ == "__main__":\` for an entry point.
+- Java — one public class per file named after the file, package declaration first, fields private, \`public static void main(String[] args)\` for an entry point.
+- C++ — the header/source split, include guards or \`#pragma once\`, what belongs in the \`.h\` and what belongs in the \`.cpp\`.
+- JavaScript — whether the project uses ES modules or classic scripts, and the fact that a classic script has no \`import\`.
+- HTML — the ids and classes the rest of the step depends on, spelled exactly, because the checkpoint and their own selectors both rely on them.
+- CSS — the selector to write, not the declarations inside it.
+- JSON, YAML, TOML, \`.env\` — these have no logic to withhold, so give the exact keys and the shape of the values. A learner guessing at a config key learns nothing from getting it wrong.
+
+State the file's language and the file it goes in whenever it is not obvious. A learner three steps into a project with a \`.py\`, a \`.sql\` and a \`.html\` in it should never have to work out which one a task is talking about.
+
+Where a construct has a common wrong spelling that still compiles, say so in the same line. "Note the \`self\` parameter — a method without it is a function on the class, and calling it on an instance is a TypeError" is worth more than a paragraph after the fact.
+
 ## Naming is a contract, not a suggestion
 
 Every identifier in checkpoint.requiredSymbols MUST appear in the instructions, spelled identically. The checkpoint greps for those exact strings, so a symbol you graded on but never named is a step the learner cannot pass except by guessing which word you had in mind.
@@ -256,7 +283,7 @@ export async function expandStep(options: ExpandStepOptions): Promise<ExpandedSt
       },
       ExpandedStep,
     );
-    return normaliseStep(result.data);
+    return normaliseStep(result.data, priorFiles);
   };
 
   let step = await call();
@@ -455,7 +482,10 @@ export function renderStepBrief(blueprint: ProjectBlueprint, stepIndex: number):
  * Normalisation
  * ------------------------------------------------------------------ */
 
-export function normaliseStep(step: ExpandedStep): ExpandedStep {
+export function normaliseStep(
+  step: ExpandedStep,
+  projectFiles: readonly SourceFile[] = [],
+): ExpandedStep {
   // Keep at most one hint per tier, ordered. Models sometimes emit several at
   // the same tier, which would let a learner unlock the whole ladder at once.
   const byTier = new Map<number, string>();
@@ -471,7 +501,15 @@ export function normaliseStep(step: ExpandedStep): ExpandedStep {
     // A checkpoint whose code the sandbox cannot even load is not a checkpoint.
     // The prompt asks for runtime "none" on those steps; this is what makes it
     // true when the model asks for a package the browser has no way to install.
-    checkpoint: groundCheckpoint(step.checkpoint, [...step.starterFiles, ...step.solutionFiles]),
+    checkpoint: groundCheckpoint(step.checkpoint, [
+      // The whole project, not just this step's files. A step that only edits a
+      // stylesheet owns nothing executable, and judging it on that alone would
+      // strip the tests from a perfectly runnable web project - the sandbox is
+      // handed the entire project when the checkpoint actually runs.
+      ...projectFiles,
+      ...step.starterFiles,
+      ...step.solutionFiles,
+    ]),
     hints: [...byTier.entries()]
       .sort(([a], [b]) => a - b)
       .map(([tier, text]) => ({ tier, text })),
