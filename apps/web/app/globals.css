@@ -3814,9 +3814,21 @@ select.control option {
   max-width: 42ch;
 }
 
+/* Was a per-agent coloured diamond. Now one small light-blue square for all
+   four, so the row reads as a set rather than four competing accents. */
 .tab-spark {
-  font-size: 14px;
-  line-height: 1;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--secondary-container, #7dd3fc);
+  border: 1px solid var(--border-strong);
+  flex-shrink: 0;
+}
+
+/* All four stay the same light blue. The active tab is already distinguished
+   by its surface, border and weight, so the marker does not need to shout. */
+.showcase-tab-btn.active .tab-spark {
+  border-color: var(--primary);
 }
 
 .about-hero-backdrop {
@@ -5123,4 +5135,52 @@ body[data-tutor-resizing='true'] {
 
 .step-ask-tutor {
   margin-top: 18px;
+}
+
+
+/* ------------------------------------------------------------------ *
+ * A character per agent card
+ *
+ * One bot perched on each of the four panes, so the grid reads as four
+ * specialists at work rather than four boxes filling themselves in.
+ * ------------------------------------------------------------------ */
+
+/* Headroom, or the perched bots are clipped by whatever sits above the row. */
+.parallel-grid { padding-top: 26px; }
+
+.card-bot {
+  position: absolute;
+  top: -26px;
+  right: 20px;
+  z-index: 3;
+  /* Decorative: never intercept a click meant for the pane it sits on. */
+  pointer-events: none;
+  filter: drop-shadow(0 5px 12px rgba(2, 132, 199, 0.26));
+}
+
+.card-bot img {
+  display: block;
+  height: 44px;
+  width: auto;
+}
+
+/* Leans over the work while this agent is streaming, then settles when its
+   own answer lands — so the four bots stop at different moments, the way the
+   answers actually arrive. */
+.card-bot.working img {
+  animation: card-bot-work 1.8s ease-in-out infinite;
+}
+
+@keyframes card-bot-work {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-5px) rotate(4deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-bot.working img { animation: none; }
+}
+
+@media (max-width: 900px) {
+  .card-bot img { height: 36px; }
+  .card-bot { top: -20px; right: 14px; }
 }

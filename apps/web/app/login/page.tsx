@@ -56,7 +56,7 @@ function LoginForm() {
       <main className="shell auth-page-container">
         <div className="auth glassmorphic-card">
           <div className="auth-header">
-            <BrandLogo height={40} />
+            <BrandLogo height={54} />
             <h1>Configuration Required</h1>
             <p className="muted">
               Supabase credentials not detected in environment. Start your local Supabase instance or check <code>.env.local</code>.
@@ -104,7 +104,7 @@ function LoginForm() {
       <div className="auth glassmorphic-card auth-standalone-card">
         <div className="auth-header">
           <Link href="/" className="auth-brand-link">
-            <BrandLogo height={40} />
+            <BrandLogo height={54} />
           </Link>
           
           <div className="auth-tabs-toggle">

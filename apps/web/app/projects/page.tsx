@@ -70,7 +70,7 @@ function Projects() {
 
       {projects?.length === 0 && !error && (
         <div className="empty" style={{ background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--border)', padding: '60px 24px', textAlign: 'center' }}>
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}><BrandLogo height={40} /></div>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}><BrandLogo height={54} /></div>
           <h2 style={{ fontSize: '20px', margin: '0 0 8px' }}>No projects generated yet</h2>
           <p className="muted" style={{ maxWidth: '440px', margin: '0 auto 24px' }}>
             Tell Project Learner what technology, game, or tool you want to build and it will create a tailored blueprint.

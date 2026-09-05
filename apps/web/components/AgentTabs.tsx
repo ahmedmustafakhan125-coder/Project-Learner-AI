@@ -30,9 +30,12 @@ const AGENT_METADATA: Record<
     borderClass: string;
     ambientBg: string;
     accentColor: string;
+    /** One character per specialist, matched to that agent's accent colour. */
+    bot: string;
   }
 > = {
   simple: {
+    bot: '/bots/purple.png',
     icon: '✦',
     title: 'Conceptual Guide',
     role: 'Intuitive Theory & Mechanism',
@@ -41,6 +44,7 @@ const AGENT_METADATA: Record<
     accentColor: 'var(--agent-conceptual)',
   },
   industry: {
+    bot: '/bots/blue.png',
     icon: '✦',
     title: 'Practical Engineer',
     role: 'Production Systems & Real Code',
@@ -49,6 +53,7 @@ const AGENT_METADATA: Record<
     accentColor: 'var(--agent-practical)',
   },
   practice: {
+    bot: '/bots/green.png',
     icon: '✦',
     title: 'Interactive Sandbox',
     role: 'Hands-on Runnable Exercise',
@@ -57,6 +62,7 @@ const AGENT_METADATA: Record<
     accentColor: 'var(--agent-interactive)',
   },
   concepts: {
+    bot: '/bots/terracotta.png',
     icon: '✦',
     title: 'Key Takeaways',
     role: 'Core Facts & Gotchas',
@@ -335,6 +341,19 @@ function AgentCard({ agent, pane }: { agent: AgentKind; pane: AgentPane }) {
 
   return (
     <article className={`glass-panel ${meta.borderClass} agent-card`}>
+      {/*
+        Each specialist's own character, perched on its card so the four panes
+        read as four workers rather than four boxes filling themselves in. It
+        leans over the work while this agent is still streaming and settles when
+        its answer lands. Decorative — the header names the specialist.
+      */}
+      <div
+        className={`card-bot ${pane.status === 'streaming' ? 'working' : ''}`}
+        aria-hidden="true"
+      >
+        <img src={meta.bot} alt="" width={44} height={44} />
+      </div>
+
       <div
         className="agent-card-ambient"
         style={{ background: meta.ambientBg, top: '-40px', right: '-40px' }}

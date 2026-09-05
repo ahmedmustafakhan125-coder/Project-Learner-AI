@@ -47,7 +47,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return (
       <div className="auth glassmorphic-card" style={{ maxWidth: '480px', margin: '80px auto' }}>
         <div className="auth-header">
-          <BrandLogo height={40} />
+          <BrandLogo height={54} />
           <h1>Configuration Required</h1>
           <p className="muted">
             Run <code>npm run db:start</code>, then configure your Supabase URL and anon key in <code>.env.local</code>.
@@ -63,7 +63,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (!ready || !session) {
     return (
       <div className="shell" style={{ textAlign: 'center', marginTop: '120px' }}>
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}><BrandLogo height={40} /></div>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}><BrandLogo height={54} /></div>
         <p className="skeleton" style={{ fontSize: '15px' }}>
           {!ready ? 'Initializing secure session…' : 'Redirecting to Sign In…'}
         </p>

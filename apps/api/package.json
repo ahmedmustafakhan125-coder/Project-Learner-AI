@@ -9,8 +9,9 @@
     "dev": "tsc -b && node --env-file-if-exists=../../.env --watch dist/server.js",
     "start": "node --env-file-if-exists=../../.env dist/server.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run",
-    "clean": "rimraf dist *.tsbuildinfo"
+    "test": "vitest run --exclude \"**/*.live.test.ts\"",
+    "clean": "rimraf dist *.tsbuildinfo",
+    "test:rls": "vitest run --config vitest.live.config.ts"
   },
   "dependencies": {
     "@ai-edu/core": "*",

@@ -191,7 +191,7 @@ export default function HomePage() {
                   onClick={() => setActiveTab(key)}
                   style={{ '--tab-color': info.color } as React.CSSProperties}
                 >
-                  <span className="tab-spark" style={{ color: info.color }}>✦</span>
+                  <span className="tab-spark" aria-hidden="true" />
                   <span className="tab-title">{info.title.split(' ')[0]}</span>
                   <span className="tab-tag">{info.tag.split('&')[0]}</span>
                 </button>
@@ -314,7 +314,7 @@ export default function HomePage() {
       <footer className="landing-footer">
         <div className="footer-inner">
           <div className="footer-brand">
-            <BrandLogo height={26} />
+            <BrandLogo height={34} />
             <p className="footer-blurb">Modern multi-agent AI educational workspace for software engineers.</p>
           </div>
           <div className="footer-links">

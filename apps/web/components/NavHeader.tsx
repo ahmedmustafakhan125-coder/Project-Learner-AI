@@ -41,7 +41,7 @@ export function NavHeader() {
     <header className="lumina-navbar">
       <div className="lumina-nav-container">
         <Link href="/" className="lumina-brand">
-          <BrandLogo height={34} />
+          <BrandLogo height={46} />
         </Link>
 
         <nav className="lumina-nav-links">
