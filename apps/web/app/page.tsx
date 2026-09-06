@@ -112,8 +112,8 @@ export default function HomePage() {
         </div>
 
         <h1 className="landing-hero-title">
-          Learn software engineering by <span className="gradient-text">building it</span>, <br />
-          explained <span className="gradient-text">four ways at once</span>
+          Master Software Engineering Through <br />
+          <span className="gradient-text">Active Building</span> & <span className="gradient-text">4 Parallel Perspectives</span>
         </h1>
 
         <p className="landing-hero-subtitle">
