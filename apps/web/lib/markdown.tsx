@@ -3,7 +3,7 @@ import { Fragment, type ReactNode } from 'react';
 /**
  * A deliberately small Markdown renderer that emits React elements.
  *
- * CONTEXT.md invariant 5: the UI must not use a Markdown library, because model
+ * README.md invariant 5: the UI must not use a Markdown library, because model
  * output is untrusted and any renderer with raw-HTML support is a direct XSS
  * path. That rule is about *raw HTML*, not about formatting — instructions
  * arriving as literal `### Your Task` and `**bold**` help nobody.

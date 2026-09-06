@@ -517,7 +517,7 @@ export function ProjectTutor({
  * Model output, rendered.
  *
  * Fences are split out by hand and rendered as plain text nodes. No Markdown
- * library, per the invariant in CONTEXT.md — one with raw-HTML support would be
+ * library, per the invariant in README.md — one with raw-HTML support would be
  * a direct XSS path from model output, and this component renders more model
  * output than anything else on the page.
  */

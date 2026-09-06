@@ -1,11 +1,165 @@
 # DEPLOY.md
 
+Local development and production operations for Project Learner.
+
+The repository is an npm-workspaces monorepo: a Next.js web app, a Fastify API,
+portable domain packages, a Supabase database, and a separate Python security
+gateway. [README.md](README.md) explains the architecture and the eight
+invariants that must be preserved when changing the system.
+
+The deployment shape is **Next.js on Vercel**, **Fastify and the Python security
+gateway on a Linux VPS**, and **Postgres on Supabase cloud**. The local setup
+uses the same application processes with Supabase running in Docker.
+
+---
+
+## Contents
+
+- [Local development](#local-development)
+- [Production deployment](#production-deployment)
+- [Troubleshooting](#troubleshooting)
+
+---
+
+# Local development
+
+## Prerequisites
+
+| Requirement | Version | Notes |
+|---|---|---|
+| Node.js | `>=20.11.0` | Use a current LTS release. |
+| npm | `11.10.0` | Install from the repository root; npm workspaces are used. |
+| Docker Desktop | Running | Required for the local Supabase stack. |
+| Python | 3.11+ | Required only for the security gateway repository. |
+| Git | Any recent version | |
+
+The Supabase CLI is vendored at `.tools/supabase.exe` and is gitignored. On
+Windows, Docker stores its data on `C:` even when this repository is elsewhere;
+the first database start can consume several GB.
+
+## Quick start
+
+```powershell
+git clone <repository-url>
+cd Project-Learner-AI
+npm install
+copy .env.example .env
+# Install the Supabase CLI into .tools; see Database below.
+npm run db:start
+# Copy the printed keys into .env and apps\web\.env.local.
+npm run dev
+```
+
+The web app runs at `http://localhost:3000` and the API at
+`http://localhost:3001`. Start the security gateway before asking questions;
+model-bound routes fail closed when screening is unavailable.
+
+## Environment
+
+The API reads the repository-root `.env`. Next.js does not, so create
+`apps/web/.env.local` with the browser-visible values:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key printed by npm run db:start>
+```
+
+The root `.env` should contain the local Supabase values and at least one
+provider key:
+
+```env
+SUPABASE_URL=http://127.0.0.1:54321
+SUPABASE_SERVICE_ROLE_KEY=<service role key>
+SUPABASE_ANON_KEY=<anon key>
+ANTHROPIC_API_KEY=<optional>
+OPENAI_API_KEY=<optional>
+GEMINI_API_KEY=<optional>
+OPENROUTER_API_KEY=<optional>
+DEEPSEEK_API_KEY=<optional>
+MOONSHOT_API_KEY=<optional>
+SECURITY_GATEWAY_URL=http://127.0.0.1:8000
+SECURITY_GATEWAY_TIMEOUT_MS=15000
+DAILY_USD_BUDGET_PER_USER=2
+PORT=3001
+WEB_ORIGIN=http://localhost:3000
+NEXT_PUBLIC_API_URL=http://localhost:3001
+```
+
+Provider keys are individually optional; models without a configured vendor
+key are hidden from the picker. The service-role key bypasses RLS and belongs
+only in the API environment, never in a `NEXT_PUBLIC_*` variable or browser
+bundle. Public values are inlined at build time, so restart the web app after
+changing them.
+
+## Database
+
+Fetch the CLI once on Windows if `.tools\supabase.exe` is missing:
+
+```powershell
+mkdir .tools
+cd .tools
+curl -LO https://github.com/supabase/cli/releases/download/v2.115.0/supabase_windows_amd64.tar.gz
+tar -xzf supabase_windows_amd64.tar.gz
+del supabase_windows_amd64.tar.gz
+cd ..
+```
+
+Start, stop, or reset the local stack with:
+
+```powershell
+npm run db:start
+npm run db:stop
+npm run db:reset   # destroys local data and reapplies every migration
+```
+
+The migrations in `supabase/migrations/` are applied in filename order. There
+are currently 10 migrations, covering the schema, forced RLS, step progress,
+finished-project artifacts, follow-ups, the project tutor, and step timing.
+For a non-destructive update, use:
+
+```powershell
+.\.tools\supabase.exe migration list --local
+.\.tools\supabase.exe migration up --local
+```
+
+Useful local services are Supabase API on `54321`, Postgres on `54322`, Studio
+on `http://127.0.0.1:54323`, and the mail viewer on `http://127.0.0.1:54324`.
+Local email confirmation is disabled, so any test address works in the UI.
+
+## Security gateway
+
+The gateway runs from the separate `llm-security-gateway-final` repository:
+
+```bash
+uvicorn app.main:app --reload --port 8000
+```
+
+Set `SECURITY_GATEWAY_URL=http://127.0.0.1:8000` in the root `.env`. Questions,
+interview answers, tutor turns, project generation prompts, and attachment text
+are screened before reaching a model. If the gateway is down, read-only routes
+continue to work but model-bound routes refuse by design.
+
+## Local verification
+
+```powershell
+npm test
+npm run typecheck
+npm run lint
+npm run build
+npm run smoke             # requires configured provider keys
+npm run test:containment --workspace @ai-edu/web
+```
+
+The containment suite requires a production build and an installed Chrome or
+Edge browser. `npm run dev` and `npm run build` automatically vendor Monaco and
+Pyodide into `apps/web/public/` from installed packages.
+
+---
+
+# Production deployment
+
 Production deployment: **Next.js web app on Vercel**, **Fastify API and the Python
 security gateway on a Linux VPS**, **Postgres on Supabase cloud**.
-
-Read [CONTEXT.md](CONTEXT.md) before changing anything — it carries the
-invariants this guide assumes. [setup.md](setup.md) covers local development;
-this file covers production only.
 
 ---
 

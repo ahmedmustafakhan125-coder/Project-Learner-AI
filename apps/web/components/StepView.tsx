@@ -443,8 +443,8 @@ export function StepView({
               if (
                 window.confirm(
                   'Write this step again from scratch?\n\n' +
-                    'The instructions, starting files and checkpoint are replaced. ' +
-                    'Your own code is kept.',
+                  'The instructions, starting files and checkpoint are replaced. ' +
+                  'Your own code is kept.',
                 )
               ) {
                 onRegenerate();
@@ -576,7 +576,7 @@ function DraftStatus({ state }: { state: SaveState }) {
  * Instructions and explanations, rendered.
  *
  * Still no Markdown library — model output is untrusted and any renderer with
- * raw-HTML support is an XSS path (CONTEXT.md invariant 5). `renderMarkdown`
+ * raw-HTML support is an XSS path (README.md invariant 5). `renderMarkdown`
  * builds React elements instead, so a tag in the source stays text because it
  * only ever becomes a text child. Fences are split out first so code keeps its
  * own block with a copy button.

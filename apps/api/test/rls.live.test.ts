@@ -1,7 +1,7 @@
 /**
  * Row Level Security, proven against a live database.
  *
- * CONTEXT.md claims RLS isolates two users across SELECT, UPDATE and INSERT.
+ * README.md claims RLS isolates two users across SELECT, UPDATE and INSERT.
  * Nothing in the offline suite can check that: RLS is enforced by Postgres, so
  * the only honest test signs in as two real learners and tries to reach across.
  *
@@ -30,7 +30,7 @@ const ANON = process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_A
 if (!URL || !ANON) {
   throw new Error(
     'RLS live test needs SUPABASE_URL and SUPABASE_ANON_KEY. ' +
-      'The anon key is public — it ships in the browser bundle.',
+    'The anon key is public — it ships in the browser bundle.',
   );
 }
 
@@ -51,7 +51,7 @@ async function signIn(who: { email: string; password: string }): Promise<Supabas
     if (/rate limit/i.test(signUpError.message)) {
       throw new Error(
         `Supabase email rate limit hit. Turn off "Confirm email" in Authentication ` +
-          `→ Providers, or wait an hour. Original: ${signUpError.message}`,
+        `→ Providers, or wait an hour. Original: ${signUpError.message}`,
       );
     }
     throw new Error(`sign-up failed: ${signUpError.message}`);
@@ -61,7 +61,7 @@ async function signIn(who: { email: string; password: string }): Promise<Supabas
   if (error || !data.session) {
     throw new Error(
       `sign-in failed for ${who.email}: ${error?.message ?? 'no session'}. ` +
-        `If confirmation emails are on, this test cannot sign in.`,
+      `If confirmation emails are on, this test cannot sign in.`,
     );
   }
   return client;

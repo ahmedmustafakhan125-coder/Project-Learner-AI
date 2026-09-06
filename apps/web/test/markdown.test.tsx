@@ -3,7 +3,7 @@
  *
  * Two things are under test. The first is that instructions actually render —
  * they were reaching learners as literal `### Your Task` and `**bold**`. The
- * second matters more: CONTEXT.md invariant 5 forbids a Markdown library
+ * second matters more: README.md invariant 5 forbids a Markdown library
  * because model output is untrusted and raw-HTML support is a direct XSS path.
  * This renderer is safe by construction — it builds React elements, so markup
  * in the source can only ever become a text child — and these tests pin that

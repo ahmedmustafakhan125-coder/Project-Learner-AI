@@ -1,7 +1,7 @@
 /**
  * P3 exit criterion — sandbox containment, proven by execution.
  *
- * CONTEXT.md requires three specific escape attempts to be *provably* contained:
+ * README.md requires three specific escape attempts to be *provably* contained:
  * reaching `window.parent`, calling `fetch`, and an infinite loop. Proving that
  * needs a browser. The static checks in `sandbox-escape.test.ts` assert the
  * configuration is spelled correctly; these assert the browser actually stops
