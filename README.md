@@ -14,7 +14,7 @@ without changes.
 
 **To run it, read [DEPLOY.md](DEPLOY.md)** — local development and production
 deployment live there. **Before changing anything, read
-[§ Invariants](#invariants) below.** Those eight are load-bearing, and breaking
+[Invariants](#invariants) below.** Those eight are load-bearing, and breaking
 any of them produces no error — just silently worse behaviour, silently higher
 cost, or a feature that quietly stops running.
 
