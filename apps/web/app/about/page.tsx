@@ -54,6 +54,26 @@ export default function AboutPage() {
     },
   ];
 
+  /*
+   * The two people who built it.
+   *
+   * A link renders only when its value is non-empty, so a profile nobody has
+   * supplied yet leaves no dead anchor on a public page. Fill `linkedin` in and
+   * the button appears; leave it blank and the card simply shows GitHub.
+   */
+  const developers = [
+    {
+      name: 'Ahmed Mustafa',
+      github: 'https://github.com/ahmedmustafakhan125-coder',
+      linkedin: '',
+    },
+    {
+      name: 'Ali Noor',
+      github: 'https://github.com/alinoor4',
+      linkedin: '',
+    },
+  ];
+
   const pillars = [
     {
       num: '01',
@@ -168,6 +188,44 @@ export default function AboutPage() {
           <span className="tech-pill">Monaco Editor</span>
           <span className="tech-pill">FastAPI Security Proxy</span>
           <span className="tech-pill">TypeScript Strict Monorepo</span>
+        </div>
+      </section>
+
+      {/* The people who built it */}
+      <section className="about-team-section">
+        <div className="section-header text-center">
+          <span className="section-tag">The team</span>
+          <h2>Who built this</h2>
+        </div>
+
+        <div className="team-grid">
+          {developers.map((dev) => (
+            <div key={dev.name} className="team-card">
+              <h3>{dev.name}</h3>
+              <div className="team-links">
+                {dev.github && (
+                  <a
+                    href={dev.github}
+                    className="team-link"
+                    target="_blank"
+                    rel="noreferrer noopener"
+                  >
+                    GitHub
+                  </a>
+                )}
+                {dev.linkedin && (
+                  <a
+                    href={dev.linkedin}
+                    className="team-link"
+                    target="_blank"
+                    rel="noreferrer noopener"
+                  >
+                    LinkedIn
+                  </a>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 
