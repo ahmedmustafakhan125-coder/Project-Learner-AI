@@ -35,6 +35,18 @@ import { describe, expect, it } from 'vitest';
 import { createSandboxHTML, SANDBOX_TIMEOUT_MS } from '../lib/sandbox-protocol';
 import { appCsp, sandboxCsp } from '../lib/csp.mjs';
 
+/*
+ * The app's origin, as the sandbox document is told it.
+ *
+ * `createSandboxHTML` takes it as an argument rather than reaching for a global
+ * so the value that lands in `postMessage(msg, APP_ORIGIN)` is the same one the
+ * CSP was built from. Tests below assert both halves against this constant;
+ * passing nothing here is what made every execution test hang, since
+ * `JSON.stringify(undefined)` writes a bare `undefined` into the document and
+ * `postMessage` then throws on an invalid target origin.
+ */
+const APP_ORIGIN = 'https://app.example';
+
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 function read(relativePath: string): string {
@@ -123,7 +135,7 @@ describe('content security policy', () => {
 
 describe('sandbox runtime assets', () => {
   it('loads Pyodide from our own origin, not a CDN', () => {
-    const html = createSandboxHTML('python');
+    const html = createSandboxHTML('python', APP_ORIGIN);
     expect(html).not.toContain('cdn.jsdelivr.net');
     expect(html).toContain('/pyodide/pyodide.js');
     // Without indexURL, Pyodide resolves its wasm and stdlib back to the CDN.
@@ -141,7 +153,7 @@ describe('execution timeout', () => {
     expect(SANDBOX_TIMEOUT_MS).toBe(10_000);
     expect(frameSource).toMatch(/setTimeout\([^,]+,\s*SANDBOX_TIMEOUT_MS\)/);
     // The timer lives in the parent; nothing inside the frame can clear it.
-    for (const html of [createSandboxHTML('web'), createSandboxHTML('python')]) {
+    for (const html of [createSandboxHTML('web', APP_ORIGIN), createSandboxHTML('python', APP_ORIGIN)]) {
       expect(html).not.toContain('clearTimeout');
       expect(html).not.toContain('SANDBOX_TIMEOUT');
     }
@@ -154,7 +166,7 @@ describe('execution timeout', () => {
 
 describe('error containment in generated HTML', () => {
   it('wraps learner code and each test so one failure cannot crash the sandbox', () => {
-    const web = createSandboxHTML('web');
+    const web = createSandboxHTML('web', APP_ORIGIN);
     // Mounting the page is the guarded step for web: the submission's markup
     // is parsed and transplanted before a single script runs.
     expect(web).toMatch(/try\s*\{[\s\S]*?mount\(byPath\)[\s\S]*?\}\s*catch/);
@@ -164,7 +176,7 @@ describe('error containment in generated HTML', () => {
     // Loading the submission is writing its files out and then executing the
     // modules among them, so the guarded call is the loader rather than a bare
     // runPython of one concatenated blob.
-    const py = createSandboxHTML('python');
+    const py = createSandboxHTML('python', APP_ORIGIN);
     expect(py).toMatch(/try\s*\{[\s\S]*?materialise\(pyodide, files\)[\s\S]*?\}\s*catch/);
     expect(py).toMatch(/try\s*\{[\s\S]*?pyodide\.runPython\(PY_LOAD\)[\s\S]*?\}\s*catch/);
     expect(py).toMatch(/try\s*\{[\s\S]*?pyodide\.runPython\(t\.code\)[\s\S]*?\}\s*catch/);
@@ -189,7 +201,7 @@ describe('error containment in generated HTML', () => {
  * actually works is proven by execution in `sandbox-execution.browser.test.ts`.
  */
 describe('web execution model', () => {
-  const web = createSandboxHTML('web');
+  const web = createSandboxHTML('web', APP_ORIGIN);
 
   it('evaluates tests at global scope, not in a fresh function scope', () => {
     // Indirect eval — the binding, not `eval(...)` written literally, which is
@@ -225,5 +237,76 @@ describe('web execution model', () => {
   it('reports module syntax rather than failing as the learner’s error', () => {
     expect(web).toContain('MODULE_SYNTAX');
     expect(web).toMatch(/ES module syntax/);
+  });
+});
+
+/**
+ * Containment that does not depend on who framed the document.
+ *
+ * The sandbox attribute is set by the PARENT, so it only ever applied when our
+ * own page did the framing. Anyone else could frame `/sandbox` without it, and
+ * the same document then ran on the app's real origin — same-origin with
+ * `localStorage`, where the Supabase session lives — with a message handler
+ * that took orders from whoever was on the other end.
+ *
+ * These four properties move containment into the response and the document
+ * itself. They are spelling checks like the rest of this file; that the frame
+ * really refuses a stranger's message is a browser-level claim.
+ */
+describe('containment independent of the embedder', () => {
+  it('refuses to be framed by anyone but us', () => {
+    // Without this the sandbox attribute is the only containment, and the
+    // attacker simply declines to set it.
+    expect(sandboxCsp(APP_ORIGIN)).toContain("frame-ancestors 'self'");
+  });
+
+  it('is served with the older spelling of the same claim', () => {
+    const route = read('app/sandbox/route.ts');
+    expect(route).toContain('X-Frame-Options');
+  });
+
+  it('posts results to the app by name, never to a wildcard', () => {
+    // '*' delivers the run's output to whoever framed the document, which is
+    // an exfiltration channel rather than a protocol.
+    for (const html of [
+      createSandboxHTML('web', APP_ORIGIN),
+      createSandboxHTML('python', APP_ORIGIN),
+    ]) {
+      expect(html).toContain(`var APP_ORIGIN = ${JSON.stringify(APP_ORIGIN)}`);
+      expect(html).toContain('parent.postMessage(msg, APP_ORIGIN)');
+      expect(codeOnly(html)).not.toContain("postMessage(msg, '*')");
+    }
+  });
+
+  it('accepts work only from the window that framed it', () => {
+    for (const html of [
+      createSandboxHTML('web', APP_ORIGIN),
+      createSandboxHTML('python', APP_ORIGIN),
+    ]) {
+      expect(html).toMatch(/if\s*\(ev\.source\s*!==\s*parent\)\s*return;/);
+    }
+  });
+
+  it('takes the origin from configuration before the request', () => {
+    /*
+     * `new URL(request.url).origin` is rebuilt from the Host header. A proxy
+     * that forwards it unvalidated lets a caller choose the value that lands
+     * in `script-src` and `connect-src` — turning the sandbox's allowlist into
+     * an allowlist for their server. Configuration has to be consulted first.
+     */
+    const route = codeOnly(read('app/sandbox/route.ts'));
+    const configured = route.indexOf('NEXT_PUBLIC_APP_ORIGIN');
+    const fromRequest = route.indexOf('new URL(request.url).origin');
+    expect(configured).toBeGreaterThan(-1);
+    expect(fromRequest).toBeGreaterThan(-1);
+    expect(configured).toBeLessThan(fromRequest);
+  });
+
+  it('says so when it is running on the fallback', () => {
+    // The fallback is the vulnerable path. A deployment sitting on it should
+    // not have to read the source to discover that.
+    const route = read('app/sandbox/route.ts');
+    expect(route).toMatch(/console\.warn/);
+    expect(route).toContain('NEXT_PUBLIC_APP_ORIGIN is not set');
   });
 });

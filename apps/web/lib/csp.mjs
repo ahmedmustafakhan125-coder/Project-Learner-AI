@@ -78,5 +78,18 @@ export function sandboxCsp(origin) {
     `worker-src ${origin} blob:`,
     "style-src 'unsafe-inline'",
     "img-src data:",
+    /*
+     * The load-bearing line, and the one that was missing.
+     *
+     * Containment came entirely from `sandbox="allow-scripts"`, which the PARENT
+     * puts on the iframe — so it only applied when our own page did the framing.
+     * Any other site could frame /sandbox without that attribute, and the same
+     * document then ran on this origin with full access to localStorage, where
+     * the Supabase session lives. Its message handler took orders from anyone.
+     *
+     * `frame-ancestors 'self'` is what makes the containment a property of the
+     * response instead of a favour from whoever embeds it.
+     */
+    "frame-ancestors 'self'",
   ].join('; ');
 }

@@ -105,7 +105,7 @@ export const SANDBOX_TIMEOUT_MS = 10_000;
  * collide with the next and report "already declared" as if the learner had
  * written it twice.
  */
-function webSandboxHTML(): string {
+function webSandboxHTML(origin: string): string {
   return /* html */ `<!DOCTYPE html>
 <html>
 <head>
@@ -115,9 +115,12 @@ function webSandboxHTML(): string {
   "use strict";
 
   var MODULE_SYNTAX = ${ES_MODULE_SYNTAX.toString()};
+  var APP_ORIGIN = ${JSON.stringify(origin)};
 
+  /* Results go to the app, by name. '*' delivered them to whoever framed this
+     document, which is an exfiltration channel rather than a protocol. */
   function post(msg) {
-    parent.postMessage(msg, '*');
+    parent.postMessage(msg, APP_ORIGIN);
   }
 
   /* A classic script that throws does NOT throw at the append site — execution
@@ -230,6 +233,11 @@ function webSandboxHTML(): string {
   }
 
   window.addEventListener('message', function (ev) {
+    /* Only the page that framed us may ask for an execution. Without this any
+       site could frame /sandbox and post its own code in — and outside our own
+       iframe, which is what applies sandbox="allow-scripts", this document runs
+       on the app's real origin. */
+    if (ev.source !== parent) return;
     var data = ev.data;
     if (!data || data.type !== 'exec-web') return;
 
@@ -352,7 +360,7 @@ for _path in __checkpoint_sources:
     globals().update({k: v for k, v in _mod.__dict__.items() if not k.startswith('__')})
 `;
 
-function pythonSandboxHTML(): string {
+function pythonSandboxHTML(origin: string): string {
   return /* html */ `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
@@ -363,12 +371,13 @@ function pythonSandboxHTML(): string {
   "use strict";
 
   var PY_LOAD = ${JSON.stringify(PY_LOAD)};
+  var APP_ORIGIN = ${JSON.stringify(origin)};
   var ROOT = '/home/pyodide';
   var encoder = new TextEncoder();
   var written = [];
 
   function post(msg) {
-    parent.postMessage(msg, '*');
+    parent.postMessage(msg, APP_ORIGIN);
   }
 
   function mkdirp(pyodide, dir) {
@@ -417,6 +426,8 @@ function pythonSandboxHTML(): string {
     post({ type: 'progress', message: 'Python ready' });
 
     window.addEventListener('message', function (ev) {
+      /* See the web sandbox: only our opener may submit work. */
+      if (ev.source !== parent) return;
       var data = ev.data;
       if (!data || data.type !== 'exec-python') return;
 
@@ -470,7 +481,10 @@ function pythonSandboxHTML(): string {
  * Returns the full HTML string for a sandbox iframe.
  *
  * @param runtime  `'web'` for vanilla JS execution, `'python'` for Pyodide.
+ * @param origin   The app's absolute origin. Results are posted to it by name
+ *                 rather than to '*', so a frame reached some other way cannot
+ *                 read what came out of a run.
  */
-export function createSandboxHTML(runtime: 'web' | 'python'): string {
-  return runtime === 'python' ? pythonSandboxHTML() : webSandboxHTML();
+export function createSandboxHTML(runtime: 'web' | 'python', origin: string): string {
+  return runtime === 'python' ? pythonSandboxHTML(origin) : webSandboxHTML(origin);
 }

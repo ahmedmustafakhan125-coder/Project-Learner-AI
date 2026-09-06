@@ -132,7 +132,10 @@ beforeAll(async () => {
         'Content-Security-Policy': sandboxCsp(origin),
         'Cache-Control': 'no-store',
       });
-      res.end(createSandboxHTML('web'));
+      // `origin` is assigned right after `listen` below, and this handler only
+      // runs once a request arrives, so it is always the real server origin -
+      // which is what the frame must post its results back to.
+      res.end(createSandboxHTML('web', origin));
       return;
     }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });

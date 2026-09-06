@@ -235,7 +235,16 @@ Environment variables:
 NEXT_PUBLIC_SUPABASE_URL       = https://<ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY  = <anon key>
 NEXT_PUBLIC_API_URL            = https://api.example.com
+NEXT_PUBLIC_APP_ORIGIN         = https://app.example.com
 ```
+
+`NEXT_PUBLIC_APP_ORIGIN` is the origin of this site itself, and it is a security
+control rather than a convenience. The `/sandbox` route builds its CSP from it
+and names it as the target of every `postMessage` the sandbox sends back. Unset,
+the route rebuilds the origin from the request's `Host` header — which a proxy
+forwarding `$host` unvalidated lets a caller choose, putting their origin into
+the sandbox's `script-src` and `connect-src`. The route logs a warning on every
+boot that falls back, so check the deploy log if you are unsure.
 
 `NEXT_PUBLIC_*` values are **inlined at build time**. Set them before the first
 build; changing them later does nothing until you redeploy.
@@ -268,6 +277,7 @@ Open a project, edit a file, run a checkpoint.
 | Pages render correctly but **nothing is interactive** | `apps/web/proxy.ts` is not running. It mints the per-request CSP nonce; without it Next's inline hydration scripts are refused and React never hydrates. No error appears — the page just looks fine and does nothing. `app/layout.tsx` sets `force-dynamic` for the same reason; removing it reintroduces the bug. |
 | Code editor stuck on "Loading editor…", Python checkpoints hang | `vendor-assets.mjs` did not run during the Vercel build. Both libraries default to a CDN and the app CSP lists none. |
 | Login does nothing | `NEXT_PUBLIC_SUPABASE_*` missing at build time, or set after the build with no redeploy. |
+| Deploy log warns `NEXT_PUBLIC_APP_ORIGIN is not set` | The sandbox is deriving its own CSP from the `Host` header. Set the variable and redeploy — see the environment list above. |
 | API will not start | `SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` missing. It fails loudly at boot on purpose. |
 
 ---
@@ -292,7 +302,9 @@ Supabase separately, in order, before restarting the API.
   `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_URL` or
   `SECURITY_GATEWAY_URL`. Turbo's cache key will not change when those change,
   so a cached build can be replayed with stale values baked in. Add them before
-  relying on remote caching.
+  relying on remote caching. `NEXT_PUBLIC_APP_ORIGIN` is listed, because
+  replaying a cached build with the wrong one baked in is a security regression
+  rather than a stale string.
 - Rate limiting is per-process and in memory. It is correct for a single API
   instance; running several behind a load balancer needs a shared store.
 - `npm test` runs 285 tests with no network, keys, or database, and is the

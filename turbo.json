@@ -10,7 +10,8 @@
     "MOONSHOT_API_KEY",
     "SUPABASE_URL",
     "SUPABASE_ANON_KEY",
-    "SUPABASE_SERVICE_ROLE_KEY"
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "NEXT_PUBLIC_APP_ORIGIN"
   ],
   "tasks": {
     "build": {
