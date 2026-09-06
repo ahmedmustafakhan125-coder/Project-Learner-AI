@@ -53,27 +53,27 @@ function Projects() {
     <main className="shell wide">
       <header className="masthead">
         <div>
-          <h1>Interactive Projects</h1>
-          <div className="sub">Hands-on coding blueprints with live in-browser execution, test runners, and hints.</div>
+          <h1>Your projects</h1>
+          <div className="sub">Real things to build, step by step. The code runs in your browser and each step is checked for you.</div>
         </div>
         <Link className="btn primary" href="/projects/new">
-          <span>Generate New Blueprint</span>
+          <span>Start a new project</span>
         </Link>
       </header>
 
       {error && <div className="notice error">{error}</div>}
       {projects === null && (
         <div style={{ textAlign: 'center', padding: '40px' }}>
-          <p className="skeleton">Loading your project library…</p>
+          <p className="skeleton">Loading your projects…</p>
         </div>
       )}
 
       {projects?.length === 0 && !error && (
         <div className="empty" style={{ background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--border)', padding: '60px 24px', textAlign: 'center' }}>
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}><BrandLogo height={54} /></div>
-          <h2 style={{ fontSize: '20px', margin: '0 0 8px' }}>No projects generated yet</h2>
+          <h2 style={{ fontSize: '20px', margin: '0 0 8px' }}>No projects yet</h2>
           <p className="muted" style={{ maxWidth: '440px', margin: '0 auto 24px' }}>
-            Tell Project Learner what technology, game, or tool you want to build and it will create a tailored blueprint.
+            Say what you want to build — a tool, a game, something with a technology you are curious about — and a project will be written around it.
           </p>
           <Link href="/projects/new" className="btn primary">
             Create Your First Project
