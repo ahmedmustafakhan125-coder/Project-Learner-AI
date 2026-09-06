@@ -65,12 +65,12 @@ export default function AboutPage() {
     {
       name: 'Ahmed Mustafa',
       github: 'https://github.com/ahmedmustafakhan125-coder',
-      linkedin: '',
+      linkedin: 'https://www.linkedin.com/in/mustafa-khan-7653a0304/',
     },
     {
       name: 'Ali Noor',
       github: 'https://github.com/alinoor4',
-      linkedin: '',
+      linkedin: 'https://www.linkedin.com/in/ali-noor04/',
     },
   ];
 
