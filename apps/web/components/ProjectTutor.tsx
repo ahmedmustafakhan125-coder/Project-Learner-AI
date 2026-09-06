@@ -306,9 +306,6 @@ export function ProjectTutor({
         aria-label="Open the tutor"
         title="Ask the tutor about this project"
       >
-        <span className="tutor-rail-icon" aria-hidden="true">
-          ✦
-        </span>
         <span className="tutor-rail-label">Tutor</span>
       </button>
     );
@@ -377,7 +374,7 @@ export function ProjectTutor({
       <div className="tutor-body">
         <header className="tutor-head">
           <span className="tutor-title">
-            <span aria-hidden="true">✦</span> Tutor
+            Tutor
           </span>
           <button
             type="button"

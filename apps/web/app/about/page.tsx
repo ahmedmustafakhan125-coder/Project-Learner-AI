@@ -15,7 +15,6 @@ export default function AboutPage() {
         'Hands-On Practice Specialist: Generates actionable exercises, step-by-step code drills, and edge-case experiments.',
         'Deep Architecture Specialist: Unpacks underlying memory layout, algorithmic complexity, runtime mechanics, and RFC specs.',
       ],
-      icon: '✦',
     },
     {
       badge: 'Zero-Retrieval Deterministic Knowledge',
@@ -28,7 +27,6 @@ export default function AboutPage() {
         'Adaptive Pacing Controller: Automatically scales difficulty up or inserts micro-scaffolds based on learner checkpoint attempt metrics.',
         'Model-Agnostic Engine: Built on Google Gemini 3.6 Flash, Anthropic Claude, OpenAI, DeepSeek, and Moonshot.',
       ],
-      icon: '✦',
     },
     {
       badge: 'Zero-Setup Isolated Runtimes',
@@ -41,7 +39,6 @@ export default function AboutPage() {
         'Monaco IDE Integration: Full VS Code editor experience with syntax highlighting, auto-complete, and multi-file project tabs.',
         'Automated Checkpoint Verification: Real-time unit tests and regression assertions run against the student’s code on every submission.',
       ],
-      icon: '✦',
     },
     {
       badge: 'Enterprise-Grade AI Security',
@@ -54,7 +51,6 @@ export default function AboutPage() {
         'Transparent Token Accounting: Real-time token usage meter and daily USD budget caps per user.',
         'Row-Level Security (RLS): All projects, blueprints, checkpoints, and chat histories are private to each authenticated learner.',
       ],
-      icon: '✦',
     },
   ];
 
@@ -89,7 +85,7 @@ export default function AboutPage() {
       {/* Hero Header */}
       <section className="about-hero-section">
         <div className="landing-badge">
-          <span className="badge-spark">✦</span> Architecture & Pedagogy Deep Dive
+          Architecture & Pedagogy Deep Dive
         </div>
         <h1 className="about-title">
           Engineering the Future of <span>AI-Driven Technical Mastery</span>
@@ -138,7 +134,6 @@ export default function AboutPage() {
           {architectures.map((arch) => (
             <div key={arch.title} className="arch-item glassmorphic-card">
               <div className="arch-header">
-                <div className="arch-icon-badge">{arch.icon}</div>
                 <div>
                   <span className="arch-badge">{arch.badge}</span>
                   <h3>{arch.title}</h3>

@@ -24,7 +24,6 @@ export function emptyPanes(): AgentPanes {
 const AGENT_METADATA: Record<
   AgentKind,
   {
-    icon: string;
     title: string;
     role: string;
     borderClass: string;
@@ -36,7 +35,6 @@ const AGENT_METADATA: Record<
 > = {
   simple: {
     bot: '/bots/purple.png',
-    icon: '✦',
     title: 'Conceptual Guide',
     role: 'Intuitive Theory & Mechanism',
     borderClass: 'border-gradient-primary',
@@ -45,7 +43,6 @@ const AGENT_METADATA: Record<
   },
   industry: {
     bot: '/bots/blue.png',
-    icon: '✦',
     title: 'Practical Engineer',
     role: 'Production Systems & Real Code',
     borderClass: 'border-gradient-tertiary',
@@ -54,7 +51,6 @@ const AGENT_METADATA: Record<
   },
   practice: {
     bot: '/bots/green.png',
-    icon: '✦',
     title: 'Interactive Sandbox',
     role: 'Hands-on Runnable Exercise',
     borderClass: 'border-gradient-secondary',
@@ -63,7 +59,6 @@ const AGENT_METADATA: Record<
   },
   concepts: {
     bot: '/bots/terracotta.png',
-    icon: '✦',
     title: 'Key Takeaways',
     role: 'Core Facts & Gotchas',
     borderClass: 'border-gradient-warning',
@@ -205,9 +200,6 @@ export function AgentTabs({
                   id={`tab-${agent}`}
                   onClick={() => setActiveTab(agent)}
                 >
-                  <span className="tab-glyph" style={{ color: meta.accentColor }}>
-                    {meta.icon}
-                  </span>
                   <span className="agent-name">
                     <span className="agent-title">{meta.title}</span>
                     <span className="agent-role">{meta.role}</span>
@@ -361,9 +353,6 @@ function AgentCard({ agent, pane }: { agent: AgentKind; pane: AgentPane }) {
 
       <header className="agent-card-header">
         <div className="agent-card-title-group">
-          <span className="agent-card-icon" style={{ color: meta.accentColor }}>
-            {meta.icon}
-          </span>
           <h2 className="agent-card-title">{meta.title}</h2>
           <span className="agent-card-role">{meta.role}</span>
         </div>
@@ -385,9 +374,6 @@ function Pane({ agent, pane }: { agent: AgentKind; pane: AgentPane }) {
     <div>
       <div className="pane-header">
         <div className="pane-header-title">
-          <span className="pane-header-icon" style={{ color: meta.accentColor }}>
-            {meta.icon}
-          </span>
           <h2 style={{ color: meta.accentColor }}>{meta.title}</h2>
           <span className="pane-header-role">{meta.role}</span>
         </div>

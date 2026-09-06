@@ -398,16 +398,37 @@ describe('the drawer and the navigation bar', () => {
     await page.close();
   });
 
-  it('does not hide the top of the page behind the pinned bar', async () => {
-    // Taking the bar out of flow without reserving its height would put the
-    // first line of every page underneath it.
+  it('starts the page exactly under the bar - no gap, no overlap', async () => {
+    /*
+     * Both directions matter, and the first version of this test only checked
+     * one. `>= 0` proves the page is not hidden behind the bar, but it is also
+     * true of a page pushed 69px too far down, which is exactly what shipped:
+     * the reserving `padding-top` went into an `html, body { }` block, so BOTH
+     * elements were padded and every page began 138px down instead of 69px.
+     *
+     * The fixture's `<main>` has no padding of its own, so the correct answer
+     * here is zero and nothing else.
+     */
     const page = await openPanel();
     const clear = await page.evaluate(() => {
       const nav = document.getElementById('navbar')!.getBoundingClientRect();
       const main = document.querySelector('main')!.getBoundingClientRect();
       return main.top - nav.bottom;
     });
-    expect(clear).toBeGreaterThanOrEqual(0);
+    expect(clear).toBe(0);
+    await page.close();
+  });
+
+  it('reserves the bar height once, on the body only', async () => {
+    // The direct form of the same bug: `html` must not carry the padding too.
+    const page = await openPanel();
+    const padding = await page.evaluate(() => ({
+      html: getComputedStyle(document.documentElement).paddingTop,
+      body: getComputedStyle(document.body).paddingTop,
+      navHeight: `${document.getElementById('navbar')!.getBoundingClientRect().height}px`,
+    }));
+    expect(padding.html).toBe('0px');
+    expect(padding.body).toBe(padding.navHeight);
     await page.close();
   });
 

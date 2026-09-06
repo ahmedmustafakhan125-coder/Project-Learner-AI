@@ -29,10 +29,7 @@ export function InterviewPanel({ questions, busy, onSubmit, onSkip }: InterviewP
 
   return (
     <section className="interview" aria-label="A few quick questions">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-        <span className="logo-spark">✦</span>
-        <h2>Context Alignment</h2>
-      </div>
+      <h2>Context Alignment</h2>
       <p className="lede">
         {questions.length === 1
           ? 'One detail will help tailor the four specialist answers.'

@@ -575,7 +575,7 @@ function Ask() {
                     className="quick-prompt-chip"
                     onClick={() => void start(suggestion)}
                   >
-                    ✦ {suggestion}
+                    {suggestion}
                   </button>
                 ))}
               </div>

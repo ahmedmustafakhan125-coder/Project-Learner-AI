@@ -108,7 +108,7 @@ export default function HomePage() {
       {/* Hero Section */}
       <section className="landing-hero-section">
         <div className="landing-badge">
-          <span className="badge-spark">✦</span> Multi-Agent Active Learning Platform
+          Multi-Agent Active Learning Platform
         </div>
 
         <h1 className="landing-hero-title">
@@ -122,7 +122,6 @@ export default function HomePage() {
 
         {/* Hero Interactive Prompt Input */}
         <form onSubmit={handleSearch} className="landing-hero-search-box glassmorphic-card">
-          <span className="search-icon">✦</span>
           <input
             type="text"
             className="hero-search-input"
@@ -214,7 +213,7 @@ export default function HomePage() {
             <div className="showcase-bullets">
               {agentSamples[activeTab].bullets.map((bullet) => (
                 <div key={bullet} className="bullet-item">
-                  <span className="bullet-icon">✦</span>
+                  <span className="bullet-icon" aria-hidden="true" />
                   <span>{bullet}</span>
                 </div>
               ))}
@@ -295,7 +294,7 @@ export default function HomePage() {
       <section className="landing-bottom-banner glassmorphic-card">
         <div className="banner-content text-center">
           <div className="landing-badge">
-            <span className="badge-spark">✦</span> Ready to level up your engineering skills?
+            Ready to level up your engineering skills?
           </div>
           <h2>Join Project Learner Today</h2>
           <p>Instant access to the 4-Agent Workspace, project blueprint generator, and in-browser execution sandbox.</p>
