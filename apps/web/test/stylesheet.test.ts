@@ -99,3 +99,39 @@ describe('text colours on a white surface', () => {
     );
   });
 });
+
+describe('text on a primary-coloured surface', () => {
+  /*
+   * `.btn-nav-getstarted` set `color: #0b0c10` on `var(--primary-gradient)`.
+   * Near-black on dark blue is 2.92:1 — below the 4.5:1 floor — and the "Get
+   * Started" button in the navigation read as unlit rather than as the primary
+   * call to action. Every other control on a primary background already used
+   * `--on-primary` (#ffffff, 6.69:1 on the same ground); this one was the
+   * outlier, and nothing said so.
+   *
+   * The rule is narrow enough to be true: a rule that paints itself primary
+   * and then states a text colour has to take that colour from the token.
+   * Rules with no text — the logo badge, the caret, list markers — set no
+   * colour at all and are left alone.
+   */
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
+    selector: m[1]!.trim().split('\n').pop()!.trim(),
+    body: m[2]!,
+  }));
+
+  const onPrimary = rules.filter((r) =>
+    /background(-color)?:\s*var\(--primary(-gradient|-bright)?\)/.test(r.body),
+  );
+
+  it('finds the primary-background rules, or this test is watching nothing', () => {
+    expect(onPrimary.length).toBeGreaterThan(3);
+  });
+
+  it.each(onPrimary.map((r) => r.selector))('%s uses --on-primary for its text', (selector) => {
+    const rule = onPrimary.find((r) => r.selector === selector)!;
+    const declared = rule.body.match(/(?<!-)color:\s*([^;]+);/);
+    // No text, no colour to get wrong.
+    if (!declared) return;
+    expect(declared[1]!.trim()).toBe('var(--on-primary)');
+  });
+});

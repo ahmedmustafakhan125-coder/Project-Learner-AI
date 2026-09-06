@@ -1494,7 +1494,13 @@ select.control option {
   padding: 6px 16px;
   font-size: 13px;
   font-weight: 600;
-  color: #0b0c10;
+  /*
+   * `--on-primary`, like every other control on a primary background. It was
+   * hardcoded #0b0c10 - near-black on a dark blue gradient, 2.92:1, which is
+   * below the 4.5:1 floor and read as unlit. White is 6.69:1 on the same
+   * ground.
+   */
+  color: var(--on-primary);
   background: var(--primary-gradient);
   text-decoration: none;
   border-radius: var(--radius-full);
