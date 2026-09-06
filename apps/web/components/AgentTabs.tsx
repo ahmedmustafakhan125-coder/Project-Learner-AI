@@ -353,8 +353,24 @@ function AgentCard({ agent, pane }: { agent: AgentKind; pane: AgentPane }) {
 
       <header className="agent-card-header">
         <div className="agent-card-title-group">
-          <h2 className="agent-card-title">{meta.title}</h2>
-          <span className="agent-card-role">{meta.role}</span>
+          {/*
+            The specialist's character leads its own title. Inline rather than
+            perched above the card: .agent-card clips its own overflow for the
+            ambient blob, so anything above the top edge loses all but its feet.
+            Decorative — the title beside it already names the agent.
+          */}
+          <img
+            className={`agent-card-bot ${pane.status === 'streaming' ? 'working' : ''}`}
+            src={meta.bot}
+            alt=""
+            aria-hidden="true"
+            width={40}
+            height={40}
+          />
+          <div className="agent-card-names">
+            <h2 className="agent-card-title">{meta.title}</h2>
+            <span className="agent-card-role">{meta.role}</span>
+          </div>
         </div>
 
         <StatusPill pane={pane} accent={meta.accentColor} />

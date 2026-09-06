@@ -791,8 +791,45 @@ select.control option {
 
 .agent-card-title-group {
   display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Title and role stay stacked; the character sits beside the pair. */
+.agent-card-names {
+  display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
+  min-width: 0;
+}
+
+/* Inline, not perched. .agent-card clips its own overflow so the ambient blob
+   stays inside it, which means a character above the top edge is cut to its
+   feet. Beside the title there is nothing to clip. */
+.agent-card-bot {
+  height: 40px;
+  width: auto;
+  flex-shrink: 0;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 3px 7px rgba(2, 132, 199, 0.24));
+}
+
+/* Leans while this agent is still writing, then settles when its answer lands,
+   so the four stop at different moments rather than in unison. */
+.agent-card-bot.working {
+  animation: agent-bot-work 1.9s ease-in-out infinite;
+}
+
+@keyframes agent-bot-work {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-4px) rotate(4deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-card-bot.working { animation: none; }
 }
 
 .agent-card-title {
