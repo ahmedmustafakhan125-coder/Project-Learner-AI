@@ -79,8 +79,11 @@ export default function AboutPage() {
 
   return (
     <main className="about-page-container">
-      {/* Background Ambience */}
-      <div className="about-hero-backdrop" />
+      {/* Background ambience, shared with the landing page. Two bounded,
+          heavily blurred orbs rather than a tint stretched over the whole
+          container - see the note on `.about-hero-backdrop`'s removal. */}
+      <div className="landing-glow-orb orb-primary" />
+      <div className="landing-glow-orb orb-secondary" />
 
       {/* Hero Header */}
       <section className="about-hero-section">

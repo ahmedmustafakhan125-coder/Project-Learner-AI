@@ -2094,6 +2094,10 @@ select.control option {
 }
 
 .about-hero-section {
+  /* Above the ambience, like `.landing-hero-section`. The pillars section
+     below already had this; the hero was the one that did not. */
+  position: relative;
+  z-index: 1;
   max-width: 880px;
   margin: 0 auto;
   padding: 60px 20px 40px;
@@ -3817,13 +3821,21 @@ select.control option {
   border-color: var(--primary);
 }
 
-.about-hero-backdrop {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  background: radial-gradient(circle at 50% 0%, rgba(2, 132, 199, 0.12) 0%, rgba(2, 132, 199, 0) 60%);
-}
+/*
+ * `.about-hero-backdrop` was here, and is deliberately gone.
+ *
+ * It was `position: absolute; inset: 0` inside `.about-page-container`, which
+ * is `max-width: 1140px` and as tall as the whole page - so a 12% blue tint
+ * was painted over a 1140px-wide rectangle spanning the entire document. The
+ * gradient faded vertically but the ELEMENT did not, so the tint stopped dead
+ * at the container's left and right edges and read as a shadow behind the
+ * whole page, ending in two hard vertical lines.
+ *
+ * The landing page solves the same problem the other way: `.landing-glow-orb`
+ * is a bounded circle with a 120px blur, so it has no edge to expose. About
+ * uses those now, which is also one description of the ambience rather than
+ * two.
+ */
 
 /* ------------------------------------------------------------------ */
 /* Auth card header                                                   */
