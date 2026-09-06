@@ -17,28 +17,28 @@ import { BrandLogo } from '@/components/BrandLogo';
  */
 const PLATFORM_FEATURES = [
   {
-    title: '4-Specialist Fan-Out',
+    title: 'Four Answers at Once',
     bot: '/bots/purple.png',
-    body: 'Queries are broadcast across 4 agents running in parallel over multiplexed Server-Sent Events, sharing a cached prompt prefix.',
-    meta: 'Multiplexed SSE • Shared Prefix Caching',
+    body: 'Ask once and four tutors answer at the same time, each from a different angle. You watch all four arrive together instead of waiting for one long reply.',
+    meta: 'Four angles • One question',
   },
   {
-    title: 'Adaptive Project Blueprints',
+    title: 'Projects That Adapt to You',
     bot: '/bots/blue.png',
-    body: 'Generate milestone-driven coding projects with instructions, checkpoints, hints, and automated difficulty scaling based on your progress.',
-    meta: 'Phased Expansion • Pacing Directives',
+    body: 'Get a real coding project broken into steps, each with instructions, hints, and a check that tells you when it works. Steps get bigger or smaller depending on how you are doing.',
+    meta: 'Step by step • Adjusts to your pace',
   },
   {
-    title: 'In-Browser Code Sandboxes',
+    title: 'Write Code in Your Browser',
     bot: '/bots/green.png',
-    body: 'Run Python stdlib and algorithms via Pyodide WebAssembly or execute JavaScript/TypeScript with Monaco editor and zero local environment setup.',
-    meta: 'Pyodide WASM • Monaco IDE • Strict CSP',
+    body: 'Run Python or JavaScript straight from the page, in a proper code editor. Nothing to install, nothing to configure, and no setup that only works on one machine.',
+    meta: 'Python and JavaScript • No setup',
   },
   {
-    title: 'Enterprise AI Security',
+    title: 'Your Details Stay Private',
     bot: '/bots/terracotta.png',
-    body: 'Automated PII masking, prompt injection defense with FastAPI, and transparent daily USD budget limits safeguard every interaction.',
-    meta: 'PII Redaction • Injection Defense • RLS',
+    body: 'Personal details and keys are stripped out before anything reaches an AI model, your code runs sealed off from the rest of the page, and you can see exactly what you have spent.',
+    meta: 'Private by default • Spending you can see',
   },
 ] as const;
 
@@ -59,44 +59,44 @@ export default function HomePage() {
 
   const agentSamples = {
     simple: {
-      tag: 'Plain English & Intuition',
-      title: 'Simple & Intuitive Explanation',
+      tag: 'Plain English & everyday comparisons',
+      title: 'Simple & clear explanation',
       color: 'var(--agent-conceptual)',
       excerpt:
-        'Think of a Closure like a backpack a function wears when it goes out into the world. Even when the outer function has finished executing and packed up, the inner function still keeps whatever variables were in its backpack wherever it travels.',
-      bullets: ['Strips out unnecessary jargon', 'Uses real-world mental models', 'Builds foundational intuition before syntax'],
+        'Think of a closure as a backpack a function wears when it leaves home. The outer function finishes and packs up, but the inner function keeps carrying the variables that were in the backpack, wherever it goes.',
+      bullets: ['No jargon to decode first', 'Comparisons to things you already know', 'Understanding first, syntax second'],
     },
     industry: {
-      tag: 'Production Patterns & Trade-offs',
-      title: 'Industry Context & Production Patterns',
+      tag: 'Real production code & trade-offs',
+      title: 'Industry practice, and what it costs',
       color: 'var(--agent-practical)',
       excerpt:
-        'At scale (e.g., in React state handlers or Node.js event listeners), uncollected closures can hold large DOM trees or database pools in memory. Senior engineers use closures for data encapsulation and factory functions while being mindful of circular references.',
-      bullets: ['Production war stories & failure modes', 'Memory leak prevention strategies', 'Architecture trade-offs at scale'],
+        'In a real app — a React state handler, say, or a Node event listener — a closure nobody cleans up can quietly hold on to a large chunk of memory long after it is needed. Experienced engineers use closures to keep data private, and watch carefully for the ones that never get released.',
+      bullets: ['What actually goes wrong in real systems', 'How to avoid the memory leaks', 'The trade-off behind each choice'],
     },
     practice: {
-      tag: 'Hands-On Exercises & Drills',
-      title: 'Hands-On Sandbox Practice',
+      tag: 'Exercises & practice drills',
+      title: 'Hands-on practice you run yourself',
       color: 'var(--agent-interactive)',
       excerpt:
-        'Exercise: Build a resilient token bucket rate limiter using a closure to store the token count and timestamp privately without exposing internal variables to global scope. Try modifying the leak test in the sandbox.',
-      bullets: ['Executable code snippets', 'Self-verifying test checkpoints', 'Progressive micro-drills'],
+        'Exercise: build something that limits how often an action can run, using a closure to keep its counter private so nothing outside can reach in and change it. Then try to break it in the sandbox and watch what happens.',
+      bullets: ['Code you can run straight away', 'Checks that tell you if it works', 'Small steps that add up'],
     },
     concepts: {
-      tag: 'Underlying Mechanics & RFC Specs',
-      title: 'Deep Architecture & Runtime Internals',
+      tag: 'What happens underneath',
+      title: 'Deep dive into how it really works',
       color: 'var(--agent-takeaways)',
       excerpt:
-        'Under the V8 engine, closures are represented via ScopeInfo and Context heap objects. When an inner function references outer bindings, those bindings are allocated on the heap rather than the stack frame, surviving LIFO deallocation.',
-      bullets: ['V8 / JS runtime heap layout', 'Time and space complexity proofs', 'Standards specifications & RFC citations'],
+        'Normally a function’s variables are thrown away the moment it returns. When an inner function still needs them, the engine moves them somewhere longer-lived instead, and that is the whole trick behind closures — the variables outlive the call that created them.',
+      bullets: ['What the engine is really doing', 'Why it costs the time and memory it does', 'Where the official specs say so'],
     },
   };
 
   const samplePromptChips = [
-    'How do closures work and impact memory in JavaScript?',
-    'Design a distributed rate limiter with Redis and token buckets',
-    'Explain async/await vs Promises with practical production patterns',
-    'Why do we need useEffect cleanup functions in React?',
+    'How do closures work, and why can they leak memory?',
+    'How would I build a rate limiter with Redis?',
+    'What is the difference between async/await and Promises?',
+    'Why does useEffect need a cleanup function?',
   ];
 
   return (
@@ -108,16 +108,16 @@ export default function HomePage() {
       {/* Hero Section */}
       <section className="landing-hero-section">
         <div className="landing-badge">
-          Multi-Agent Active Learning Platform
+          Learn by building, with four tutors
         </div>
 
         <h1 className="landing-hero-title">
-          Master Software Engineering Through <br />
-          <span className="gradient-text">Active Building</span> & <span className="gradient-text">4 Parallel Perspectives</span>
+          Learn software engineering by <span className="gradient-text">building it</span>, <br />
+          explained <span className="gradient-text">four ways at once</span>
         </h1>
 
         <p className="landing-hero-subtitle">
-          Break free from passive video tutorials. Ask any complex concept to receive 4 simultaneous specialist perspectives, then build milestone-driven projects in our zero-setup browser sandbox.
+          Watching tutorials is easy, and easy to forget. Here you ask a question and four tutors answer at the same time, each from a different angle. Then you build a real project in your browser, one checked step at a time, with nothing to install.
         </p>
 
         {/* Hero Interactive Prompt Input */}
@@ -125,18 +125,18 @@ export default function HomePage() {
           <input
             type="text"
             className="hero-search-input"
-            placeholder="Ask any question (e.g. Closures, Redis, Async)..."
+            placeholder="Ask anything (closures, Redis, async...)"
             value={heroInput}
             onChange={(e) => setHeroInput(e.target.value)}
           />
           <button type="submit" className="btn primary hero-search-btn">
-            Explore with 4 Agents →
+            Ask all four →
           </button>
         </form>
 
         {/* Quick prompt chips */}
         <div className="landing-prompt-chips">
-          <span className="chips-label">Popular explorations:</span>
+          <span className="chips-label">Popular questions:</span>
           {samplePromptChips.map((prompt) => (
             <button
               key={prompt}
@@ -155,13 +155,13 @@ export default function HomePage() {
         {/* Hero CTAs */}
         <div className="landing-hero-actions">
           <Link href="/ask" className="btn primary landing-cta-btn">
-            Launch 4-Agent Workspace
+            Open the workspace
           </Link>
           <Link href="/projects" className="btn ghost landing-secondary-btn">
-            Browse Project Blueprints
+            Browse projects
           </Link>
           <Link href="/about" className="btn ghost landing-secondary-btn">
-            How It Works
+            How it works
           </Link>
         </div>
       </section>
@@ -169,10 +169,10 @@ export default function HomePage() {
       {/* Interactive 4-Agent Showcase */}
       <section className="landing-showcase-section">
         <div className="section-header text-center">
-          <span className="section-tag">Why 4 Agents?</span>
-          <h2>One Question. Four Specialized Angles. Zero Jargon Gaps.</h2>
+          <span className="section-tag">Why four?</span>
+          <h2>One question, four different explanations</h2>
           <p className="section-desc">
-            Traditional AI gives you a single generic wall of text. Project Learner parallelizes your query across 4 specialized agents.
+            Most AI tools hand you one long block of text. If it does not click, you are stuck. Four takes on the same question means at least one usually lands.
           </p>
         </div>
 
@@ -205,7 +205,7 @@ export default function HomePage() {
                 <span className="agent-dot" style={{ backgroundColor: agentSamples[activeTab].color }} />
                 <span>{agentSamples[activeTab].title}</span>
               </div>
-              <span className="showcase-live-indicator">Streaming Live via SSE</span>
+              <span className="showcase-live-indicator">Answering live</span>
             </div>
 
             <p className="showcase-excerpt">{agentSamples[activeTab].excerpt}</p>
@@ -222,7 +222,7 @@ export default function HomePage() {
             <div className="showcase-footer">
               <span className="model-pill">Powered by Google Gemini 3.6 Flash</span>
               <Link href="/ask" className="showcase-action-link">
-                Ask your own question in Workspace →
+                Ask your own question →
               </Link>
             </div>
           </div>
@@ -232,9 +232,9 @@ export default function HomePage() {
       {/* Core Platform Features Grid */}
       <section className="landing-features-section">
         <div className="section-header text-center">
-          <span className="section-tag">Complete System</span>
-          <h2>Engineered for Accelerated Technical Mastery</h2>
-          <p className="section-desc">Everything you need to go from curiosity to building production-grade software.</p>
+          <span className="section-tag">What you get</span>
+          <h2>Everything in one place</h2>
+          <p className="section-desc">From a question you cannot answer to a finished project you can show people.</p>
         </div>
 
         <div className="features-grid">
@@ -261,31 +261,31 @@ export default function HomePage() {
       {/* 3-Step Journey */}
       <section className="landing-journey-section">
         <div className="section-header text-center">
-          <span className="section-tag">How It Works</span>
-          <h2>Three Steps to True Technical Fluency</h2>
+          <span className="section-tag">How it works</span>
+          <h2>Three steps</h2>
         </div>
 
         <div className="journey-steps-row">
           <div className="journey-step glassmorphic-card">
             <div className="step-num">01</div>
-            <h4>Ask & Slot-Filling Interview</h4>
-            <p>Type your query or let our deterministic interview extract your stack and goals to tailor every answer.</p>
+            <h4>Ask, and answer a few questions</h4>
+            <p>Type what you want to know. A few short questions work out what you already know and what you are building, so the answers fit you.</p>
           </div>
 
           <div className="journey-step-connector">→</div>
 
           <div className="journey-step glassmorphic-card">
             <div className="step-num">02</div>
-            <h4>Synthesize 4 Perspectives</h4>
-            <p>Watch Plain English, Industry Context, Hands-on Drills, and Core Architecture stream simultaneously.</p>
+            <h4>Read four answers at once</h4>
+            <p>Plain English, how it is really used at work, exercises to try, and what happens underneath — all arriving together.</p>
           </div>
 
           <div className="journey-step-connector">→</div>
 
           <div className="journey-step glassmorphic-card">
             <div className="step-num">03</div>
-            <h4>Build in Sandbox Checkpoints</h4>
-            <p>Write executable code in the browser. Automated verification checks your solutions instantly.</p>
+            <h4>Build it, and get it checked</h4>
+            <p>Write real code in your browser. Every step is checked automatically, so you know straight away whether it works.</p>
           </div>
         </div>
       </section>
@@ -294,16 +294,16 @@ export default function HomePage() {
       <section className="landing-bottom-banner glassmorphic-card">
         <div className="banner-content text-center">
           <div className="landing-badge">
-            Ready to level up your engineering skills?
+            Ready to start?
           </div>
-          <h2>Join Project Learner Today</h2>
-          <p>Instant access to the 4-Agent Workspace, project blueprint generator, and in-browser execution sandbox.</p>
+          <h2>Join Project Learner</h2>
+          <p>Free to start. You get the four-tutor workspace, the project builder, and a code sandbox that runs in your browser.</p>
           <div className="banner-buttons">
             <Link href="/login?mode=signup&next=/ask" className="btn primary landing-cta-btn">
-              Get Started Free
+              Get started free
             </Link>
             <Link href="/login?mode=signin" className="btn ghost">
-              Sign In to Account
+              Sign in
             </Link>
           </div>
         </div>
@@ -314,7 +314,7 @@ export default function HomePage() {
         <div className="footer-inner">
           <div className="footer-brand">
             <BrandLogo height={34} />
-            <p className="footer-blurb">Modern multi-agent AI educational workspace for software engineers.</p>
+            <p className="footer-blurb">Learn software engineering by building, with four tutors explaining as you go.</p>
           </div>
           <div className="footer-links">
             <Link href="/ask">Workspace</Link>

@@ -5,51 +5,51 @@ import Link from 'next/link';
 export default function AboutPage() {
   const architectures = [
     {
-      badge: 'Parallel Multi-Agent Reasoning',
-      title: 'The 4-Specialist Perspective Engine',
+      badge: 'Four answers in parallel',
+      title: 'The four-tutor engine',
       description:
-        'Learning complex engineering cannot be reduced to a single monolithic answer. Project Learner splits queries across 4 specialized sub-agents running concurrently over multiplexed Server-Sent Events (SSE).',
+        'One answer is rarely enough. A question here goes to four tutors at the same time, and each starts writing immediately, so you read all four as they arrive rather than waiting for one long reply.',
       points: [
-        'Plain English Specialist: Strips jargon, uses visual real-world analogies, and builds intuition first.',
-        'Industry Context Specialist: Explains how top tech companies use this pattern in production, trade-offs, and failure modes.',
-        'Hands-On Practice Specialist: Generates actionable exercises, step-by-step code drills, and edge-case experiments.',
-        'Deep Architecture Specialist: Unpacks underlying memory layout, algorithmic complexity, runtime mechanics, and RFC specs.',
+        'Plain English: no jargon, comparisons to things you already know, understanding before syntax.',
+        'Industry practice: how this is really used at work, what it costs, and the ways it goes wrong.',
+        'Hands-on: exercises, step-by-step drills, and the awkward cases worth trying yourself.',
+        'Deep dive: what happens in memory, how fast it is, and where the official specs say so.',
       ],
     },
     {
-      badge: 'Zero-Retrieval Deterministic Knowledge',
-      title: 'Adaptive Context Interview & Prefixes',
+      badge: 'Answers shaped around you',
+      title: 'A few questions, not a guess',
       description:
-        'Instead of opaque vector searches that hallucinate disconnected chunks, Project Learner conducts a deterministic slot-filling interview to extract the learner’s skill level, current tech stack, and learning objectives.',
+        'Rather than guessing what you meant and padding the answer with whatever looked related, Project Learner asks you a few direct questions first — how much you already know, what you are working with, what you are trying to build — and writes every answer with that in mind.',
       points: [
-        'Deterministic Slot Extraction: Categorizes queries by topic, domain, technology, and skill level.',
-        'Shared Cached Prefix: The 4 parallel agents share byte-identical prefix prompts, maximizing LLM cache hits and reducing latency.',
-        'Adaptive Pacing Controller: Automatically scales difficulty up or inserts micro-scaffolds based on learner checkpoint attempt metrics.',
-        'Model-Agnostic Engine: Built on Google Gemini 3.6 Flash, Anthropic Claude, OpenAI, DeepSeek, and Moonshot.',
+        'A few clear questions, so the answer fits your level instead of a generic one.',
+        'The four tutors share the same opening context, which makes answers arrive faster and cost less to produce.',
+        'Keep getting a step wrong and the next one gets smaller. Breeze through and it gets bigger.',
+        'Works with several AI providers: Google Gemini, Anthropic Claude, OpenAI, DeepSeek and Moonshot.',
       ],
     },
     {
-      badge: 'Zero-Setup Isolated Runtimes',
-      title: 'In-Browser WebAssembly & JS Sandboxes',
+      badge: 'Nothing to install',
+      title: 'Code that runs in your browser',
       description:
-        'No local installations, Docker containers, or environment mismatch bugs. Code execution happens safely directly inside the learner’s browser with sub-second feedback loops.',
+        'No installs, no containers, and no setup that only works on one machine. Your code runs in the page you are already looking at, and you get an answer in about a second.',
       points: [
-        'Pyodide WebAssembly Engine: Runs full Python stdlib, NumPy, and algorithms directly in-browser at near-native speeds.',
-        'Dual-Tier CSP Isolation: Sandboxes run in sandboxed iframes with strict Content-Security-Policy rules, preventing DOM access or cookie leaks.',
-        'Monaco IDE Integration: Full VS Code editor experience with syntax highlighting, auto-complete, and multi-file project tabs.',
-        'Automated Checkpoint Verification: Real-time unit tests and regression assertions run against the student’s code on every submission.',
+        'Python runs in the browser — the standard library, NumPy, and ordinary algorithm work — at close to normal speed.',
+        'Your code runs sealed off in its own frame, so it cannot read the page, your cookies, or anything you are signed in to.',
+        'A full code editor, the same one VS Code uses, with several files open at once.',
+        'Every submission is checked by real tests, so you find out immediately whether it works.',
       ],
     },
     {
-      badge: 'Enterprise-Grade AI Security',
-      title: 'FastAPI LLM Security Gateway',
+      badge: 'Private by default',
+      title: 'What happens to what you type',
       description:
-        'Every learner prompt and file upload is screened before reaching the LLM providers or database to guarantee safety and compliance.',
+        'Everything you send is checked before it reaches an AI provider or the database.',
       points: [
-        'PII Redaction Engine: Automatically detects and masks emails, API keys, phone numbers, and secrets.',
-        'Prompt Injection Guard: Scans incoming requests against prompt injection patterns and adversarial system overrides.',
-        'Transparent Token Accounting: Real-time token usage meter and daily USD budget caps per user.',
-        'Row-Level Security (RLS): All projects, blueprints, checkpoints, and chat histories are private to each authenticated learner.',
+        'Emails, API keys, phone numbers and other secrets are found and masked automatically.',
+        'Attempts to hijack the AI with hidden instructions are caught and refused.',
+        'You can see what you have spent and set a daily limit in dollars.',
+        'Your projects, code and conversations are yours. No other account can read them.',
       ],
     },
   ];
@@ -57,23 +57,23 @@ export default function AboutPage() {
   const pillars = [
     {
       num: '01',
-      title: 'Active Construction',
-      blurb: 'Reading documentation produces the illusion of competence. Project Learner forces active synthesis through executable code milestones.',
+      title: 'You build it yourself',
+      blurb: 'Reading documentation makes you feel like you understand it. Writing code that actually has to run is what proves you do, so every step ends in code you run.',
     },
     {
       num: '02',
-      title: 'Multi-Angle Scaffolding',
-      blurb: 'Different brains resonate with different representations. Four distinct perspectives ensure intuition precedes syntax.',
+      title: 'Four explanations, not one',
+      blurb: 'People click with different explanations. Getting four at once means you are not stuck waiting for the one that finally makes sense.',
     },
     {
       num: '03',
-      title: 'Adaptive Cognitive Load',
-      blurb: 'Never get stuck in tutorial hell or overwhelmed by overly dense RFCs. Work is continuously adjusted to your current edge of ability.',
+      title: 'Never too easy, never too hard',
+      blurb: 'Stuck on the same step for an hour, or bored because it is all obvious? The work adjusts as you go, so it stays just past what you can already do.',
     },
     {
       num: '04',
-      title: 'Safety by Default',
-      blurb: 'Automated PII scrubbing and sandbox isolation allow fear-free experimentation with sensitive or production-adjacent concepts.',
+      title: 'Safe to experiment',
+      blurb: 'Personal details are stripped before anything reaches an AI model, and your code runs sealed off from everything else. Nothing you try here can break anything real.',
     },
   ];
 
@@ -88,20 +88,20 @@ export default function AboutPage() {
       {/* Hero Header */}
       <section className="about-hero-section">
         <div className="landing-badge">
-          Architecture & Pedagogy Deep Dive
+          How Project Learner works
         </div>
         <h1 className="about-title">
-          Engineering the Future of <span>AI-Driven Technical Mastery</span>
+          Learning that sticks, because <span>you build it yourself</span>
         </h1>
         <p className="about-subtitle">
-          Project Learner is not another generic AI chatbot wrapper. It is a pedagogical compiler designed to turn complex software engineering concepts into durable, milestone-driven mastery through parallel agent perspectives, in-browser sandboxes, and adaptive pacing.
+          Project Learner is not a chatbot with a new coat of paint. Ask a question and four tutors answer from four different angles. Then you build a real project step by step, in your browser, with each step checked as you go.
         </p>
         <div className="about-hero-actions">
           <Link href="/ask" className="btn primary landing-cta-btn">
-            Open Workspace →
+            Open the workspace →
           </Link>
           <Link href="/projects" className="btn ghost">
-            Explore Project Blueprints
+            Browse projects
           </Link>
         </div>
       </section>
@@ -109,9 +109,9 @@ export default function AboutPage() {
       {/* Pedagogical Pillars */}
       <section className="about-pillars-section">
         <div className="section-header text-center">
-          <span className="section-tag">Core Pedagogy</span>
-          <h2>The Four Cognitive Pillars</h2>
-          <p className="section-desc">Designed according to modern cognitive science and cognitive load theory.</p>
+          <span className="section-tag">The idea</span>
+          <h2>Four things we build around</h2>
+          <p className="section-desc">Based on how people actually learn, rather than how courses are usually sold.</p>
         </div>
 
         <div className="pillars-grid">
@@ -128,9 +128,9 @@ export default function AboutPage() {
       {/* Architecture Deep Dive */}
       <section className="about-architecture-section">
         <div className="section-header text-center">
-          <span className="section-tag">Technical Architecture</span>
-          <h2>How Project Learner Works Under the Hood</h2>
-          <p className="section-desc">A deep dive into the engineering choices behind our high-throughput, low-latency system.</p>
+          <span className="section-tag">Under the hood</span>
+          <h2>How it works, in more detail</h2>
+          <p className="section-desc">For anyone who wants to know what is actually going on.</p>
         </div>
 
         <div className="architecture-stack">
@@ -158,7 +158,7 @@ export default function AboutPage() {
 
       {/* Tech Stack Banner */}
       <section className="about-stack-section glassmorphic-card">
-        <h3>Built With Modern Open-Source Standards</h3>
+        <h3>Built with</h3>
         <div className="tech-pills-row">
           <span className="tech-pill">Next.js 16 (App Router + Turbopack)</span>
           <span className="tech-pill">Fastify API Gateway</span>
@@ -173,14 +173,14 @@ export default function AboutPage() {
 
       {/* Bottom CTA */}
       <section className="about-cta-section text-center">
-        <h2>Ready to Experience Active Technical Learning?</h2>
-        <p>Launch the 4-agent parallel workspace or generate your first custom project blueprint in seconds.</p>
+        <h2>Ready to try it?</h2>
+        <p>Open the workspace and ask a question, or start your first project.</p>
         <div className="cta-actions">
           <Link href="/login?mode=signup&next=/ask" className="btn primary landing-cta-btn">
-            Get Started Free
+            Get started free
           </Link>
           <Link href="/login?mode=signin" className="btn ghost">
-            Sign In to Existing Account
+            Sign in
           </Link>
         </div>
       </section>

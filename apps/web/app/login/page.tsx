@@ -8,7 +8,7 @@ import { BrandLogo } from '@/components/BrandLogo';
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="shell text-center" style={{ marginTop: '100px' }}><p className="skeleton">Loading authentication...</p></div>}>
+    <Suspense fallback={<div className="shell text-center" style={{ marginTop: '100px' }}><p className="skeleton">Loading…</p></div>}>
       <LoginForm />
     </Suspense>
   );
@@ -133,7 +133,7 @@ function LoginForm() {
 
         <form onSubmit={(e) => void handleSubmit(e)}>
           <div className="field-group">
-            <label htmlFor="email">Email Address</label>
+            <label htmlFor="email">Email</label>
             <input
               id="email"
               className="textinput"
