@@ -36,3 +36,9 @@ export * from './progress/workspace.js';
 export * from './progress/hints.js';
 
 export * from './pacing/index.js';
+
+export * from './brain/types.js';
+export * from './brain/canonicalize.js';
+export * from './brain/mastery.js';
+export * from './brain/extract.js';
+export * from './brain/project.js';
