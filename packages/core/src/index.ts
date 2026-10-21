@@ -42,3 +42,4 @@ export * from './brain/canonicalize.js';
 export * from './brain/mastery.js';
 export * from './brain/extract.js';
 export * from './brain/project.js';
+export * from './brain/graph.js';
