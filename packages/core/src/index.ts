@@ -46,3 +46,5 @@ export * from './brain/graph.js';
 export * from './brain/memory.js';
 export * from './brain/recall.js';
 export * from './brain/timeline.js';
+
+export * from './assessment/index.js';
