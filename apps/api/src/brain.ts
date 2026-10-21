@@ -7,7 +7,14 @@ import {
   parseBrainEvent,
   projectBrain,
 } from '@ai-edu/core';
-import type { BrainEvent, BrainEventKind, BrainEventPayload, BrainSourceKind } from '@ai-edu/core';
+import type {
+  BrainEdge,
+  BrainEvent,
+  BrainEventKind,
+  BrainEventPayload,
+  BrainNode,
+  BrainSourceKind,
+} from '@ai-edu/core';
 import { createProviderForTask } from '@ai-edu/llm';
 
 import { checkBudget, db, recordUsage } from './db.js';
@@ -153,6 +160,94 @@ export async function rebuildProjection(userId: string): Promise<boolean> {
 
   if (error) throw new Error(`could not write brain projection: ${error.message}`);
   return data === true;
+}
+
+/* ------------------------------------------------------------------ *
+ * Reading the stored projection
+ * ------------------------------------------------------------------ */
+
+interface NodeRow {
+  id: string;
+  kind: BrainNode['kind'];
+  key: string;
+  label: string;
+  score: number | string | null;
+  confidence: number | string | null;
+  metadata: Record<string, unknown> | null;
+  first_seen_at: string;
+  last_seen_at: string;
+}
+
+interface EdgeRow {
+  src: string;
+  dst: string;
+  kind: BrainEdge['kind'];
+  weight: number | string;
+  source_id: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+/** `numeric` columns can arrive as strings depending on the driver; a null stays null. */
+function numeric(value: number | string | null): number | null {
+  if (value === null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+async function loadAll<Row>(table: string, columns: string, userId: string, orderBy: string[]): Promise<Row[]> {
+  const rows: Row[] = [];
+  for (let from = 0; ; from += EVENT_PAGE) {
+    let query = db().from(table).select(columns).eq('user_id', userId);
+    for (const column of orderBy) query = query.order(column, { ascending: true });
+    const { data, error } = await query.range(from, from + EVENT_PAGE - 1);
+    if (error) throw new Error(`could not load ${table}: ${error.message}`);
+    const page = (data ?? []) as Row[];
+    rows.push(...page);
+    if (page.length < EVENT_PAGE) break;
+  }
+  return rows;
+}
+
+/** One learner's stored brain, as the pure graph functions in packages/core take it. */
+export async function loadProjection(userId: string): Promise<{ nodes: BrainNode[]; edges: BrainEdge[] }> {
+  const [nodeRows, edgeRows] = await Promise.all([
+    loadAll<NodeRow>(
+      'brain_nodes',
+      'id, kind, key, label, score, confidence, metadata, first_seen_at, last_seen_at',
+      userId,
+      ['id'],
+    ),
+    loadAll<EdgeRow>(
+      'brain_edges',
+      'src, dst, kind, weight, source_id, metadata, created_at',
+      userId,
+      ['src', 'dst', 'kind'],
+    ),
+  ]);
+
+  return {
+    nodes: nodeRows.map((row) => ({
+      id: row.id,
+      kind: row.kind,
+      key: row.key,
+      label: row.label,
+      score: numeric(row.score),
+      confidence: numeric(row.confidence),
+      metadata: row.metadata ?? {},
+      firstSeenAt: row.first_seen_at,
+      lastSeenAt: row.last_seen_at,
+    })),
+    edges: edgeRows.map((row) => ({
+      src: row.src,
+      dst: row.dst,
+      kind: row.kind,
+      weight: numeric(row.weight) ?? 0,
+      sourceId: row.source_id,
+      metadata: row.metadata ?? {},
+      createdAt: row.created_at,
+    })),
+  };
 }
 
 /**

@@ -10,6 +10,7 @@ import { registerRateLimit } from './rateLimit.js';
 import { agentRoutes } from './routes/agents.js';
 import { attemptRoutes } from './routes/attempts.js';
 import { attachmentRoutes } from './routes/attachments.js';
+import { brainRoutes } from './routes/brain.js';
 import { followUpRoutes } from './routes/followups.js';
 import { interviewRoutes } from './routes/interview.js';
 import { projectRoutes } from './routes/projects.js';
@@ -72,6 +73,7 @@ export async function buildServer() {
   await app.register(projectRoutes);
   await app.register(threadRoutes);
   await app.register(tutorRoutes);
+  await app.register(brainRoutes);
 
   return app;
 }
