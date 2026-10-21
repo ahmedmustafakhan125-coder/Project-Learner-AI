@@ -1,19 +1,23 @@
 import type {
   AgentKind,
   Alternative,
+  AssessmentStatus,
   AttachmentRef,
   BrainEvent,
   BrainNodeDetail,
   Checkpoint,
   CompiledQuery,
+  CriterionGrade,
   GraphView,
   InterviewQuestion,
   MemoryItem,
+  PublicMcq,
   InterviewState,
   ProjectArtifact,
   ProjectBlueprint,
   SkillLevel,
   SourceFile,
+  VivaQuestion,
 } from '@ai-edu/core';
 
 import { ApiError, streamSSE } from './sse.js';
@@ -58,6 +62,56 @@ export interface QuestionRecallMatch {
   title: string | null;
   /** That conversation's node in the brain, for `/brain?focus=`. */
   nodeId: string;
+}
+
+/* ---- assessment ---- */
+
+export interface AnsweredVivaQuestion {
+  questionIndex: number;
+  answer: string;
+  score: number;
+  max: number;
+  criteria: CriterionGrade[];
+}
+
+export interface AssessmentReport {
+  total: number;
+  max: number;
+  passed: boolean;
+  questions: Array<{ index: number; prompt: string; score: number; max: number; criteria: CriterionGrade[] }>;
+}
+
+/** One sitting, as the server shows it. The gate's answers appear only once it is marked. */
+export interface AssessmentView {
+  id: string;
+  conceptKey: string;
+  conceptLabel: string;
+  attemptNumber: number;
+  status: AssessmentStatus;
+  createdAt: string;
+  completedAt: string | null;
+  mcq: PublicMcq[];
+  mcqResult: {
+    score: number;
+    total: number;
+    passed: boolean;
+    answers: number[];
+    correctIndexes: number[];
+    explanations: string[];
+  } | null;
+  viva: VivaQuestion[];
+  answers: AnsweredVivaQuestion[];
+  nextQuestion: number | null;
+  vivaScore: number | null;
+  report: AssessmentReport | null;
+  retakeAfter: string | null;
+  stuck: boolean;
+}
+
+export interface AssessmentOffer {
+  conceptKey: string;
+  label: string;
+  score: number;
 }
 
 export interface BrainGraphOptions {
@@ -689,6 +743,40 @@ export class ApiClient {
   async recallQuestion(input: { query: string; threadId: string | null }): Promise<QuestionRecallMatch | null> {
     const { match } = await this.post<{ match: QuestionRecallMatch | null }>('/api/brain/recall', input);
     return match;
+  }
+
+  /* ---- assessment ---- */
+
+  /** Start a sitting on a concept — or resume the one already under way. */
+  async startAssessment(conceptKey: string): Promise<{ assessment: AssessmentView; resumed: boolean }> {
+    return this.post('/api/assessment/start', { conceptKey });
+  }
+
+  async getAssessment(id: string): Promise<AssessmentView> {
+    const { assessment } = await this.get<{ assessment: AssessmentView }>(`/api/assessment/${id}`);
+    return assessment;
+  }
+
+  async submitMcq(id: string, answers: number[]): Promise<AssessmentView> {
+    const { assessment } = await this.post<{ assessment: AssessmentView }>(`/api/assessment/${id}/mcq`, { answers });
+    return assessment;
+  }
+
+  async submitVivaAnswer(
+    id: string,
+    questionIndex: number,
+    answer: string,
+  ): Promise<{ assessment: AssessmentView; grade: AnsweredVivaQuestion }> {
+    return this.post(`/api/assessment/${id}/viva`, { questionIndex, answer });
+  }
+
+  async listAssessmentOffers(): Promise<AssessmentOffer[]> {
+    const { offers } = await this.get<{ offers: AssessmentOffer[] }>('/api/assessment/offers');
+    return offers;
+  }
+
+  async dismissAssessmentOffer(conceptKey: string): Promise<void> {
+    await this.post(`/api/assessment/offers/${encodeURIComponent(conceptKey)}/dismiss`, {});
   }
 
   async rebuildBrain(): Promise<{ ok: boolean }> {
