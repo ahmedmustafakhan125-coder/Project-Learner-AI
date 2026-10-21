@@ -113,6 +113,11 @@ vi.mock('../src/brain.js', () => ({
   recordBrainEvent: mockRecordBrainEvent,
   describeQuestion: () => ({ canonical: '', fingerprint: '' }),
   distillQa: vi.fn(async () => {}),
+  memoryQueryFor: () => '',
+  recallMemory: vi.fn(async () => null),
+  findQuestionRecall: vi.fn(async () => null),
+  loadProjection: vi.fn(async () => ({ nodes: [], edges: [] })),
+  scheduleRebuild: vi.fn(async () => {}),
 }));
 
 vi.mock('../src/auth.js', async (importOriginal) => {

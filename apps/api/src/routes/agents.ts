@@ -4,7 +4,7 @@ import { AGENT_ORDER, CompiledQuery, fanOut } from '@ai-edu/core';
 import { createProviderForTask } from '@ai-edu/llm';
 
 import { requireAuth, userOf } from '../auth.js';
-import { describeQuestion, distillQa, recordBrainEvent } from '../brain.js';
+import { describeQuestion, distillQa, memoryQueryFor, recallMemory, recordBrainEvent } from '../brain.js';
 import { checkBudget, db, recordUsage } from '../db.js';
 import { gatewayErrorReply, screenOrThrow } from '../gateway.js';
 import { knowledgeBundle } from '../knowledge.js';
@@ -107,7 +107,13 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
     /* ---- persist the question and four placeholder rows ---- */
 
-    const persisted = await persistQuestion(user.id, threadId, screened);
+    // The learner's memory is recalled alongside persisting the question, so
+    // it adds no wait of its own. It is bounded by its own timeout and comes
+    // back null rather than failing — an answer never waits on the brain.
+    const [persisted, memory] = await Promise.all([
+      persistQuestion(user.id, threadId, screened),
+      recallMemory(user.id, memoryQueryFor(screened)),
+    ]);
     const messageId = persisted.messageId;
 
     // Into the brain's log, so the same question asked in another conversation
@@ -161,6 +167,10 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       threadId: persisted.threadId,
       model: provider.modelId,
       agents: AGENT_ORDER,
+      // What the brain recalled for this answer, so the learner can see it.
+      // Personalisation the learner cannot inspect is personalisation they
+      // cannot correct.
+      memory: memory?.items ?? [],
     });
 
     // Aborting on disconnect is what actually stops tokens being spent. The
@@ -180,6 +190,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
         // Curated OKF concepts, selected deterministically inside the fan-out so
         // all four agents get identical bytes and share one cache entry.
         knowledge: knowledgeBundle(),
+        memory: memory?.text ?? null,
         signal: controller.signal,
       })) {
         switch (event.type) {

@@ -24,6 +24,7 @@ import { createProviderForTask } from '@ai-edu/llm';
 
 import { requireAuth, userOf } from '../auth.js';
 import { gatewayErrorReply, screenOrThrow } from '../gateway.js';
+import { memoryQueryFor, recallMemory } from '../brain.js';
 import { checkBudget, db, recordUsage } from '../db.js';
 import { assembleFinished, priorFilesFor } from '../projectFiles.js';
 import { canExpand, loadProgress } from '../progress.js';
@@ -120,12 +121,17 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         .send({ error: 'no_provider', message: err instanceof Error ? err.message : 'unavailable' });
     }
 
+    // What the learner already holds and keeps getting wrong, so the plan is
+    // pitched at them rather than at a generic learner of their stated level.
+    const memory = await recallMemory(user.id, memoryQueryFor(safeCompiled));
+
     const started = Date.now();
     try {
       const blueprint = await generateBlueprint({
         provider,
         compiled: safeCompiled,
         teachDeployment: parsed.data.teachDeployment,
+        memory: memory?.text ?? null,
       });
 
       void recordUsage({
@@ -139,7 +145,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
 
       // Deliberately not persisted. A learner who rejects this plan should not
       // find a dead project in their dashboard.
-      return reply.send({ blueprint, model: provider.modelId });
+      return reply.send({ blueprint, model: provider.modelId, recalled: memory?.items ?? [] });
     } catch (err) {
       request.log.error({ err }, 'blueprint generation failed');
       return reply.code(502).send({
