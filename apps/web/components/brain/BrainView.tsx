@@ -3,20 +3,35 @@
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { HOVER_NODE_LIMIT, sessionPath } from '@ai-edu/core';
+import {
+  HOVER_NODE_LIMIT,
+  activityTimeline,
+  nodeDetail,
+  projectAt,
+  projectGraph,
+  recurringMistakes,
+  sessionPath,
+  type BrainEvent,
+} from '@ai-edu/core';
 import { ApiError, type BrainGraph, type BrainNodeDetail } from '@ai-edu/api-client';
 
 import { api } from '../../lib/api';
 import { Legend } from './Legend';
 import { NodeDetailPanel } from './NodeDetailPanel';
+import { TimelineScrubber } from './TimelineScrubber';
 import { TruncationChip } from './TruncationChip';
 
 /**
- * The brain page: fetching, the time window, focus and selection.
+ * The brain page: fetching, the time window, focus, selection and replay.
  *
  * Everything the canvas draws is decided here or below in packages/core —
  * which nodes, their styles, the path a session took. The canvas itself is
  * loaded lazily and only ever told what to show.
+ *
+ * Two sources for what is drawn. Live, the graph comes from the API's stored
+ * projection. Replaying, it is folded here from the event log up to the chosen
+ * day — the projection is a pure function, so the brain on any past day is
+ * just `projectAt(events, day)`, with no history kept anywhere.
  */
 
 const BrainCanvas = dynamic(() => import('./BrainCanvas'), {
@@ -31,6 +46,10 @@ const WINDOWS: Array<{ days: number | null; label: string }> = [
   { days: null, label: 'All time' },
 ];
 
+/** A replay takes about this many steps whatever the span, so a year plays as briskly as a week. */
+const REPLAY_STEPS = 40;
+const REPLAY_STEP_MS = 380;
+
 function describe(err: unknown): string {
   if (err instanceof ApiError) return err.message;
   return err instanceof Error ? err.message : 'Something went wrong.';
@@ -40,6 +59,13 @@ function describe(err: unknown): string {
 function focusFromUrl(): string | null {
   if (typeof window === 'undefined') return null;
   return new URLSearchParams(window.location.search).get('focus');
+}
+
+function asOf(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime())
+    ? ''
+    : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 
 export function BrainView() {
@@ -53,6 +79,13 @@ export function BrainView() {
   const [detail, setDetail] = useState<BrainNodeDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+
+  /** The event log, fetched only once the learner asks to replay. */
+  const [events, setEvents] = useState<BrainEvent[] | null>(null);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  /** Which day of the timeline is shown; null for the live brain. */
+  const [dayIndex, setDayIndex] = useState<number | null>(null);
+  const [playing, setPlaying] = useState(false);
 
   useEffect(() => {
     const fromUrl = focusFromUrl();
@@ -84,8 +117,76 @@ export function BrainView() {
     };
   }, [windowDays, focus]);
 
+  /* ---------------- replay ---------------- */
+
+  const days = useMemo(() => (events ? activityTimeline(events) : []), [events]);
+  const until = dayIndex !== null ? (days[dayIndex]?.until ?? null) : null;
+  const replaying = until !== null && events !== null;
+
+  // The brain as it stood that day, styled as if "now" were that day, so what
+  // was recent then pulses then.
+  const past = useMemo(() => (replaying ? projectAt(events, until) : null), [replaying, events, until]);
+  const pastGraph = useMemo(
+    () => (past && until ? projectGraph(past.nodes, past.edges, { now: until, windowDays, focus, depth: 2 }) : null),
+    [past, until, windowDays, focus],
+  );
+
+  const openReplay = useCallback(async () => {
+    if (events) {
+      if (events.length > 0) {
+        setDayIndex(0);
+        setPlaying(true);
+      }
+      return;
+    }
+    setEventsLoading(true);
+    setError(null);
+    try {
+      const log = await api.getBrainEvents();
+      setEvents(log);
+      if (log.length > 0) {
+        setDayIndex(0);
+        setPlaying(true);
+      }
+    } catch (err) {
+      setError(describe(err));
+    } finally {
+      setEventsLoading(false);
+    }
+  }, [events]);
+
   useEffect(() => {
-    if (!selectedId) {
+    if (!playing || dayIndex === null) return;
+    if (dayIndex >= days.length - 1) {
+      setPlaying(false);
+      return;
+    }
+    const stride = Math.max(1, Math.ceil(days.length / REPLAY_STEPS));
+    const timer = setTimeout(() => setDayIndex(Math.min(days.length - 1, dayIndex + stride)), REPLAY_STEP_MS);
+    return () => clearTimeout(timer);
+  }, [playing, dayIndex, days.length]);
+
+  const togglePlay = useCallback(() => {
+    if (playing) {
+      setPlaying(false);
+      return;
+    }
+    // Pressing play at the end starts the story again.
+    if (dayIndex !== null && dayIndex >= days.length - 1) setDayIndex(0);
+    setPlaying(true);
+  }, [playing, dayIndex, days.length]);
+
+  const backToNow = useCallback(() => {
+    setPlaying(false);
+    setDayIndex(null);
+  }, []);
+
+  /* ---------------- selection ---------------- */
+
+  // Live detail comes from the API; while replaying it is computed from the
+  // past projection instead, so the panel describes the node as it was then.
+  useEffect(() => {
+    if (!selectedId || replaying) {
       setDetail(null);
       setDetailError(null);
       return;
@@ -110,10 +211,16 @@ export function BrainView() {
     return () => {
       cancelled = true;
     };
-  }, [selectedId]);
+  }, [selectedId, replaying]);
 
-  const nodes = useMemo(() => graph?.nodes ?? [], [graph]);
-  const links = useMemo(() => graph?.links ?? [], [graph]);
+  const shown = pastGraph ?? graph;
+  const nodes = useMemo(() => shown?.nodes ?? [], [shown]);
+  const links = useMemo(() => shown?.links ?? [], [shown]);
+
+  const shownDetail = useMemo(
+    () => (past ? (selectedId ? nodeDetail(selectedId, past.nodes, past.edges) : null) : detail),
+    [past, selectedId, detail],
+  );
 
   // A session or project is drawn as the trail it took through the graph.
   const wire = useMemo(() => {
@@ -121,6 +228,8 @@ export function BrainView() {
     if (!selected || (selected.kind !== 'session' && selected.kind !== 'project')) return [];
     return [selected.id, ...sessionPath(selected.id, links)];
   }, [selectedId, nodes, links]);
+
+  const mistakes = useMemo(() => recurringMistakes(nodes, links), [nodes, links]);
 
   const counts = useMemo(() => {
     const byKind = { concept: 0, mistake: 0, session: 0, project: 0 };
@@ -135,7 +244,7 @@ export function BrainView() {
   }, []);
 
   const description =
-    `Your brain: ${counts.concept} concepts, ${counts.mistake} mistakes, ` +
+    `Your brain${until ? ` as of ${asOf(until)}` : ''}: ${counts.concept} concepts, ${counts.mistake} mistakes, ` +
     `${counts.session + counts.project} sessions and projects. Use the panel beside it to explore by keyboard.`;
 
   return (
@@ -180,7 +289,7 @@ export function BrainView() {
         <div className="brain-canvas-wrap brain-canvas-loading">Loading your brain…</div>
       )}
 
-      {graph && graph.nodes.length === 0 && !loading && (
+      {graph && graph.nodes.length === 0 && !loading && !replaying && (
         <div className="brain-empty">
           <h2>{windowDays ? 'Nothing in this window yet' : 'Your brain is empty so far'}</h2>
           <p className="muted">
@@ -199,7 +308,7 @@ export function BrainView() {
         </div>
       )}
 
-      {graph && graph.nodes.length > 0 && (
+      {shown && (shown.nodes.length > 0 || replaying) && (
         <div className="brain-layout">
           <div className="brain-stage">
             <BrainCanvas
@@ -211,13 +320,28 @@ export function BrainView() {
               onNodeClick={select}
               description={description}
             />
-            <TruncationChip shown={graph.nodes.length} total={graph.meta.total} truncated={graph.meta.truncated} />
+            {until && <div className="brain-asof">As of {asOf(until)}</div>}
+            <TruncationChip shown={shown.nodes.length} total={shown.meta.total} truncated={shown.meta.truncated} />
+            <TimelineScrubber
+              days={days}
+              index={replaying ? dayIndex : null}
+              playing={playing}
+              loading={eventsLoading}
+              onOpen={() => void openReplay()}
+              onChange={(index) => {
+                setPlaying(false);
+                setDayIndex(index);
+              }}
+              onPlayToggle={togglePlay}
+              onLive={backToNow}
+            />
             <Legend />
           </div>
           <NodeDetailPanel
-            detail={detail}
-            loading={detailLoading}
-            error={detailError}
+            detail={shownDetail}
+            loading={!replaying && detailLoading}
+            error={replaying ? null : detailError}
+            mistakes={mistakes}
             onSelect={select}
             onFocus={focusOn}
             onClose={() => setSelectedId(null)}

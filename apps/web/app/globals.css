@@ -5759,3 +5759,131 @@ body[data-tutor-resizing='true'] {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
+/* ------------------------------------------------------------------ */
+/* Brain replay                                                       */
+/* ------------------------------------------------------------------ */
+
+.brain-asof {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #e2e8f0;
+  background: rgba(30, 41, 59, 0.85);
+  border: 1px solid #334155;
+  border-radius: var(--radius-full);
+  padding: 4px 12px;
+  pointer-events: none;
+}
+
+.brain-timeline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow);
+}
+
+.brain-timeline-closed {
+  justify-content: center;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.brain-timeline-play {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.brain-timeline-play:hover {
+  background: var(--primary-container);
+}
+
+.brain-timeline-play:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.brain-timeline-track {
+  position: relative;
+  flex: 1;
+  min-width: 120px;
+  height: 36px;
+}
+
+.brain-timeline-bars {
+  position: absolute;
+  inset: 0 0 14px;
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  pointer-events: none;
+}
+
+.brain-timeline-bars span {
+  flex: 1;
+  min-width: 1px;
+  border-radius: 2px 2px 0 0;
+  background: var(--surface-3);
+}
+
+.brain-timeline-bars span.is-past {
+  background: var(--agent-conceptual);
+  opacity: 0.55;
+}
+
+.brain-timeline-track input[type='range'] {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  margin: 0;
+  accent-color: var(--primary);
+}
+
+.brain-timeline-label {
+  display: flex;
+  flex-direction: column;
+  min-width: 112px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-heading);
+}
+
+.brain-timeline-label .muted {
+  font-size: 12px;
+}
+
+.brain-overview h2.brain-panel-title {
+  font-size: 17px;
+}
+
+.brain-panel-hint {
+  margin-top: 18px;
+}
+
+@media (max-width: 640px) {
+  .brain-timeline {
+    flex-wrap: wrap;
+  }
+
+  .brain-timeline-track {
+    flex-basis: 100%;
+    order: 3;
+  }
+}
