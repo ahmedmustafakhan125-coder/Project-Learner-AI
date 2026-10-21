@@ -24,7 +24,7 @@ import { createProviderForTask } from '@ai-edu/llm';
 
 import { requireAuth, userOf } from '../auth.js';
 import { gatewayErrorReply, screenOrThrow } from '../gateway.js';
-import { memoryQueryFor, recallMemory } from '../brain.js';
+import { forgetSource, memoryQueryFor, recallMemory } from '../brain.js';
 import { checkBudget, db, recordUsage } from '../db.js';
 import { assembleFinished, priorFilesFor } from '../projectFiles.js';
 import { canExpand, loadProgress } from '../progress.js';
@@ -287,6 +287,9 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
       if (!data) {
         return reply.code(404).send({ error: 'not_found', message: 'Project not found.' });
       }
+
+      // Deleted means deleted: the brain forgets the project's checkpoints too.
+      void forgetSource(user.id, 'project', request.params.id);
 
       return reply.send({ ok: true });
     },

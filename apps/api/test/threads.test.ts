@@ -62,6 +62,9 @@ const mockDb = {
 
 vi.mock('../src/db.js', () => ({ db: () => mockDb }));
 
+const { mockForgetSource } = vi.hoisted(() => ({ mockForgetSource: vi.fn(async () => {}) }));
+vi.mock('../src/brain.js', () => ({ forgetSource: mockForgetSource }));
+
 vi.mock('../src/auth.js', async (importOriginal) => {
   const original = await importOriginal<typeof import('../src/auth.js')>();
   return {
@@ -271,6 +274,8 @@ describe('DELETE /api/threads/:id', () => {
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body).ok).toBe(true);
     expect(filters).toContainEqual(['user_id', 'user-1']);
+    // Deleted means deleted: the brain forgets it as well.
+    expect(mockForgetSource).toHaveBeenCalledWith('user-1', 'thread', THREAD_ID);
   });
 
   it('404s rather than reporting success when the row belonged to someone else', async () => {
@@ -280,5 +285,7 @@ describe('DELETE /api/threads/:id', () => {
     const res = await app.inject({ method: 'DELETE', url: `/api/threads/${OTHER_ID}` });
 
     expect(res.statusCode).toBe(404);
+    // Nothing was deleted, so nothing is forgotten — least of all someone else's.
+    expect(mockForgetSource).not.toHaveBeenCalled();
   });
 });

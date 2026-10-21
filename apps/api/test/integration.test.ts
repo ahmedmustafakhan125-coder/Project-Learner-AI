@@ -118,6 +118,8 @@ vi.mock('../src/brain.js', () => ({
   findQuestionRecall: vi.fn(async () => null),
   loadProjection: vi.fn(async () => ({ nodes: [], edges: [] })),
   scheduleRebuild: vi.fn(async () => {}),
+  forgetSource: vi.fn(async () => {}),
+  loadBrainEvents: vi.fn(async () => []),
 }));
 
 vi.mock('../src/auth.js', async (importOriginal) => {

@@ -130,12 +130,14 @@ export async function loadBrainEvents(userId: string): Promise<BrainEvent[]> {
  */
 export async function rebuildProjection(userId: string): Promise<boolean> {
   const projection = projectBrain(await loadBrainEvents(userId));
-  if (!projection.watermark) return true;
 
+  // An empty log goes through the same call with no watermark, which clears
+  // the projection (0012). That only happens after forgetting, and then the
+  // stored brain must go too — skipping the write would leave it standing.
   const { data, error } = await db().rpc('brain_replace_projection', {
     p_user_id: userId,
-    p_watermark_at: projection.watermark.createdAt,
-    p_watermark_id: projection.watermark.id,
+    p_watermark_at: projection.watermark?.createdAt ?? null,
+    p_watermark_id: projection.watermark?.id ?? null,
     p_nodes: projection.nodes.map((node) => ({
       id: node.id,
       kind: node.kind,
@@ -429,6 +431,31 @@ export function scheduleRebuild(userId: string): Promise<void> {
     if (rebuildQueues.get(userId) === next) rebuildQueues.delete(userId);
   });
   return next;
+}
+
+/**
+ * Forget everything the brain learned from one conversation or project, after
+ * the learner deleted it. Its events go, and the projection is rebuilt from
+ * what remains. Never throws: the deletion the learner asked for has already
+ * happened, and a failure here is logged rather than turned into an error on a
+ * request that succeeded.
+ */
+export async function forgetSource(
+  userId: string,
+  sourceKind: Extract<BrainSourceKind, 'thread' | 'project'>,
+  sourceId: string,
+): Promise<void> {
+  try {
+    const { data, error } = await db().rpc('brain_forget_source', {
+      p_user_id: userId,
+      p_source_kind: sourceKind,
+      p_source_id: sourceId,
+    });
+    if (error) throw new Error(error.message);
+    if (typeof data === 'number' && data > 0) await scheduleRebuild(userId);
+  } catch (err) {
+    console.error(`[brain] could not forget ${sourceKind} ${sourceId}:`, err instanceof Error ? err.message : err);
+  }
 }
 
 /** Append an event and, if it was new, refresh the projection. Never throws. */
