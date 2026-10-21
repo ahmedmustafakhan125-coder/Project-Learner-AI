@@ -77,6 +77,12 @@ export interface BuildRequestOptions {
    * bytes across the four is what makes the shared cache entry work at all.
    */
   knowledge?: KnowledgeBundle;
+  /**
+   * The learner's recalled history for this question (see brain/memory.ts),
+   * already rendered. Computed once by the caller and passed to all four, so
+   * like the knowledge block it is identical bytes across the agents.
+   */
+  memory?: string | null;
 }
 
 /**
@@ -86,7 +92,7 @@ export interface BuildRequestOptions {
  */
 export function buildAgentRequest(
   kind: AgentKind,
-  { provider, compiled, history = [], knowledge }: BuildRequestOptions,
+  { provider, compiled, history = [], knowledge, memory }: BuildRequestOptions,
 ): LLMRequest {
   const parts: LLMContentPart[] = [];
 
@@ -96,6 +102,15 @@ export function buildAgentRequest(
   const knowledgeText = knowledge ? renderKnowledge(knowledge, compiled) : null;
   if (knowledgeText) {
     parts.push({ type: 'text', text: knowledgeText });
+  }
+
+  // The learner's memory sits beside the knowledge: after the system prompt's
+  // cache boundary, so it never touches the prefix every learner shares, and
+  // inside the shared user turn, so the three followers read it from cache
+  // rather than paying for it again. Absent, the request is byte-for-byte
+  // what it was before memory existed.
+  if (memory) {
+    parts.push({ type: 'text', text: memory });
   }
 
   for (const file of compiled.attachments) {
