@@ -14,7 +14,7 @@ without changes.
 
 **To run it, read [DEPLOY.md](DEPLOY.md)** — local development and production
 deployment live there. **Before changing anything, read
-[Invariants](#invariants) below.** Those eight are load-bearing, and breaking
+[Invariants](#invariants) below.** Those eleven are load-bearing, and breaking
 any of them produces no error — just silently worse behaviour, silently higher
 cost, or a feature that quietly stops running.
 
@@ -87,13 +87,13 @@ apps/
 packages/
   llm/          provider-agnostic LLM layer            registry + 2 adapters
   core/         portable domain logic                  interview, agents, generation,
-                                                       pacing, knowledge, tutor
+                                                       pacing, knowledge, tutor, brain
   api-client/   typed SDK + SSE streaming              the only way the web app talks
                                                        to the API
   runners/      checkpoint verification                static layers, short-circuiting
 knowledge/      the OKF concept bundle, read at API startup
 supabase/
-  migrations/   schema + RLS                           16 tables, forced RLS on every one
+  migrations/   schema + RLS                           21 tables, forced RLS on every one
 ```
 
 Two things sit in front of every model call, both in `apps/api` because
@@ -134,11 +134,27 @@ Phase B runs late **on purpose**: a step not yet written can still be reshaped
 by how the learner is doing. That is what makes adaptive pacing real rather than
 cosmetic.
 
+**A memory (the brain):**
+
+```
+question asked / answer finished / checkpoint graded / viva scored
+     -> brain_events (append-only; distilled concepts stored IN the event)
+     -> projectBrain(all events)  [pure, packages/core/src/brain/]
+     -> brain_replace_projection  [one transaction, service role only]
+     -> brain_nodes · brain_edges · brain_query_fingerprints
+```
+
+The brain is a **projection**, not a store: nodes and edges are a pure function
+of the event log, and the stored rows can be thrown away and rebuilt at any
+time. Distillation — one cheap utility-model call per answered question, behind
+the same budget check as everything else — is the only model call involved, and
+its output is kept inside the event so it is never asked again.
+
 ---
 
 ## Invariants
 
-Eight things that will bite you. Each is non-obvious and each is load-bearing.
+Eleven things that will bite you. Each is non-obvious and each is load-bearing.
 Code comments elsewhere in the repo cite these by number.
 
 ### 1. The four agents must share a byte-identical prompt prefix
@@ -282,6 +298,45 @@ deployment running on the fallback logs a warning at boot saying so. It is in
 `turbo.json`'s `globalEnv` for the same reason — replaying a cached build with
 the wrong origin baked in is a security regression rather than a stale string.
 
+### 9. The brain is rebuilt from events, never edited
+
+`brain_nodes`, `brain_edges` and `brain_query_fingerprints` are a projection of
+`brain_events`, computed by `projectBrain` in `packages/core/src/brain/project.ts`.
+Given the same log it must produce byte-identical output, in any input order —
+`packages/core/test/brain-project.test.ts` asserts exactly that.
+
+Two rules keep it true. Anything a model produced (the concepts distilled from
+an answer) is stored **inside the event**, because a projection that re-asked
+the model would never come out the same twice. And nothing writes the
+projection except `brain_replace_projection`, which replaces a learner's rows
+wholesale and refuses a snapshot older than the one it already holds — two
+racing rebuilds otherwise let the stale one land last and drop the newest event.
+
+`brain_events` itself is append-only: a trigger rejects `UPDATE`. Editing an
+event would silently rewrite the learner's history on the next rebuild.
+
+### 10. The browser can read the brain and write none of it
+
+The anon key may `SELECT` a learner's own brain rows and nothing else.
+`0011_brain.sql` creates no insert, update or delete policy, **and** revokes
+those privileges outright, because `0004` grants everything to `anon` and
+`authenticated` by default and an absent policy is one careless migration away
+from a permissive one.
+
+`brain_replace_projection` is `SECURITY DEFINER`, which bypasses RLS — and
+`0004`'s default privileges hand `EXECUTE` on every new function to the browser
+roles. It is revoked from `public`, `anon` and `authenticated` explicitly.
+Without that line any signed-in learner could overwrite anyone's brain.
+
+### 11. Every assessment score carries its rubric and attempt number
+
+An `ASSESSED` edge is a score, and a score without the rubric it was marked
+against, or without knowing whether it was a first sitting or a fourth, cannot
+be interpreted later. A `CHECK` constraint on `brain_edges` refuses one that
+lacks `rubric_snapshot` or `attempt_number`, and the projection tests assert the
+fold never produces one. Retakes add edges; they never overwrite the first
+score — first, best and latest are all kept.
+
 ---
 
 ## The provider layer
@@ -360,7 +415,7 @@ against a live endpoint:
 |---|---|
 | `npm run dev` | web on :3000, api on :3001 |
 | `npm run build` | Build everything (Turborepo, cached) |
-| `npm test` | 583 unit tests — no network, no browser, no keys, no database |
+| `npm test` | 717 unit tests — no network, no browser, no keys, no database |
 | `npm run typecheck` | `tsc --noEmit` per workspace |
 | `npm run lint` | ESLint, including the portability guards |
 | `npm run smoke` | Live provider round-trip + cost accounting |
@@ -388,6 +443,13 @@ criterion is met.
 Shipped after P5: the finished-project artifact and ZIP download, the project
 tutor with its write-code gate, and per-specialist follow-up threads.
 
+**The brain** is being built in phases (Engineering Spec v1.0). Phase 1 — the
+event log, the deterministic projection, canonical-question fingerprints, the
+mastery formula, and distillation after every answered question and graded
+checkpoint — is built, with no UI yet. Phases 2–4 add the graph view, memory
+injection into the fan-out with assisted recall, and mistakes with a timeline;
+Phase 4.5 adds the MCQ gate and graded viva.
+
 P3's exit criterion is deliberately adversarial, and it is met **by execution,
 not by inspection**. `apps/web/test/sandbox-containment.browser.test.ts` drives
 a real browser against the production server and attempts three real escapes. It
@@ -414,12 +476,12 @@ Known and open, none of it blocking:
 ## Tests
 
 `npm test` is hermetic by design — no network, no browser, no keys, no database.
-583 tests, about 17 seconds cold.
+717 tests, about 20 seconds cold.
 
 | Package | Tests | What they protect |
 |---|---:|---|
-| `@ai-edu/core` | 361 | prompt-prefix stability, interview logic, fan-out stagger and isolation, generation schemas, prefetch policy, pacing, hint unlocking, knowledge determinism, tutor gate, sandbox-runnability guard, finished-project assembly |
-| `@ai-edu/api` | 69 | attachment allowlist, binary detection, PDF extraction, gateway failure policy, OKF loader, thread routes, ZIP writer |
+| `@ai-edu/core` | 477 | prompt-prefix stability, interview logic, fan-out stagger and isolation, generation schemas, prefetch policy, pacing, hint unlocking, knowledge determinism, tutor gate, sandbox-runnability guard, finished-project assembly, brain projection determinism, canonical-question goldens, mastery formula |
+| `@ai-edu/api` | 87 | attachment allowlist, binary detection, PDF extraction, gateway failure policy, OKF loader, thread routes, ZIP writer, brain event log and projection writes |
 | `@ai-edu/llm` | 68 | registry, cost nulls, stream utils, adapter mapping, structured-output repair, retry backoff |
 | `@ai-edu/web` | 59 | sandbox configuration guards, CSP shape, Markdown rendering without a Markdown library, stylesheet invariants (contrast, full-bleed artwork) |
 | `@ai-edu/api-client` | 17 | SSE framing across chunk boundaries, multi-byte splits, CRLF, errors |
