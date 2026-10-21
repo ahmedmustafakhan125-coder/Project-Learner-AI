@@ -113,9 +113,10 @@ npm run db:reset   # destroys local data and reapplies every migration
 ```
 
 The migrations in `supabase/migrations/` are applied in filename order. There
-are currently 11 migrations, covering the schema, forced RLS, step progress,
+are currently 12 migrations, covering the schema, forced RLS, step progress,
 finished-project artifacts, follow-ups, the project tutor, step timing, and
-the brain (`0011_brain.sql`).
+the brain (`0011_brain.sql`, and `0012_brain_forget.sql` so that deleting a
+conversation or project also removes it from the brain).
 For a non-destructive update, use:
 
 ```powershell
@@ -194,7 +195,7 @@ it, and that is a local hop.
 ## 1. Supabase
 
 Create a cloud project. Apply the migrations **in order** — `0001` through
-`0011` — via the SQL editor or `supabase db push`. Order matters: `0003` makes
+`0012` — via the SQL editor or `supabase db push`. Order matters: `0003` makes
 the attempt-insert policy `RESTRICTIVE`, which only behaves correctly on top of
 the permissive owner policy `0001` creates, and `0011` revokes privileges that
 `0004`'s default grants would otherwise hand the browser.
