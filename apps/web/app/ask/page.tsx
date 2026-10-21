@@ -1,9 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { AgentKind, CompiledQuery, InterviewQuestion, InterviewState } from '@ai-edu/core';
 import {
   ApiError,
+  type AssessmentOffer,
   type ModelOption,
   type QuestionRecallMatch,
   type RecalledItem,
@@ -18,6 +20,7 @@ import {
   emptyPanes,
 } from '../../components/AgentTabs';
 import { ChatHistory } from '../../components/ChatHistory';
+import { AssessmentOfferCard } from '../../components/assessment/AssessmentOfferCard';
 import { RecallBanner } from '../../components/brain/RecallBanner';
 import { RecallChips } from '../../components/brain/RecallChips';
 import { InterviewPanel } from '../../components/InterviewPanel';
@@ -88,6 +91,11 @@ function Ask() {
   const [recall, setRecall] = useState<QuestionRecallMatch | null>(null);
   /** Which question a recall lookup belongs to, so a slow one cannot land on the next. */
   const recallSeq = useRef(0);
+
+  const router = useRouter();
+  /** "Want to test whether it stuck?" — offered after an answer, never in front of one. */
+  const [offer, setOffer] = useState<AssessmentOffer | null>(null);
+  const [offerBusy, setOfferBusy] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   /** Separate from the fan-out's: stopping a follow-up must not kill the page. */
@@ -399,14 +407,55 @@ function Ask() {
   }, []);
 
   // `/ask?thread=<id>` opens that conversation directly — the brain links here
-  // from every session it shows. Read once, on arrival.
+  // from every session it shows. `/ask?q=<text>` fills the box without asking:
+  // an assessment's "ask the tutors about it" lands here. Read once, on arrival.
   const openedFromUrl = useRef(false);
   useEffect(() => {
     if (openedFromUrl.current) return;
     openedFromUrl.current = true;
-    const threadId = new URLSearchParams(window.location.search).get('thread');
+    const params = new URLSearchParams(window.location.search);
+    const threadId = params.get('thread');
     if (threadId) void openThread(threadId);
+    const prefill = params.get('q');
+    if (prefill) setQuery(prefill.slice(0, 2000));
   }, [openThread]);
+
+  // Once an answer has finished, see whether a concept is ready to be tested.
+  useEffect(() => {
+    if (phase !== 'done') {
+      setOffer(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .listAssessmentOffers()
+      .then((offers) => {
+        if (!cancelled) setOffer(offers[0] ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [phase]);
+
+  const takeOffer = useCallback(
+    async (conceptKey: string) => {
+      setOfferBusy(true);
+      try {
+        const { assessment } = await api.startAssessment(conceptKey);
+        router.push(`/assess/${assessment.id}`);
+      } catch (err) {
+        setError(describe(err));
+        setOfferBusy(false);
+      }
+    },
+    [router],
+  );
+
+  const declineOffer = useCallback((conceptKey: string) => {
+    setOffer(null);
+    void api.dismissAssessmentOffer(conceptKey).catch(() => undefined);
+  }, []);
 
   const removeThread = useCallback(
     async (threadId: string) => {
@@ -681,6 +730,14 @@ function Ask() {
                     }
                   : {})}
               />
+              {offer && phase === 'done' && (
+                <AssessmentOfferCard
+                  offer={offer}
+                  busy={offerBusy}
+                  onTest={() => void takeOffer(offer.conceptKey)}
+                  onDismiss={() => declineOffer(offer.conceptKey)}
+                />
+              )}
             </>
           )}
         </div>

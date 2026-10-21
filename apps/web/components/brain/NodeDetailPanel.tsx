@@ -15,6 +15,15 @@ interface NodeDetailPanelProps {
   error: string | null;
   /** Shown when nothing is selected: the patterns most worth attention. */
   mistakes: RecurringMistake[];
+  /** Concepts whose retake has opened, shown with nothing selected. */
+  retakes?: Array<{ conceptKey: string; label: string }>;
+  /**
+   * Start (or resume) a test on a concept. Absent while replaying the past —
+   * a test is always of the learner as they are now.
+   */
+  onTestMe?: (conceptKey: string) => void;
+  /** Feedback from the last "Test me": a running start, or why it could not. */
+  testState?: { busy: boolean; message: string | null };
   onSelect: (id: string) => void;
   onFocus: (id: string) => void;
   onClose: () => void;
@@ -50,10 +59,41 @@ function confidenceWord(confidence: number | null): string {
   return 'well evidenced';
 }
 
-export function NodeDetailPanel({ detail, loading, error, mistakes, onSelect, onFocus, onClose }: NodeDetailPanelProps) {
+export function NodeDetailPanel({
+  detail,
+  loading,
+  error,
+  mistakes,
+  retakes = [],
+  onTestMe,
+  testState,
+  onSelect,
+  onFocus,
+  onClose,
+}: NodeDetailPanelProps) {
   if (!detail && !loading && !error) {
     return (
       <aside className="brain-panel" aria-live="polite">
+        {onTestMe && retakes.length > 0 && (
+          <section className="brain-overview">
+            <h2 className="brain-panel-title">Ready for a retake</h2>
+            <ul className="brain-list brain-retakes">
+              {retakes.map((r) => (
+                <li key={r.conceptKey}>
+                  {r.label}{' '}
+                  <button
+                    type="button"
+                    className="linklike"
+                    onClick={() => onTestMe(r.conceptKey)}
+                    disabled={testState?.busy}
+                  >
+                    Retake
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         {mistakes.length > 0 && (
           <section className="brain-overview">
             <h2 className="brain-panel-title">Mistakes that keep coming back</h2>
@@ -102,6 +142,20 @@ export function NodeDetailPanel({ detail, loading, error, mistakes, onSelect, on
           </p>
 
           {detail.node.kind === 'concept' && <ConceptSummary detail={detail} />}
+
+          {detail.node.kind === 'concept' && onTestMe && (
+            <div className="brain-testme">
+              <button
+                type="button"
+                className="btn primary"
+                onClick={() => onTestMe(detail.node.key)}
+                disabled={testState?.busy}
+              >
+                {testState?.busy ? 'Writing your test…' : 'Test me on this'}
+              </button>
+              {testState?.message && <p className="brain-testme-note">{testState.message}</p>}
+            </div>
+          )}
 
           {(detail.node.kind === 'session' || detail.node.kind === 'project') && <SessionSummary detail={detail} onSelect={onSelect} />}
 

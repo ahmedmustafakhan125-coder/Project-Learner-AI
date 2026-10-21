@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   HOVER_NODE_LIMIT,
@@ -10,6 +11,7 @@ import {
   projectAt,
   projectGraph,
   recurringMistakes,
+  retakeReady,
   sessionPath,
   type BrainEvent,
 } from '@ai-edu/core';
@@ -69,6 +71,7 @@ function asOf(iso: string): string {
 }
 
 export function BrainView() {
+  const router = useRouter();
   const [windowDays, setWindowDays] = useState<number | null>(90);
   const [focus, setFocus] = useState<string | null>(null);
   const [graph, setGraph] = useState<BrainGraph | null>(null);
@@ -86,6 +89,9 @@ export function BrainView() {
   /** Which day of the timeline is shown; null for the live brain. */
   const [dayIndex, setDayIndex] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
+
+  /** "Test me": writing a sitting takes a few seconds, and can be refused (cooldown). */
+  const [testState, setTestState] = useState<{ busy: boolean; message: string | null }>({ busy: false, message: null });
 
   useEffect(() => {
     const fromUrl = focusFromUrl();
@@ -231,6 +237,29 @@ export function BrainView() {
 
   const mistakes = useMemo(() => recurringMistakes(nodes, links), [nodes, links]);
 
+  // Retakes are about the learner now, so only from the live brain.
+  const retakes = useMemo(() => {
+    if (replaying || !graph) return [];
+    const now = new Date().toISOString();
+    return graph.nodes.filter((n) => retakeReady(n, now)).map((n) => ({ conceptKey: n.key, label: n.label }));
+  }, [replaying, graph]);
+
+  const testMe = useCallback(
+    async (conceptKey: string) => {
+      setTestState({ busy: true, message: null });
+      try {
+        const { assessment } = await api.startAssessment(conceptKey);
+        router.push(`/assess/${assessment.id}`);
+      } catch (err) {
+        setTestState({ busy: false, message: describe(err) });
+      }
+    },
+    [router],
+  );
+
+  // A message about one concept should not linger on the next.
+  useEffect(() => setTestState({ busy: false, message: null }), [selectedId]);
+
   const counts = useMemo(() => {
     const byKind = { concept: 0, mistake: 0, session: 0, project: 0 };
     for (const n of nodes) if (n.kind in byKind) byKind[n.kind as keyof typeof byKind] += 1;
@@ -342,6 +371,9 @@ export function BrainView() {
             loading={!replaying && detailLoading}
             error={replaying ? null : detailError}
             mistakes={mistakes}
+            retakes={retakes}
+            {...(replaying ? {} : { onTestMe: (key: string) => void testMe(key) })}
+            testState={testState}
             onSelect={select}
             onFocus={focusOn}
             onClose={() => setSelectedId(null)}
