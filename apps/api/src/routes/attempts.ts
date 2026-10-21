@@ -15,6 +15,7 @@ import {
 } from '@ai-edu/core';
 
 import { requireAuth, userOf } from '../auth.js';
+import { recordBrainEvent } from '../brain.js';
 import { db } from '../db.js';
 import { canAttempt, loadProgress } from '../progress.js';
 import { priorFilesFor } from '../projectFiles.js';
@@ -220,7 +221,7 @@ export async function attemptRoutes(app: FastifyInstance): Promise<void> {
       // 1. Verify project ownership
       const { data: project } = await db()
         .from('projects')
-        .select('id')
+        .select('id, title')
         .eq('id', request.params.id)
         .eq('user_id', user.id)
         .maybeSingle();
@@ -230,7 +231,7 @@ export async function attemptRoutes(app: FastifyInstance): Promise<void> {
       // 2. Load the step (need checkpoint + solution_files)
       const { data: step } = await db()
         .from('project_steps')
-        .select('id, checkpoint, solution_files, starter_files')
+        .select('id, title, concepts, checkpoint, solution_files, starter_files')
         .eq('project_id', project.id)
         .eq('step_index', stepIndex)
         .maybeSingle();
@@ -384,6 +385,29 @@ export async function attemptRoutes(app: FastifyInstance): Promise<void> {
       if (insertError) {
         return reply.code(500).send({ error: 'insert_failed', message: insertError.message });
       }
+
+      // A graded attempt is evidence about the step's concepts — the brain
+      // learns from passes and from failures alike.
+      void recordBrainEvent({
+        userId: user.id,
+        kind: 'checkpoint_result',
+        sourceKind: 'project',
+        sourceId: project.id,
+        dedupeKey: `checkpoint:${step.id}:${attemptNo}`,
+        payload: {
+          projectId: project.id,
+          projectTitle: typeof project.title === 'string' ? project.title : null,
+          stepId: step.id,
+          stepIndex,
+          stepTitle: typeof step.title === 'string' ? step.title : `Step ${stepIndex + 1}`,
+          concepts: Array.isArray(step.concepts)
+            ? (step.concepts as unknown[]).filter((c): c is string => typeof c === 'string')
+            : [],
+          passed,
+          failedLayer: failedLayer ?? null,
+          attemptNo,
+        },
+      });
 
       // 6. On pass, return solution files
       if (passed) {
