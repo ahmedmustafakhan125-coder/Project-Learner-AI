@@ -37,6 +37,11 @@ const { mockPreflight } = vi.hoisted(() => ({
 }));
 
 vi.mock('@ai-edu/core', async () => ({
+  // Read at import time by the assessment routes, to shape their validation.
+  MCQ_COUNT: 5,
+  MCQ_OPTIONS: 4,
+  VIVA_COUNT: 5,
+  MAX_ANSWER_CHARS: 6000,
   preflightSubmission: mockPreflight,
   // Layer 2 strips comments before searching. Identity is enough here: what it
   // strips is core's business, and core tests it.

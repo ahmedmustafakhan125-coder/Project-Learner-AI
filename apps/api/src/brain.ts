@@ -239,21 +239,26 @@ export async function loadProjection(
   userId: string,
   filter: ProjectionFilter = {},
 ): Promise<{ nodes: BrainNode[]; edges: BrainEdge[] }> {
+  // An empty kind list means "none of these" — skip the query outright.
   const [nodeRows, edgeRows] = await Promise.all([
-    loadAll<NodeRow>(
-      'brain_nodes',
-      'id, kind, key, label, score, confidence, metadata, first_seen_at, last_seen_at',
-      userId,
-      ['id'],
-      filter.nodeKinds,
-    ),
-    loadAll<EdgeRow>(
-      'brain_edges',
-      'src, dst, kind, weight, source_id, metadata, created_at',
-      userId,
-      ['src', 'dst', 'kind'],
-      filter.edgeKinds,
-    ),
+    filter.nodeKinds?.length === 0
+      ? Promise.resolve([] as NodeRow[])
+      : loadAll<NodeRow>(
+          'brain_nodes',
+          'id, kind, key, label, score, confidence, metadata, first_seen_at, last_seen_at',
+          userId,
+          ['id'],
+          filter.nodeKinds,
+        ),
+    filter.edgeKinds?.length === 0
+      ? Promise.resolve([] as EdgeRow[])
+      : loadAll<EdgeRow>(
+          'brain_edges',
+          'src, dst, kind, weight, source_id, metadata, created_at',
+          userId,
+          ['src', 'dst', 'kind'],
+          filter.edgeKinds,
+        ),
   ]);
 
   return {
