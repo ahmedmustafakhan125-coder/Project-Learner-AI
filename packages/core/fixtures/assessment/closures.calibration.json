@@ -1,0 +1,88 @@
+{
+  "concept": "Closures",
+  "reviewed": false,
+  "note": "DRAFT. The questions, answers and marks below were written by Claude as a starting set. Until a human has checked every mark and set \"reviewed\" to true, a calibration run against this file measures agreement with a draft, not with a teacher. Change marks you disagree with; add answers from real learners where you can.",
+  "agreement": "A grade agrees with the human mark when it is within one mark of it. The live suite requires agreement on at least 80% of answers.",
+  "questions": [
+    {
+      "id": "q-loop",
+      "prompt": "A loop registers three click handlers: `for (var i = 0; i < 3; i++) { buttons[i].onclick = () => alert(i); }`. Every button alerts 3. Why, and how would you fix it?",
+      "rubric": [
+        { "id": "c1", "text": "explains that var is function-scoped, so all three handlers close over the same single i", "marks": 2 },
+        { "id": "c2", "text": "proposes a working fix: let (a fresh binding per iteration), an IIFE, or passing i as an argument", "marks": 2 },
+        { "id": "c3", "text": "explains that the handlers run after the loop has finished, when i is already 3", "marks": 1 }
+      ]
+    },
+    {
+      "id": "q-interval",
+      "prompt": "A React component sets up `setInterval(() => console.log(count), 1000)` inside `useEffect(..., [])`. As the user clicks, count goes up on screen, but the log always prints 0. Why, and what would you change?",
+      "rubric": [
+        { "id": "c1", "text": "identifies a stale closure: the interval callback captured count from the first render", "marks": 2 },
+        { "id": "c2", "text": "proposes a working fix: add count to the dependency array, read it from a ref, or use a functional update", "marks": 2 },
+        { "id": "c3", "text": "mentions clearing the interval in the effect's cleanup", "marks": 1 }
+      ]
+    }
+  ],
+  "answers": [
+    {
+      "question": "q-loop",
+      "answer": "var is function scoped, so there is only one i shared by every handler. By the time anyone clicks, the loop has finished and i is 3. Changing var to let fixes it because let creates a new binding for each iteration.",
+      "human": { "c1": true, "c2": true, "c3": true },
+      "score": 5
+    },
+    {
+      "question": "q-loop",
+      "answer": "Use let instead of var and it works.",
+      "human": { "c1": false, "c2": true, "c3": false },
+      "score": 2
+    },
+    {
+      "question": "q-loop",
+      "answer": "All the arrow functions reference the same variable i because var isn't block scoped. Wrap the body in an IIFE that takes i as a parameter so each handler gets its own copy.",
+      "human": { "c1": true, "c2": true, "c3": false },
+      "score": 4
+    },
+    {
+      "question": "q-loop",
+      "answer": "The onclick runs later, after the loop is done, so it sees the final value. I am not sure how to fix it, maybe use setTimeout?",
+      "human": { "c1": false, "c2": false, "c3": true },
+      "score": 1
+    },
+    {
+      "question": "q-loop",
+      "answer": "JavaScript arrays start at zero so buttons[3] is out of bounds and alert shows the length. Fix it by looping to 2 instead.",
+      "human": { "c1": false, "c2": false, "c3": false },
+      "score": 0
+    },
+    {
+      "question": "q-interval",
+      "answer": "The effect only runs once because of the empty dependency array, so the interval's callback closed over count from the first render, which was 0 — a stale closure. Add count to the dependencies so the effect re-runs, and return a cleanup that calls clearInterval so the old interval stops.",
+      "human": { "c1": true, "c2": true, "c3": true },
+      "score": 5
+    },
+    {
+      "question": "q-interval",
+      "answer": "It's a stale closure: the callback captured the first render's count. Keep the latest count in a useRef and log countRef.current instead.",
+      "human": { "c1": true, "c2": true, "c3": false },
+      "score": 4
+    },
+    {
+      "question": "q-interval",
+      "answer": "You need to clear the interval when the component unmounts, otherwise it leaks.",
+      "human": { "c1": false, "c2": false, "c3": true },
+      "score": 1
+    },
+    {
+      "question": "q-interval",
+      "answer": "console.log is asynchronous in React, so it prints before the state updates. Use console.info instead.",
+      "human": { "c1": false, "c2": false, "c3": false },
+      "score": 0
+    },
+    {
+      "question": "q-interval",
+      "answer": "Because the empty array means the effect saw count only once, when it was 0, and never again. Put count in the dependency array.",
+      "human": { "c1": true, "c2": true, "c3": false },
+      "score": 4
+    }
+  ]
+}

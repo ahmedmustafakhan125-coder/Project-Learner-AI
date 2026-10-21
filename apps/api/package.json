@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --exclude \"**/*.live.test.ts\"",
     "clean": "rimraf dist *.tsbuildinfo",
-    "test:rls": "vitest run --config vitest.live.config.ts"
+    "test:rls": "vitest run --config vitest.live.config.ts",
+    "test:calibration": "node --env-file-if-exists=../../.env ../../node_modules/vitest/vitest.mjs run --config vitest.calibration.config.ts"
   },
   "dependencies": {
     "@ai-edu/core": "*",
