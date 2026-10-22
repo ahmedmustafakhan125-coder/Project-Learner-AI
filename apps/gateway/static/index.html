@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Secure LLM Gateway</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <span class="shield">&#9749;</span>
+        <span>Secure LLM Gateway</span>
+      </div>
+      <div class="header-meta">CSC 262 &mdash; AI Lab Mid</div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Left: Input Panel -->
+    <section class="panel input-panel">
+      <h2>Send Message</h2>
+
+      <textarea
+        id="message-input"
+        placeholder="Type your message here...&#10;&#10;Try:&#10;• A normal question&#10;• 'Ignore previous instructions...'&#10;• 'My email is test@example.com'"
+        maxlength="2000"
+      ></textarea>
+
+      <div class="input-footer">
+        <span id="char-count" class="char-count">0 / 2000</span>
+        <button id="send-btn" onclick="sendMessage()">Send &#10148;</button>
+      </div>
+
+      <div class="hint">
+        <strong>Shift + Enter</strong> for new line &nbsp;|&nbsp;
+        <strong>Enter</strong> to send
+      </div>
+
+      <!-- Metrics quick-link -->
+      <div class="metrics-link">
+        <a href="/api/metrics" target="_blank">View Metrics JSON</a>
+        &nbsp;|&nbsp;
+        <a href="/docs" target="_blank">API Docs</a>
+      </div>
+    </section>
+
+    <!-- Right: Results Panel -->
+    <section class="panel results-panel" id="results-panel">
+
+      <!-- Empty state -->
+      <div id="empty-state" class="empty-state">
+        <div class="empty-icon">&#128274;</div>
+        <p>Send a message to see the security analysis</p>
+      </div>
+
+      <!-- Results (hidden until first request) -->
+      <div id="results-content" class="hidden">
+
+        <!-- Loading spinner -->
+        <div id="loading" class="loading hidden">
+          <div class="spinner"></div>
+          <span>Analyzing...</span>
+        </div>
+
+        <!-- Stage 1: Injection Analysis -->
+        <div class="result-card" id="card-injection">
+          <div class="card-header">
+            <span class="stage-num">1</span>
+            <span class="stage-title">Injection Detection</span>
+            <span id="injection-badge" class="badge"></span>
+          </div>
+          <div class="score-row">
+            <span class="score-label">Risk Score</span>
+            <span id="injection-score-num" class="score-num">0</span>
+            <span class="score-max">/ 100</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div id="injection-bar" class="progress-bar" style="width:0%"></div>
+          </div>
+          <div id="matched-patterns" class="tag-list"></div>
+          <div id="injection-time" class="time-label"></div>
+        </div>
+
+        <!-- Stage 2: PII Analysis -->
+        <div class="result-card" id="card-pii">
+          <div class="card-header">
+            <span class="stage-num">2</span>
+            <span class="stage-title">PII Detection (Presidio)</span>
+            <span id="pii-badge" class="badge"></span>
+          </div>
+          <div id="pii-entities" class="tag-list"></div>
+          <div id="masked-text-block" class="masked-block hidden">
+            <div class="masked-label">Anonymized Text Sent to LLM:</div>
+            <div id="masked-text-value" class="masked-text"></div>
+          </div>
+          <div id="composite-warning" class="composite-warning hidden">
+            &#9888; Composite Risk: PERSON + EMAIL detected together
+          </div>
+          <div id="pii-time" class="time-label"></div>
+        </div>
+
+        <!-- Stage 3: Policy Decision -->
+        <div class="result-card" id="card-policy">
+          <div class="card-header">
+            <span class="stage-num">3</span>
+            <span class="stage-title">Policy Decision</span>
+          </div>
+          <div class="policy-row">
+            <span id="policy-badge" class="policy-badge">---</span>
+          </div>
+          <div id="policy-reason" class="policy-reason"></div>
+        </div>
+
+        <!-- Stage 4: LLM Response -->
+        <div class="result-card" id="card-llm">
+          <div class="card-header">
+            <span class="stage-num">4</span>
+            <span class="stage-title">Gemini Response</span>
+          </div>
+          <div id="llm-response-text" class="llm-response"></div>
+          <div id="llm-error" class="llm-error hidden"></div>
+        </div>
+
+        <!-- Total latency -->
+        <div class="latency-bar">
+          Total pipeline time: <strong id="total-time">---</strong>
+        </div>
+
+      </div><!-- /results-content -->
+    </section>
+  </main>
+
+  <script src="/static/script.js"></script>
+</body>
+</html>
