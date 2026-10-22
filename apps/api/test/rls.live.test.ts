@@ -153,6 +153,13 @@ describe('every table carries an owner policy', () => {
     'step_drafts',
     'agent_followups',
     'project_chat_messages',
+    'brain_events',
+    'brain_nodes',
+    'brain_edges',
+    'brain_query_fingerprints',
+    'brain_projection_state',
+    'assessments',
+    'assessment_answers',
   ];
 
   it('a fresh learner sees no rows they do not own', async () => {
@@ -172,4 +179,47 @@ describe('every table carries an owner policy', () => {
     }
     expect(offenders, `tables leaking other learners' rows: ${offenders.join(', ')}`).toEqual([]);
   }, 60_000);
+});
+
+describe('the brain and assessments are read-only to the browser', () => {
+  it('a learner cannot write to their own brain', async () => {
+    const { error } = await alice.from('brain_nodes').insert({
+      user_id: aliceId,
+      id: 'concept:forged',
+      kind: 'concept',
+      key: 'forged',
+      label: 'Forged',
+      first_seen_at: new Date().toISOString(),
+      last_seen_at: new Date().toISOString(),
+    });
+    expect(error, 'only the API may write the projection').not.toBeNull();
+  });
+
+  it('a learner cannot award themselves marks', async () => {
+    const { error } = await alice.from('assessments').insert({
+      user_id: aliceId,
+      concept_key: 'forged',
+      concept_label: 'Forged',
+      attempt_number: 1,
+      status: 'graded',
+      viva_score: 25,
+      questions: { mcq: [], viva: [] },
+    });
+    expect(error, 'only the API may record a sitting').not.toBeNull();
+  });
+
+  it('the answer key is unreadable from the browser, even for the learner’s own sittings', async () => {
+    const { data, error } = await alice.from('assessment_keys').select('*').limit(1);
+    // Either refused outright or empty — never a row.
+    expect(error !== null || (data ?? []).length === 0).toBe(true);
+  });
+
+  it('the projection RPCs are not callable from the browser', async () => {
+    const { error } = await alice.rpc('brain_forget_source', {
+      p_user_id: aliceId,
+      p_source_kind: 'thread',
+      p_source_id: aliceId,
+    });
+    expect(error, 'forgetting is the API’s job').not.toBeNull();
+  });
 });

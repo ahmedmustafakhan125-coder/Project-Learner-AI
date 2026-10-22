@@ -9,7 +9,9 @@ import { defineConfig } from 'vitest/config';
  */
 export default defineConfig({
   test: {
-    include: ['test/**/*.live.test.ts'],
+    // Only the database suite: calibration is live too, but spends money on a
+    // model and has its own command (test:calibration).
+    include: ['test/rls.live.test.ts'],
     testTimeout: 60_000,
     hookTimeout: 90_000,
     fileParallelism: false,

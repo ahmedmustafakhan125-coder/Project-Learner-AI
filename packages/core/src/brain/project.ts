@@ -1,3 +1,4 @@
+import { MCQ_RETRY_MS, retakeCooldownMs, vivaPassed } from '../assessment/triggers.js';
 import { canonicalizeConcept } from './canonicalize.js';
 import { NO_MASTERY, afterCheckpoint, afterQuestion, afterViva, roundMastery } from './mastery.js';
 import type { Mastery } from './mastery.js';
@@ -58,6 +59,11 @@ function clipLabel(text: string, max = SESSION_LABEL_CHARS): string {
 function timeOf(iso: string): number {
   const t = Date.parse(iso);
   return Number.isNaN(t) ? 0 : t;
+}
+
+/** `ms` after an event's timestamp, as ISO. Derived from the event, never the clock. */
+function after(at: string, ms: number): string {
+  return new Date(timeOf(at) + ms).toISOString();
 }
 
 /** Total order on events: time, then id. Ids are unique, so no two events tie. */
@@ -239,6 +245,7 @@ function onQaDistilled(fold: Fold, p: BrainEventPayload<'qa_distilled'>, at: str
     if (!id || conceptIds.includes(id)) continue;
     conceptIds.push(id);
     fold.updateMastery(id, afterQuestion);
+    (fold.nodes.get(id) as BrainNode).metadata['lastEvidence'] = 'question';
     fold.activate(session.id, id, at, p.threadId);
   }
   fold.relate(conceptIds, at, p.threadId);
@@ -296,6 +303,7 @@ function onCheckpointResult(fold: Fold, p: BrainEventPayload<'checkpoint_result'
     if (!id || conceptIds.includes(id)) continue;
     conceptIds.push(id);
     fold.updateMastery(id, (prev) => afterCheckpoint(prev, p.passed));
+    (fold.nodes.get(id) as BrainNode).metadata['lastEvidence'] = p.passed ? 'checkpoint_pass' : 'checkpoint_fail';
     fold.activate(project.id, id, at, p.projectId);
     fold.link(checkpoint.id, id, 'RELATED_TO', at, p.projectId);
   }
@@ -325,6 +333,8 @@ function onMcqAttempt(fold: Fold, p: BrainEventPayload<'mcq_attempt'>, at: strin
   if (!conceptId) return;
   const concept = fold.nodes.get(conceptId) as BrainNode;
   concept.metadata['mcqAttempts'] = count(concept.metadata, 'mcqAttempts') + 1;
+  // A failed gate reopens a day later — time to go back over the basics.
+  if (!p.passed) concept.metadata['retakeAfter'] = after(at, MCQ_RETRY_MS);
   // The gate is not graded evidence — it moves no mastery.
   fold.activate(session.id, conceptId, at, p.assessmentId);
 }
@@ -351,6 +361,11 @@ function onVivaScore(fold: Fold, p: BrainEventPayload<'viva_score'>, at: string)
   concept.metadata['latestScore'] = p.vivaScore;
   concept.metadata['assessments'] = count(concept.metadata, 'assessments') + 1;
   concept.metadata['lastAssessedAt'] = at;
+  concept.metadata['lastEvidence'] = 'viva';
+  // Below the pass mark, a retake opens after a cooldown that grows with each
+  // attempt; a pass closes any retake still pending.
+  if (vivaPassed(p.vivaScore)) delete concept.metadata['retakeAfter'];
+  else concept.metadata['retakeAfter'] = after(at, retakeCooldownMs(p.attemptNumber));
 
   const { edge } = fold.link(session.id, conceptId, 'ASSESSED', at, p.assessmentId);
   edge.metadata = {
