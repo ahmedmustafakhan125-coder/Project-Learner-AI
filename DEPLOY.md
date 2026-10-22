@@ -8,9 +8,9 @@ in `apps/gateway`. [README.md](README.md) explains the architecture and the eigh
 invariants that must be preserved when changing the system.
 
 The deployment shape is **Next.js on Vercel**, **the Fastify API and the Python
-security gateway on Render** (both defined in [`render.yaml`](render.yaml)), and
-**Postgres on Supabase cloud**. A single Linux VPS can stand in for Render. The
-local setup uses the same application processes with Supabase running in Docker.
+security gateway on Render**, and **Postgres on Supabase cloud**. A single Linux
+VPS can stand in for Render. The local setup uses the same application processes
+with Supabase running in Docker.
 
 ---
 
@@ -184,10 +184,10 @@ that up. [Alternative: one VPS](#alternative-one-vps) replaces section 2 with a
 server you run yourself.
 
 ```
-Vercel           project-learner-ai-web.vercel.app        → Next.js
-Render           project-learner-ai-api.onrender.com      → Fastify
-                 project-learner-ai-gateway.onrender.com  → security gateway
-Supabase cloud                                            → Postgres + auth
+Vercel           project-learner-ai-web.vercel.app         → Next.js
+Render           project-learner-ai.onrender.com           → Fastify
+                 llm-security-gateway-final.onrender.com   → security gateway
+Supabase cloud                                             → Postgres + auth
 ```
 
 ---
@@ -237,47 +237,77 @@ From **Settings → API**, take:
 
 ## 2. The API and the gateway on Render
 
-[`render.yaml`](render.yaml) defines both services. In the Render dashboard
-choose **New → Blueprint**, pick this repository, and apply it. Render asks once
-for the values the file leaves out:
+Two Render **Web Services**, both deploying `main` of this repository. Create
+them with **New → Web Service**, or change an existing one under **Settings**;
+a service's repository is under **Build → Source → Edit**.
 
-| Variable | Value |
+**The API** — service `project-learner-ai`, at `https://project-learner-ai.onrender.com`
+
+| Setting | Value |
 |---|---|
-| `SUPABASE_SERVICE_ROLE_KEY` | From Supabase **Settings → API**. Render only — never Vercel. |
-| `SECURITY_GATEWAY_URL` | The gateway's URL, normally `https://project-learner-ai-gateway.onrender.com`. Check it below. |
-| `OPENAI_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY` | At least one. Other vendors' keys go under the API service's **Environment**. |
+| Language | Node |
+| Branch | `main` |
+| Root Directory | *(empty)* |
+| Build Command | `npm ci --include=dev && npx turbo run build --filter=@ai-edu/api` |
+| Start Command | `node apps/api/dist/server.js` |
+| Health Check Path | `/health` |
+| Auto-Deploy | On Commit |
+| Build Filters → Included Paths | `apps/api/**`, `packages/core/**`, `packages/llm/**`, `knowledge/**`, `package.json`, `package-lock.json`, `turbo.json`, `tsconfig.base.json` |
 
-`WEB_ORIGIN` and `SUPABASE_URL` are set in `render.yaml` itself; change them
-there if the site or the database moves.
+Root Directory stays empty because the API needs the workspace packages,
+`knowledge/` and the root lockfile, and Render drops everything outside a
+service's root directory. `--include=dev` is needed because turbo and
+typescript are devDependencies, and with `NODE_ENV=production` set a plain
+`npm ci` skips them. The build command builds only the API and the two packages
+it imports; a root `npm run build` would also build the web app, which is
+Vercel's job.
 
-**Check the gateway URL before anyone uses the site.** Render adds a suffix when
-a service name is already taken, and the unsuffixed address may then belong to
-someone else's service, which would receive every learner prompt. Open the
-gateway service, copy its URL, and correct `SECURITY_GATEWAY_URL` on the API if
-it differs.
+| Environment variable | Value |
+|---|---|
+| `NODE_VERSION` | `22` |
+| `NODE_ENV` | `production` |
+| `WEB_ORIGIN` | `https://project-learner-ai-web.vercel.app` — CORS accepts exactly this origin |
+| `SUPABASE_URL` | `https://<ref>.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | From Supabase **Settings → API**. Here only — never Vercel. |
+| `SECURITY_GATEWAY_URL` | `https://llm-security-gateway-final.onrender.com` |
+| `SECURITY_GATEWAY_TIMEOUT_MS` | `100000` on the free plan; see below |
+| `DAILY_USD_BUDGET_PER_USER` | `2` |
+| Provider keys | At least one of `OPENAI_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `MOONSHOT_API_KEY` |
+
+**The gateway** — service `llm-security-gateway-final`, at `https://llm-security-gateway-final.onrender.com`
+
+| Setting | Value |
+|---|---|
+| Language | Python 3 |
+| Branch | `main` |
+| Root Directory | `apps/gateway` |
+| Build Command | `pip install -r requirements.txt && python -m app.detectors.semantic_detector` |
+| Start Command | `uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
+| Health Check Path | `/health` |
+| Auto-Deploy | On Commit |
+| Environment variable | `PYTHON_VERSION` = `3.11.9` |
+
+The service is named after the `llm-security-gateway-final` repository it
+deployed before the gateway moved into `apps/gateway`. Keeping the service keeps
+its URL, so the API's `SECURITY_GATEWAY_URL` stays the same. A gateway created
+anew gets its own URL; put that in `SECURITY_GATEWAY_URL` instead.
 
 ```bash
-curl https://project-learner-ai-gateway.onrender.com/health   # {"status":"ok",...}
-curl https://project-learner-ai-api.onrender.com/health       # {"ok":true}
+curl https://llm-security-gateway-final.onrender.com/health   # {"status":"ok",...}
+curl https://project-learner-ai.onrender.com/health           # {"ok":true}
 ```
 
-From then on, a push to `main` redeploys whichever service it touches. The
-gateway watches `apps/gateway`; the API's `buildFilter` lists what it is built
-from, so web-only changes leave it alone.
-
 **On the free plan both services sleep** after 15 idle minutes. The API wakes
-within a minute; the gateway takes about 90 seconds, loading spaCy. That is why
-`render.yaml` sets `SECURITY_GATEWAY_TIMEOUT_MS=100000`: at the code default of
-15 s, every question asked while the gateway woke would be refused as
+within a minute; the gateway takes about 90 seconds, loading spaCy. Hence
+`SECURITY_GATEWAY_TIMEOUT_MS=100000`: at the code default of 15 s, every
+question asked while the gateway woke would be refused as
 `screening_unavailable`. The first question after a quiet spell is slow rather
 than lost. On a paid instance type, set the timeout back to `15000`, and make
-the gateway a private service (`type: pserv`) with `SECURITY_GATEWAY_URL`
-pointing at its internal address: it has no authentication of its own, and a
-free web service is public.
+the gateway a private service reached at its internal address: it has no
+authentication of its own, and a free web service is public.
 
-Once both answer, retire what they replace: a Vercel project for the API (see
-[Why the API is not on Vercel](#why-the-api-is-not-on-vercel)), and any Render
-service still deploying the old `llm-security-gateway-final` repository.
+Delete any Vercel project pointed at `apps/api`; see
+[Why the API is not on Vercel](#why-the-api-is-not-on-vercel).
 
 ---
 
@@ -304,7 +334,7 @@ Environment variables:
 ```
 NEXT_PUBLIC_SUPABASE_URL       = https://<ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY  = <anon key>
-NEXT_PUBLIC_API_URL            = https://project-learner-ai-api.onrender.com
+NEXT_PUBLIC_API_URL            = https://project-learner-ai.onrender.com
 NEXT_PUBLIC_APP_ORIGIN         = https://project-learner-ai-web.vercel.app
 ```
 
@@ -321,7 +351,7 @@ build; changing them later does nothing until you redeploy. Moving an existing
 project to a new API therefore means changing `NEXT_PUBLIC_API_URL` and then
 redeploying.
 
-Then close the loop: `WEB_ORIGIN` in `render.yaml` must be this site's exact
+Then close the loop: `WEB_ORIGIN` on the API service must be this site's exact
 origin. CORS accepts exactly one origin.
 
 ---
@@ -329,7 +359,8 @@ origin. CORS accepts exactly one origin.
 ## 4. Verify
 
 ```bash
-curl https://project-learner-ai-api.onrender.com/health                      # {"ok":true}
+curl https://project-learner-ai.onrender.com/health                          # {"ok":true}
+curl https://project-learner-ai.onrender.com/api/brain/graph                 # 401, not 404
 curl -I https://project-learner-ai-web.vercel.app | grep -i content-security  # nonce-... present
 ```
 
@@ -344,7 +375,8 @@ Open a project, edit a file, run a checkpoint.
 |---|---|
 | Site loads, lists models, **refuses every question** with 422 | Gateway down or unreachable. Model-bound routes fail **closed** by design — an unscreened prompt never reaches a model. Check the gateway's `/health` first, always. |
 | Only the first question after a quiet spell is refused | A free-plan gateway took longer to wake than `SECURITY_GATEWAY_TIMEOUT_MS`. See section 2. |
-| Brain and assessment features fail; everything older works | Migrations `0011`–`0013` are missing from Supabase. See section 1. |
+| Brain and assessment features fail with 404 (`Route GET:/api/brain/graph not found`) | The API is running an old build: its latest Render deploy failed or never started. Check the service's **Events**, then its settings (section 2). |
+| Brain and assessment features fail with a database error | Migrations `0011`–`0013` are missing from Supabase. See section 1. |
 | Vercel reports a failed deployment for an API project on every push | A Vercel project points at `apps/api`. Delete it; the API deploys on Render. |
 | Browser CORS error on `/api/agents/ask` | `WEB_ORIGIN` does not exactly match the Vercel origin. Scheme and host must both match. |
 | Answers arrive in one lump at the end instead of streaming | nginx buffering, or `proxy_read_timeout` too low (VPS). |
