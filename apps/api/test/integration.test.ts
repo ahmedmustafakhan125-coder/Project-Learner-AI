@@ -103,6 +103,18 @@ vi.mock('../src/db.js', () => ({
   recordUsage: vi.fn(),
 }));
 
+// The brain is written fire-and-forget after an attempt is recorded. It has its
+// own suite (brain.test.ts); here it must not draw on the queued db responses.
+const { mockRecordBrainEvent } = vi.hoisted(() => ({
+  mockRecordBrainEvent: vi.fn(async () => {}),
+}));
+
+vi.mock('../src/brain.js', () => ({
+  recordBrainEvent: mockRecordBrainEvent,
+  describeQuestion: () => ({ canonical: '', fingerprint: '' }),
+  distillQa: vi.fn(async () => {}),
+}));
+
 vi.mock('../src/auth.js', async (importOriginal) => {
   const original = await importOriginal<typeof import('../src/auth.js')>();
   return {
@@ -202,6 +214,19 @@ describe('POST /api/projects/:id/steps/:index/attempt', () => {
     expect(body.passed).toBe(true);
     expect(body.solutionFiles).toHaveLength(1);
     expect(body.solutionFiles[0].path).toBe('main.py');
+
+    // The graded attempt reaches the brain, keyed so a retry cannot double count.
+    expect(mockRecordBrainEvent).toHaveBeenCalledTimes(1);
+    expect(mockRecordBrainEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'test-user-id',
+        kind: 'checkpoint_result',
+        sourceKind: 'project',
+        sourceId: 'proj-1',
+        dedupeKey: 'checkpoint:step-1:1',
+        payload: expect.objectContaining({ stepId: 'step-1', passed: true, failedLayer: null, attemptNo: 1 }),
+      }),
+    );
   });
 
   /* ---------------- the submit gate ---------------- */

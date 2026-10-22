@@ -4,6 +4,7 @@ import { AGENT_ORDER, CompiledQuery, fanOut } from '@ai-edu/core';
 import { createProviderForTask } from '@ai-edu/llm';
 
 import { requireAuth, userOf } from '../auth.js';
+import { describeQuestion, distillQa, recordBrainEvent } from '../brain.js';
 import { checkBudget, db, recordUsage } from '../db.js';
 import { gatewayErrorReply, screenOrThrow } from '../gateway.js';
 import { knowledgeBundle } from '../knowledge.js';
@@ -109,6 +110,25 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     const persisted = await persistQuestion(user.id, threadId, screened);
     const messageId = persisted.messageId;
 
+    // Into the brain's log, so the same question asked in another conversation
+    // later can be recognised. Only for a message that really was saved — an
+    // event pointing at a message that does not exist would be a dangling link.
+    if (persisted.saved && persisted.threadId) {
+      void recordBrainEvent({
+        userId: user.id,
+        kind: 'question_asked',
+        sourceKind: 'thread',
+        sourceId: persisted.threadId,
+        dedupeKey: `question:${messageId}`,
+        payload: {
+          threadId: persisted.threadId,
+          messageId,
+          ...describeQuestion(compiled.originalQuery),
+          query: compiled.originalQuery.slice(0, 200),
+        },
+      });
+    }
+
     /* ---- open the SSE stream ---- */
 
     // Plugin-set headers — CORS above all — live on the Fastify reply object and
@@ -150,6 +170,8 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     request.raw.on('close', () => controller.abort());
 
     const buffers = new Map<string, string>();
+    // The `concepts` specialist's finished answer is what the brain distils.
+    let conceptsAnswer: string | null = null;
 
     try {
       for await (const event of fanOut({
@@ -172,6 +194,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
           case 'done': {
             send('agent', { agent: event.agent, type: 'done' });
+            if (event.agent === 'concepts') conceptsAnswer = event.text;
             void recordUsage({
               userId: user.id,
               task: `fanout:${event.agent}`,
@@ -217,6 +240,16 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       }
 
       send('done', { messageId });
+
+      if (conceptsAnswer && persisted.saved && persisted.threadId) {
+        void distillQa({
+          userId: user.id,
+          threadId: persisted.threadId,
+          messageId,
+          question: screened.text,
+          conceptsAnswer,
+        });
+      }
     } catch (err) {
       send('fatal', { message: err instanceof Error ? err.message : 'Stream failed.' });
     } finally {
@@ -233,6 +266,8 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
 interface PersistedQuestion {
   messageId: string;
+  /** False when the message insert failed and `messageId` is a stand-in. */
+  saved: boolean;
   /** Null only when the thread insert itself failed. */
   threadId: string | null;
 }
@@ -321,7 +356,7 @@ async function persistQuestion(
     if (touchErr) console.error('[agents] failed to touch thread:', touchErr.message);
   }
 
-  return { messageId, threadId: resolvedThreadId };
+  return { messageId, saved: Boolean(message?.id), threadId: resolvedThreadId };
 }
 
 interface FinaliseArgs {
