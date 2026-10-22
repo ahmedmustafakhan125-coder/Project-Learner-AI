@@ -219,6 +219,40 @@ describe('rebuildProjection', () => {
   });
 });
 
+describe('loadProjection', () => {
+  it('maps stored rows to the core shapes, coercing numeric columns', async () => {
+    state.pages = [
+      [
+        {
+          id: 'concept:closures', kind: 'concept', key: 'closures', label: 'Closures',
+          score: '0.450', confidence: null, metadata: null,
+          first_seen_at: '2026-10-21T09:00:00+00:00', last_seen_at: '2026-10-21T10:00:00+00:00',
+        },
+      ],
+      [
+        {
+          src: 'session:thread:t', dst: 'concept:closures', kind: 'ACTIVATED', weight: '2.000',
+          source_id: THREAD, metadata: { order: 0 }, created_at: '2026-10-21T09:00:00+00:00',
+        },
+      ],
+    ];
+    const { nodes, edges } = await brain.loadProjection(USER);
+    expect(nodes).toEqual([
+      {
+        id: 'concept:closures', kind: 'concept', key: 'closures', label: 'Closures',
+        score: 0.45, confidence: null, metadata: {},
+        firstSeenAt: '2026-10-21T09:00:00+00:00', lastSeenAt: '2026-10-21T10:00:00+00:00',
+      },
+    ]);
+    expect(edges).toEqual([
+      {
+        src: 'session:thread:t', dst: 'concept:closures', kind: 'ACTIVATED', weight: 2,
+        sourceId: THREAD, metadata: { order: 0 }, createdAt: '2026-10-21T09:00:00+00:00',
+      },
+    ]);
+  });
+});
+
 describe('recordBrainEvent', () => {
   const input = {
     userId: USER,

@@ -2,8 +2,10 @@ import type {
   AgentKind,
   Alternative,
   AttachmentRef,
+  BrainNodeDetail,
   Checkpoint,
   CompiledQuery,
+  GraphView,
   InterviewQuestion,
   InterviewState,
   ProjectArtifact,
@@ -34,6 +36,20 @@ export interface ApiClientOptions {
 // StepContent should not have to reach past this package for the type of the
 // files inside it.
 export type { SourceFile };
+
+// The brain's shapes are produced by pure functions in packages/core; the API
+// returns them as they are, so the client re-exports rather than redeclares.
+export type { BrainNodeDetail, GraphView as BrainGraph };
+export type { GraphLink as BrainGraphLink, GraphNode as BrainGraphNode } from '@ai-edu/core';
+
+export interface BrainGraphOptions {
+  /** Only what was touched in the last N days. Absent or null for all time. */
+  windowDays?: number | null;
+  /** Centre on one node id, e.g. `concept:closures`. */
+  focus?: string | null;
+  /** Hops out from `focus`. */
+  depth?: number;
+}
 
 export type InterviewResponse =
   | { status: 'ready'; compiled: CompiledQuery; state?: InterviewState; degraded?: boolean }
@@ -619,6 +635,26 @@ export class ApiClient {
 
   async deleteThread(id: string): Promise<{ ok: boolean }> {
     return this.request<{ ok: boolean }>(`/api/threads/${id}`, { method: 'DELETE' });
+  }
+
+  /* ---- the brain ---- */
+
+  async getBrainGraph(options: BrainGraphOptions = {}): Promise<GraphView> {
+    const params = new URLSearchParams();
+    if (options.windowDays) params.set('window', String(options.windowDays));
+    if (options.focus) params.set('focus', options.focus);
+    if (options.depth !== undefined) params.set('depth', String(options.depth));
+    const query = params.toString();
+    return this.get<GraphView>(`/api/brain/graph${query ? `?${query}` : ''}`);
+  }
+
+  /** Node ids carry colons (`session:thread:<uuid>`), so they are always encoded. */
+  async getBrainNode(id: string): Promise<BrainNodeDetail> {
+    return this.get<BrainNodeDetail>(`/api/brain/node/${encodeURIComponent(id)}`);
+  }
+
+  async rebuildBrain(): Promise<{ ok: boolean }> {
+    return this.post<{ ok: boolean }>('/api/brain/rebuild', {});
   }
 
   /* ---- following up with one specialist ---- */

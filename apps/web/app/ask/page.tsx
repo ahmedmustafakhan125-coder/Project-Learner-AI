@@ -361,6 +361,16 @@ function Ask() {
     }
   }, []);
 
+  // `/ask?thread=<id>` opens that conversation directly — the brain links here
+  // from every session it shows. Read once, on arrival.
+  const openedFromUrl = useRef(false);
+  useEffect(() => {
+    if (openedFromUrl.current) return;
+    openedFromUrl.current = true;
+    const threadId = new URLSearchParams(window.location.search).get('thread');
+    if (threadId) void openThread(threadId);
+  }, [openThread]);
+
   const removeThread = useCallback(
     async (threadId: string) => {
       // Optimistic: the row disappears immediately and comes back on refresh if

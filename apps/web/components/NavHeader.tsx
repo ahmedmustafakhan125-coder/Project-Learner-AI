@@ -32,6 +32,7 @@ export function NavHeader() {
     { href: '/', label: 'Home' },
     { href: '/ask', label: 'Workspace' },
     { href: '/projects', label: 'Projects' },
+    { href: '/brain', label: 'Brain' },
     { href: '/about', label: 'About' },
   ];
 

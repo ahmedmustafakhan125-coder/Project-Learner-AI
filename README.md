@@ -81,9 +81,11 @@ goes.
 
 ```
 apps/
-  web/          Next.js 16 — rendering only            ask, projects, editor, sandbox
+  web/          Next.js 16 — rendering only            ask, projects, editor, sandbox,
+                                                       brain graph
   api/          Fastify 5 — orchestration and SSE      interview, fan-out, projects,
-                                                       attempts, follow-ups, tutor
+                                                       attempts, follow-ups, tutor,
+                                                       brain
 packages/
   llm/          provider-agnostic LLM layer            registry + 2 adapters
   core/         portable domain logic                  interview, agents, generation,
@@ -328,6 +330,11 @@ from a permissive one.
 roles. It is revoked from `public`, `anon` and `authenticated` explicitly.
 Without that line any signed-in learner could overwrite anyone's brain.
 
+The client side holds the same line from the other direction:
+`apps/web/test/brain-readonly.test.ts` fails if any file in `apps/web` or
+`packages/api-client` so much as names a brain table or the projection RPC.
+Everything the UI knows about the brain arrives through `/api/brain/*`.
+
 ### 11. Every assessment score carries its rubric and attempt number
 
 An `ASSESSED` edge is a score, and a score without the rubric it was marked
@@ -415,7 +422,7 @@ against a live endpoint:
 |---|---|
 | `npm run dev` | web on :3000, api on :3001 |
 | `npm run build` | Build everything (Turborepo, cached) |
-| `npm test` | 717 unit tests — no network, no browser, no keys, no database |
+| `npm test` | 761 unit tests — no network, no browser, no keys, no database |
 | `npm run typecheck` | `tsc --noEmit` per workspace |
 | `npm run lint` | ESLint, including the portability guards |
 | `npm run smoke` | Live provider round-trip + cost accounting |
@@ -443,12 +450,22 @@ criterion is met.
 Shipped after P5: the finished-project artifact and ZIP download, the project
 tutor with its write-code gate, and per-specialist follow-up threads.
 
-**The brain** is being built in phases (Engineering Spec v1.0). Phase 1 — the
-event log, the deterministic projection, canonical-question fingerprints, the
-mastery formula, and distillation after every answered question and graded
-checkpoint — is built, with no UI yet. Phases 2–4 add the graph view, memory
-injection into the fan-out with assisted recall, and mistakes with a timeline;
-Phase 4.5 adds the MCQ gate and graded viva.
+**The brain** is being built in phases (Engineering Spec v1.0). Built so far:
+
+- **Phase 1** — the event log, the deterministic projection, canonical-question
+  fingerprints, the mastery formula, and distillation after every answered
+  question and graded checkpoint.
+- **Phase 2** — the read-only graph at `/brain`. `projectGraph` in
+  `packages/core/src/brain/graph.ts` picks and styles what is shown (time
+  window, focus neighbourhood, a 500-node / 1500-link cap that the view admits
+  to when it applies); a canvas renderer in `apps/web/lib/brainRenderer.ts`
+  draws it with a `d3-force` layout, lazily loaded with the route. Clicking a
+  conversation animates the wire it drew through your concepts, and every
+  session links back to its thread (`/ask?thread=<id>`) or project.
+
+Still to come: memory injection into the fan-out with assisted recall
+(Phase 3), mistakes with a timeline (Phase 4), and the MCQ gate with a graded
+viva (Phase 4.5).
 
 P3's exit criterion is deliberately adversarial, and it is met **by execution,
 not by inspection**. `apps/web/test/sandbox-containment.browser.test.ts` drives
@@ -476,14 +493,14 @@ Known and open, none of it blocking:
 ## Tests
 
 `npm test` is hermetic by design — no network, no browser, no keys, no database.
-717 tests, about 20 seconds cold.
+761 tests, about 25 seconds cold.
 
 | Package | Tests | What they protect |
 |---|---:|---|
-| `@ai-edu/core` | 477 | prompt-prefix stability, interview logic, fan-out stagger and isolation, generation schemas, prefetch policy, pacing, hint unlocking, knowledge determinism, tutor gate, sandbox-runnability guard, finished-project assembly, brain projection determinism, canonical-question goldens, mastery formula |
-| `@ai-edu/api` | 87 | attachment allowlist, binary detection, PDF extraction, gateway failure policy, OKF loader, thread routes, ZIP writer, brain event log and projection writes |
+| `@ai-edu/core` | 497 | prompt-prefix stability, interview logic, fan-out stagger and isolation, generation schemas, prefetch policy, pacing, hint unlocking, knowledge determinism, tutor gate, sandbox-runnability guard, finished-project assembly, brain projection determinism, canonical-question goldens, mastery formula, graph selection and styling |
+| `@ai-edu/api` | 96 | attachment allowlist, binary detection, PDF extraction, gateway failure policy, OKF loader, thread routes, ZIP writer, brain event log, projection writes and read routes |
 | `@ai-edu/llm` | 68 | registry, cost nulls, stream utils, adapter mapping, structured-output repair, retry backoff |
-| `@ai-edu/web` | 59 | sandbox configuration guards, CSP shape, Markdown rendering without a Markdown library, stylesheet invariants (contrast, full-bleed artwork) |
+| `@ai-edu/web` | 74 | sandbox configuration guards, CSP shape, Markdown rendering without a Markdown library, stylesheet invariants (contrast, full-bleed artwork), brain layout budget and geometry, brain read-only guard |
 | `@ai-edu/api-client` | 17 | SSE framing across chunk boundaries, multi-byte splits, CRLF, errors |
 | `@ai-edu/runners` | 9 | static verification layering and short-circuiting |
 
