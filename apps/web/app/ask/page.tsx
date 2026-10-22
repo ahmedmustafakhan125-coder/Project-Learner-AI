@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentKind, CompiledQuery, InterviewQuestion, InterviewState } from '@ai-edu/core';
-import { ApiError, type ModelOption, type ThreadSummary } from '@ai-edu/api-client';
+import {
+  ApiError,
+  type ModelOption,
+  type QuestionRecallMatch,
+  type RecalledItem,
+  type ThreadSummary,
+} from '@ai-edu/api-client';
 
 import {
   AgentTabs,
@@ -12,6 +18,8 @@ import {
   emptyPanes,
 } from '../../components/AgentTabs';
 import { ChatHistory } from '../../components/ChatHistory';
+import { RecallBanner } from '../../components/brain/RecallBanner';
+import { RecallChips } from '../../components/brain/RecallChips';
 import { InterviewPanel } from '../../components/InterviewPanel';
 import { AuthGate } from '../../components/AuthGate';
 import { api } from '../../lib/api';
@@ -74,6 +82,13 @@ function Ask() {
   const [chats, setChats] = useState<Record<AgentKind, AgentChatState>>(emptyChats);
   const [chatBusyAgent, setChatBusyAgent] = useState<AgentKind | null>(null);
 
+  /** What the brain put in front of the agents for the answer on screen. */
+  const [recalled, setRecalled] = useState<RecalledItem[]>([]);
+  /** An earlier conversation that asked the same thing, offered — never forced. */
+  const [recall, setRecall] = useState<QuestionRecallMatch | null>(null);
+  /** Which question a recall lookup belongs to, so a slow one cannot land on the next. */
+  const recallSeq = useRef(0);
+
   const abortRef = useRef<AbortController | null>(null);
   /** Separate from the fan-out's: stopping a follow-up must not kill the page. */
   const chatAbortRef = useRef<AbortController | null>(null);
@@ -112,6 +127,7 @@ function Ask() {
     async (compiled: CompiledQuery, threadId: string | null) => {
       setPhase('streaming');
       setPanes(emptyPanes());
+      setRecalled([]);
       setAskedQuestion(compiled.originalQuery);
       // A new question is a new set of four answers, so the private threads
       // that hung off the last one do not belong under it.
@@ -139,6 +155,7 @@ function Ask() {
               if (event.threadId) setActiveThreadId(event.threadId);
               // Per-specialist follow-ups hang off this message id.
               setMessageId(event.messageId);
+              setRecalled(event.memory ?? []);
               break;
             case 'start':
               setPanes((prev) => ({
@@ -232,6 +249,18 @@ function Ask() {
       // has switched conversations still files under the thread it started in.
       const threadId = activeThreadId;
 
+      // Alongside the interview, never in front of it: if this was asked in
+      // another conversation, say so beside the new answer. A lookup that
+      // returns after the learner has moved on is dropped.
+      const seq = ++recallSeq.current;
+      setRecall(null);
+      void api
+        .recallQuestion({ query: promptToUse, threadId })
+        .then((match) => {
+          if (seq === recallSeq.current) setRecall(match);
+        })
+        .catch(() => undefined);
+
       try {
         const result = await api.startInterview({ query: promptToUse, threadId });
 
@@ -293,6 +322,9 @@ function Ask() {
     setActiveThreadId(null);
     setAskedQuestion(null);
     setPanes(emptyPanes());
+    recallSeq.current += 1;
+    setRecall(null);
+    setRecalled([]);
     setQuestions([]);
     setState(null);
     setQuery('');
@@ -313,6 +345,11 @@ function Ask() {
 
     setActiveThreadId(threadId);
     setRailOpen(false);
+    recallSeq.current += 1;
+    setRecall(null);
+    // Memory is shown for the answer it shaped, live; it is not stored with
+    // the transcript, so a reopened conversation shows none.
+    setRecalled([]);
     setQuestions([]);
     setState(null);
     setError(null);
@@ -594,6 +631,9 @@ function Ask() {
 
           {error && <div className="notice error">{error}</div>}
           {notice && <div className="notice warn">{notice}</div>}
+          {recall && (
+            <RecallBanner match={recall} onDismiss={() => setRecall(null)} />
+          )}
 
           {phase === 'awaiting_answers' && questions.length > 0 && (
             <div className="interview-slot">
@@ -625,6 +665,7 @@ function Ask() {
                   <p>{askedQuestion}</p>
                 </div>
               )}
+              <RecallChips items={recalled} />
               <AgentTabs
                 panes={panes}
                 complete={generationComplete}

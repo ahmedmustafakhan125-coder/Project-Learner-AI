@@ -10,14 +10,16 @@ import type { BrainEdge, BrainNode } from '@ai-edu/core';
  * validation, scoping every load to the caller, and the error shapes.
  */
 
-const { mockLoadProjection, mockScheduleRebuild } = vi.hoisted(() => ({
+const { mockLoadProjection, mockScheduleRebuild, mockFindQuestionRecall } = vi.hoisted(() => ({
   mockLoadProjection: vi.fn(),
   mockScheduleRebuild: vi.fn(async () => {}),
+  mockFindQuestionRecall: vi.fn(),
 }));
 
 vi.mock('../src/brain.js', () => ({
   loadProjection: mockLoadProjection,
   scheduleRebuild: mockScheduleRebuild,
+  findQuestionRecall: mockFindQuestionRecall,
 }));
 
 vi.mock('../src/auth.js', async (importOriginal) => {
@@ -124,5 +126,39 @@ describe('POST /api/brain/rebuild', () => {
     const res = await app.inject({ method: 'POST', url: '/api/brain/rebuild' });
     expect(res.statusCode).toBe(200);
     expect(mockScheduleRebuild).toHaveBeenCalledWith('user-1');
+  });
+});
+
+describe('POST /api/brain/recall', () => {
+  const THREAD = '22222222-2222-4222-8222-222222222222';
+
+  it('asks on behalf of the caller, excluding the conversation they are in', async () => {
+    const match = { threadId: 'other', canonical: 'closures', askedAt: recent, exact: true, similarity: 1, title: 'Closures', nodeId: 'session:thread:other' };
+    mockFindQuestionRecall.mockResolvedValue(match);
+    const res = await app.inject({ method: 'POST', url: '/api/brain/recall', payload: { query: 'closures?', threadId: THREAD } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ match });
+    expect(mockFindQuestionRecall).toHaveBeenCalledWith('user-1', 'closures?', THREAD);
+  });
+
+  it('treats a missing thread as a brand-new conversation', async () => {
+    mockFindQuestionRecall.mockResolvedValue(null);
+    const res = await app.inject({ method: 'POST', url: '/api/brain/recall', payload: { query: 'closures?' } });
+    expect(res.json()).toEqual({ match: null });
+    expect(mockFindQuestionRecall).toHaveBeenCalledWith('user-1', 'closures?', null);
+  });
+
+  it('rejects an empty question or a malformed thread id', async () => {
+    expect((await app.inject({ method: 'POST', url: '/api/brain/recall', payload: { query: '' } })).statusCode).toBe(400);
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/brain/recall', payload: { query: 'x', threadId: 'nope' } })).statusCode,
+    ).toBe(400);
+  });
+
+  it('answers "no match" rather than an error when recall itself fails', async () => {
+    mockFindQuestionRecall.mockRejectedValue(new Error('fingerprints unavailable'));
+    const res = await app.inject({ method: 'POST', url: '/api/brain/recall', payload: { query: 'closures?' } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ match: null });
   });
 });

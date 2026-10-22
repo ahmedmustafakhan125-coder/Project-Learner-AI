@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { nodeDetail, projectGraph } from '@ai-edu/core';
 
 import { requireAuth, userOf } from '../auth.js';
-import { loadProjection, scheduleRebuild } from '../brain.js';
+import { findQuestionRecall, loadProjection, scheduleRebuild } from '../brain.js';
 import { rateLimitConfig } from '../rateLimit.js';
 
 /**
@@ -26,6 +26,12 @@ const GraphQuery = z.object({
 });
 
 const NodeParams = z.object({ id: z.string().min(1).max(300) });
+
+const RecallBody = z.object({
+  query: z.string().min(1).max(8000),
+  /** The conversation the learner is in; a match there is not a revisit. */
+  threadId: z.string().uuid().nullable().default(null),
+});
 
 export async function brainRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/brain/graph', { preHandler: requireAuth }, async (request, reply) => {
@@ -69,6 +75,29 @@ export async function brainRoutes(app: FastifyInstance): Promise<void> {
     const detail = nodeDetail(parsed.data.id, projection.nodes, projection.edges);
     if (!detail) return reply.code(404).send({ error: 'not_found' });
     return detail;
+  });
+
+  /*
+   * Assisted recall: has the caller asked this before, in another
+   * conversation? Called alongside the interview, never in front of it — the
+   * new question is answered whatever this says. No model is involved, so
+   * there is nothing for the gateway to screen and nothing to budget.
+   */
+  app.post('/api/brain/recall', { preHandler: requireAuth }, async (request, reply) => {
+    const user = userOf(request);
+    const parsed = RecallBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'bad_request', issues: parsed.error.issues });
+    }
+
+    try {
+      return { match: await findQuestionRecall(user.id, parsed.data.query, parsed.data.threadId) };
+    } catch (err) {
+      // A recall failure is not worth an error on screen: the learner asked a
+      // question, and the answer is on its way regardless.
+      request.log.warn({ err }, 'question recall failed');
+      return { match: null };
+    }
   });
 
   /*

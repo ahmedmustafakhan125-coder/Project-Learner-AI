@@ -23,10 +23,23 @@ const state = {
   ranges: [] as Array<[number, number]>,
   rpcCalls: [] as Array<{ name: string; args: Record<string, unknown> }>,
   rpcResult: { data: true as unknown, error: null as { message: string } | null },
+  /** `.in()` filters applied, by table. */
+  inFilters: [] as Array<[string, string, unknown[]]>,
+  /** Rows served by `.maybeSingle()` and by an awaited `.limit()`, queued per table. */
+  single: {} as Record<string, unknown[]>,
+  limited: {} as Record<string, unknown[][]>,
+  /** When set, paged loads never resolve — for the recall timeout. */
+  hang: false,
 };
 
-function chain(): Record<string, unknown> {
+function chain(table: string): Record<string, unknown> {
   const c: Record<string, unknown> = {};
+  c['in'] = vi.fn((column: string, values: unknown[]) => {
+    state.inFilters.push([table, column, values]);
+    return c;
+  });
+  c['maybeSingle'] = vi.fn(() => Promise.resolve({ data: state.single[table]?.shift() ?? null, error: null }));
+  c['limit'] = vi.fn(() => Promise.resolve({ data: state.limited[table]?.shift() ?? [], error: null }));
   c['insert'] = vi.fn((row: Record<string, unknown>) => {
     state.inserts.push(row);
     return Promise.resolve({ error: state.insertError });
@@ -34,13 +47,14 @@ function chain(): Record<string, unknown> {
   for (const method of ['select', 'eq', 'order']) c[method] = vi.fn(() => c);
   c['range'] = vi.fn((from: number, to: number) => {
     state.ranges.push([from, to]);
+    if (state.hang) return new Promise(() => {});
     return Promise.resolve({ data: state.pages.shift() ?? [], error: null });
   });
   return c;
 }
 
 const mockDb = {
-  from: vi.fn(() => chain()),
+  from: vi.fn((table: string) => chain(table)),
   rpc: vi.fn((name: string, args: Record<string, unknown>) => {
     state.rpcCalls.push({ name, args });
     return Promise.resolve(state.rpcResult);
@@ -98,6 +112,10 @@ beforeEach(() => {
   state.ranges = [];
   state.rpcCalls = [];
   state.rpcResult = { data: true, error: null };
+  state.inFilters = [];
+  state.single = {};
+  state.limited = {};
+  state.hang = false;
   vi.clearAllMocks();
   mockCheckBudget.mockResolvedValue({ exceeded: false, spentUSD: 0, limitUSD: 10, hasUnpricedUsage: false });
 });
@@ -250,6 +268,95 @@ describe('loadProjection', () => {
         sourceId: THREAD, metadata: { order: 0 }, createdAt: '2026-10-21T09:00:00+00:00',
       },
     ]);
+  });
+});
+
+describe('recallMemory', () => {
+  const concept = {
+    id: 'concept:closures', kind: 'concept', key: 'closures', label: 'Closures',
+    score: 0.3, confidence: 0.2, metadata: {},
+    first_seen_at: '2026-10-21T09:00:00+00:00', last_seen_at: '2026-10-21T09:00:00+00:00',
+  };
+
+  it('loads only what memory is built from, and renders the block', async () => {
+    state.pages = [[concept], []];
+    const block = await brain.recallMemory(USER, 'how do closures work');
+    expect(block?.text).toContain('explain fully: Closures (0.30)');
+    expect(state.inFilters).toEqual([
+      ['brain_nodes', 'kind', ['concept', 'insight', 'mistake']],
+      ['brain_edges', 'kind', ['RELATED_TO']],
+    ]);
+  });
+
+  it('is null when nothing in the brain bears on the question', async () => {
+    state.pages = [[concept], []];
+    await expect(brain.recallMemory(USER, 'kubernetes scheduling')).resolves.toBeNull();
+  });
+
+  it('gives up after its timeout rather than holding the answer back', async () => {
+    vi.useFakeTimers();
+    try {
+      state.hang = true;
+      const pending = brain.recallMemory(USER, 'closures');
+      await vi.advanceTimersByTimeAsync(brain.MEMORY_RECALL_TIMEOUT_MS);
+      await expect(pending).resolves.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('builds its query from the question plus what the interview established', () => {
+    expect(
+      brain.memoryQueryFor({
+        intent: 'debug_help',
+        originalQuery: 'why does this print 3 three times',
+        text: '',
+        slots: { topic: { value: 'closures', source: 'query' }, tech: { value: 'javascript', source: 'profile' } },
+        attachments: [],
+        partial: false,
+      } as Parameters<typeof brain.memoryQueryFor>[0]),
+    ).toBe('why does this print 3 three times closures javascript');
+  });
+});
+
+describe('findQuestionRecall', () => {
+  const OTHER = '33333333-3333-4333-8333-333333333333';
+  const row = (query: string, threadId: string) => {
+    const { canonical, fingerprint } = brain.describeQuestion(query);
+    return { fingerprint, canonical, thread_id: threadId, created_at: '2026-10-20T09:00:00+00:00' };
+  };
+
+  it('offers an identical earlier question, with its conversation title and brain node', async () => {
+    state.single = { brain_query_fingerprints: [row('what is a closure?', OTHER)], threads: [{ id: OTHER, title: 'Closures' }] };
+    const match = await brain.findQuestionRecall(USER, 'Can you explain what is a closure', THREAD);
+    expect(match).toMatchObject({
+      threadId: OTHER,
+      exact: true,
+      title: 'Closures',
+      nodeId: `session:thread:${OTHER}`,
+    });
+  });
+
+  it('offers a close rephrasing from recent history', async () => {
+    state.limited = { brain_query_fingerprints: [[row('closures in javascript', OTHER)]] };
+    state.single = { threads: [{ id: OTHER, title: null }] };
+    const match = await brain.findQuestionRecall(USER, 'javascript closures', THREAD);
+    expect(match).toMatchObject({ threadId: OTHER, exact: false, title: null });
+  });
+
+  it('offers nothing when the earlier conversation has been deleted', async () => {
+    state.single = { brain_query_fingerprints: [row('what is a closure?', OTHER)], threads: [] };
+    await expect(brain.findQuestionRecall(USER, 'what is a closure', THREAD)).resolves.toBeNull();
+  });
+
+  it('offers nothing for a question asked only in this same conversation', async () => {
+    state.single = { brain_query_fingerprints: [row('what is a closure?', THREAD)] };
+    await expect(brain.findQuestionRecall(USER, 'what is a closure', THREAD)).resolves.toBeNull();
+  });
+
+  it('never looks anything up for a question that was only filler', async () => {
+    await expect(brain.findQuestionRecall(USER, 'please explain', null)).resolves.toBeNull();
+    expect(mockDb.from).not.toHaveBeenCalled();
   });
 });
 

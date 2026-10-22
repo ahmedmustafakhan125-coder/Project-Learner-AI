@@ -43,3 +43,5 @@ export * from './brain/mastery.js';
 export * from './brain/extract.js';
 export * from './brain/project.js';
 export * from './brain/graph.js';
+export * from './brain/memory.js';
+export * from './brain/recall.js';

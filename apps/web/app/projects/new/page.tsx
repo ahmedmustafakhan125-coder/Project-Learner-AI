@@ -4,11 +4,12 @@ import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { CompiledQuery, InterviewQuestion, InterviewState, ProjectBlueprint } from '@ai-edu/core';
-import { ApiError } from '@ai-edu/api-client';
+import { ApiError, type RecalledItem } from '@ai-edu/api-client';
 
 import { AuthGate } from '../../../components/AuthGate';
 import { InterviewPanel } from '../../../components/InterviewPanel';
 import { BlueprintReview } from '../../../components/BlueprintReview';
+import { RecallChips } from '../../../components/brain/RecallChips';
 import { api } from '../../../lib/api';
 
 /**
@@ -39,6 +40,8 @@ function NewProject() {
   const [state, setState] = useState<InterviewState | null>(null);
   const [compiled, setCompiled] = useState<CompiledQuery | null>(null);
   const [blueprint, setBlueprint] = useState<ProjectBlueprint | null>(null);
+  /** What the brain told the planner about this learner — shown beside the plan it shaped. */
+  const [recalled, setRecalled] = useState<RecalledItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   /**
    * Whether the plan should spend steps teaching deployment.
@@ -54,11 +57,12 @@ function NewProject() {
       setPhase('planning');
       setCompiled(query);
       try {
-        const { blueprint: generated } = await api.generateBlueprint({
+        const { blueprint: generated, recalled: used } = await api.generateBlueprint({
           compiled: query,
           teachDeployment,
         });
         setBlueprint(generated);
+        setRecalled(used ?? []);
         setPhase('reviewing');
       } catch (err) {
         setError(describe(err));
@@ -204,6 +208,10 @@ function NewProject() {
           Designing your project — the whole file tree and which step builds each part. This one
           takes a little longer, because everything after it is held to this plan.
         </div>
+      )}
+
+      {(phase === 'reviewing' || phase === 'creating') && blueprint && recalled.length > 0 && (
+        <RecallChips items={recalled} heading="Pitched at you using your brain" />
       )}
 
       {(phase === 'reviewing' || phase === 'creating') && blueprint && (

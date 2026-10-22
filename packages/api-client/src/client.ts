@@ -7,6 +7,7 @@ import type {
   CompiledQuery,
   GraphView,
   InterviewQuestion,
+  MemoryItem,
   InterviewState,
   ProjectArtifact,
   ProjectBlueprint,
@@ -41,6 +42,22 @@ export type { SourceFile };
 // returns them as they are, so the client re-exports rather than redeclares.
 export type { BrainNodeDetail, GraphView as BrainGraph };
 export type { GraphLink as BrainGraphLink, GraphNode as BrainGraphNode } from '@ai-edu/core';
+
+/** One thing the brain recalled for an answer; the UI shows it as a chip. */
+export type RecalledItem = MemoryItem;
+
+/** An earlier conversation where the learner asked the same thing. */
+export interface QuestionRecallMatch {
+  threadId: string;
+  canonical: string;
+  askedAt: string;
+  /** True for the identical question; false for a close rephrasing. */
+  exact: boolean;
+  similarity: number;
+  title: string | null;
+  /** That conversation's node in the brain, for `/brain?focus=`. */
+  nodeId: string;
+}
 
 export interface BrainGraphOptions {
   /** Only what was touched in the last N days. Absent or null for all time. */
@@ -80,6 +97,8 @@ export type AgentStreamEvent =
       threadId: string | null;
       model: string;
       agents: readonly AgentKind[];
+      /** What the brain recalled and put in front of the agents. Absent from older servers. */
+      memory?: RecalledItem[];
     }
   | { kind: 'start'; agent: AgentKind }
   | { kind: 'delta'; agent: AgentKind; text: string }
@@ -435,7 +454,7 @@ export class ApiClient {
      * CONFIG is written at the end — that happens either way.
      */
     teachDeployment?: boolean;
-  }): Promise<{ blueprint: ProjectBlueprint; model: string }> {
+  }): Promise<{ blueprint: ProjectBlueprint; model: string; recalled?: RecalledItem[] }> {
     return this.post('/api/projects/blueprint', {
       compiled: input.compiled,
       teachDeployment: input.teachDeployment ?? false,
@@ -651,6 +670,15 @@ export class ApiClient {
   /** Node ids carry colons (`session:thread:<uuid>`), so they are always encoded. */
   async getBrainNode(id: string): Promise<BrainNodeDetail> {
     return this.get<BrainNodeDetail>(`/api/brain/node/${encodeURIComponent(id)}`);
+  }
+
+  /**
+   * Has the learner asked this before, in another conversation? Offered as a
+   * banner beside the new answer — never instead of it.
+   */
+  async recallQuestion(input: { query: string; threadId: string | null }): Promise<QuestionRecallMatch | null> {
+    const { match } = await this.post<{ match: QuestionRecallMatch | null }>('/api/brain/recall', input);
+    return match;
   }
 
   async rebuildBrain(): Promise<{ ok: boolean }> {

@@ -14,7 +14,7 @@ without changes.
 
 **To run it, read [DEPLOY.md](DEPLOY.md)** — local development and production
 deployment live there. **Before changing anything, read
-[Invariants](#invariants) below.** Those eleven are load-bearing, and breaking
+[Invariants](#invariants) below.** Those twelve are load-bearing, and breaking
 any of them produces no error — just silently worse behaviour, silently higher
 cost, or a feature that quietly stops running.
 
@@ -111,7 +111,8 @@ Two things sit in front of every model call, both in `apps/api` because
 query -> gateway (ALLOW / MASK / BLOCK)
       -> interview (classify, auto-fill, score) -> CompiledQuery
       -> gateway again, at /api/agents/ask
-      -> fanOut (staggered, + selected OKF concepts) -> SSE multiplex -> 4 tabs
+      -> fanOut (staggered, + selected OKF concepts + recalled learner memory)
+      -> SSE multiplex -> 4 tabs
 ```
 
 The gateway appears **twice on purpose**. `/api/agents/ask` accepts a
@@ -156,7 +157,7 @@ its output is kept inside the event so it is never asked again.
 
 ## Invariants
 
-Eleven things that will bite you. Each is non-obvious and each is load-bearing.
+Twelve things that will bite you. Each is non-obvious and each is load-bearing.
 Code comments elsewhere in the repo cite these by number.
 
 ### 1. The four agents must share a byte-identical prompt prefix
@@ -344,6 +345,28 @@ lacks `rubric_snapshot` or `attempt_number`, and the projection tests assert the
 fold never produces one. Retakes add edges; they never overwrite the first
 score — first, best and latest are all kept.
 
+### 12. Learner memory rides after the shared prefix, and never holds up an answer
+
+Every fan-out carries a `<learner_memory>` block: the learner's mastery of the
+concepts the question touches, mistakes they have made more than once, and
+takeaways they already have, capped at 600 tokens (`buildMemoryBlock` in
+`packages/core/src/brain/memory.ts`). Where it goes is the whole point:
+
+- **Never in the system prompt.** `PEDAGOGY_CORE` is the prefix every learner
+  shares; one learner's history in it would make every cache read miss. The
+  block goes in the user turn, beside `<knowledge>`.
+- **Identical for all four agents.** It is built once per question and handed
+  to all four, so it sits inside their shared cached turn and the three
+  followers read it from cache. `prompt-stability.test.ts` asserts both, and
+  that a request without memory is byte-for-byte what it was before.
+
+And it is an improvement, never a precondition. Recall runs alongside
+persisting the question, is cut off after 1.5 seconds, and comes back null on
+any failure — an answer without memory is a worse answer, an answer that waits
+on the brain is a broken one. What was recalled is sent to the browser and
+shown as "recalled from your brain" chips: personalisation a learner cannot
+see is personalisation they cannot question.
+
 ---
 
 ## The provider layer
@@ -422,7 +445,7 @@ against a live endpoint:
 |---|---|
 | `npm run dev` | web on :3000, api on :3001 |
 | `npm run build` | Build everything (Turborepo, cached) |
-| `npm test` | 761 unit tests — no network, no browser, no keys, no database |
+| `npm test` | 804 unit tests — no network, no browser, no keys, no database |
 | `npm run typecheck` | `tsc --noEmit` per workspace |
 | `npm run lint` | ESLint, including the portability guards |
 | `npm run smoke` | Live provider round-trip + cost accounting |
@@ -462,10 +485,16 @@ tutor with its write-code gate, and per-specialist follow-up threads.
   draws it with a `d3-force` layout, lazily loaded with the route. Clicking a
   conversation animates the wire it drew through your concepts, and every
   session links back to its thread (`/ask?thread=<id>`) or project.
+- **Phase 3** — memory in the answers. Every fan-out and every project plan is
+  given the learner's recalled memory ([invariant 12](#12-learner-memory-rides-after-the-shared-prefix-and-never-holds-up-an-answer)),
+  shown to them as chips linking into the brain. Asking something already
+  asked in another conversation brings up a banner offering that conversation
+  — exact by fingerprint, or a close rephrasing by word overlap
+  (`findRecall`, `packages/core/src/brain/recall.ts`). It is an offer, never a
+  redirect: the new question is answered either way.
 
-Still to come: memory injection into the fan-out with assisted recall
-(Phase 3), mistakes with a timeline (Phase 4), and the MCQ gate with a graded
-viva (Phase 4.5).
+Still to come: mistakes with a timeline (Phase 4), and the MCQ gate with a
+graded viva (Phase 4.5).
 
 P3's exit criterion is deliberately adversarial, and it is met **by execution,
 not by inspection**. `apps/web/test/sandbox-containment.browser.test.ts` drives
@@ -493,14 +522,14 @@ Known and open, none of it blocking:
 ## Tests
 
 `npm test` is hermetic by design — no network, no browser, no keys, no database.
-761 tests, about 25 seconds cold.
+804 tests, about 25 seconds cold.
 
 | Package | Tests | What they protect |
 |---|---:|---|
-| `@ai-edu/core` | 497 | prompt-prefix stability, interview logic, fan-out stagger and isolation, generation schemas, prefetch policy, pacing, hint unlocking, knowledge determinism, tutor gate, sandbox-runnability guard, finished-project assembly, brain projection determinism, canonical-question goldens, mastery formula, graph selection and styling |
-| `@ai-edu/api` | 96 | attachment allowlist, binary detection, PDF extraction, gateway failure policy, OKF loader, thread routes, ZIP writer, brain event log, projection writes and read routes |
+| `@ai-edu/core` | 518 | prompt-prefix stability, interview logic, fan-out stagger and isolation, generation schemas, prefetch policy, pacing, hint unlocking, knowledge determinism, tutor gate, sandbox-runnability guard, finished-project assembly, brain projection determinism, canonical-question goldens, mastery formula, graph selection and styling, memory block budget and placement, question recall |
+| `@ai-edu/api` | 112 | attachment allowlist, binary detection, PDF extraction, gateway failure policy, OKF loader, thread routes, ZIP writer, brain event log, projection writes and read routes, memory recall and its timeout, memory through the fan-out route |
 | `@ai-edu/llm` | 68 | registry, cost nulls, stream utils, adapter mapping, structured-output repair, retry backoff |
-| `@ai-edu/web` | 74 | sandbox configuration guards, CSP shape, Markdown rendering without a Markdown library, stylesheet invariants (contrast, full-bleed artwork), brain layout budget and geometry, brain read-only guard |
+| `@ai-edu/web` | 80 | sandbox configuration guards, CSP shape, Markdown rendering without a Markdown library, stylesheet invariants (contrast, full-bleed artwork), brain layout budget and geometry, brain read-only guard, recall banner and chips |
 | `@ai-edu/api-client` | 17 | SSE framing across chunk boundaries, multi-byte splits, CRLF, errors |
 | `@ai-edu/runners` | 9 | static verification layering and short-circuiting |
 

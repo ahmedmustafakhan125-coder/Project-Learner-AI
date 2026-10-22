@@ -1,8 +1,11 @@
 import { createHash } from 'node:crypto';
 import {
   Extraction,
+  brainNodeId,
   buildExtractionRequest,
+  buildMemoryBlock,
   canonicalizeQuery,
+  findRecall,
   normaliseExtraction,
   parseBrainEvent,
   projectBrain,
@@ -14,6 +17,10 @@ import type {
   BrainEventPayload,
   BrainNode,
   BrainSourceKind,
+  CompiledQuery,
+  MemoryBlock,
+  RecallCandidate,
+  RecallMatch,
 } from '@ai-edu/core';
 import { createProviderForTask } from '@ai-edu/llm';
 
@@ -195,10 +202,17 @@ function numeric(value: number | string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-async function loadAll<Row>(table: string, columns: string, userId: string, orderBy: string[]): Promise<Row[]> {
+async function loadAll<Row>(
+  table: string,
+  columns: string,
+  userId: string,
+  orderBy: string[],
+  kinds?: readonly string[],
+): Promise<Row[]> {
   const rows: Row[] = [];
   for (let from = 0; ; from += EVENT_PAGE) {
     let query = db().from(table).select(columns).eq('user_id', userId);
+    if (kinds) query = query.in('kind', [...kinds]);
     for (const column of orderBy) query = query.order(column, { ascending: true });
     const { data, error } = await query.range(from, from + EVENT_PAGE - 1);
     if (error) throw new Error(`could not load ${table}: ${error.message}`);
@@ -209,20 +223,34 @@ async function loadAll<Row>(table: string, columns: string, userId: string, orde
   return rows;
 }
 
-/** One learner's stored brain, as the pure graph functions in packages/core take it. */
-export async function loadProjection(userId: string): Promise<{ nodes: BrainNode[]; edges: BrainEdge[] }> {
+export interface ProjectionFilter {
+  nodeKinds?: readonly BrainNode['kind'][];
+  edgeKinds?: readonly BrainEdge['kind'][];
+}
+
+/**
+ * One learner's stored brain, as the pure graph functions in packages/core
+ * take it. A filter loads only the kinds a caller needs — recall reads
+ * concepts, insights and mistakes, not every session the learner ever had.
+ */
+export async function loadProjection(
+  userId: string,
+  filter: ProjectionFilter = {},
+): Promise<{ nodes: BrainNode[]; edges: BrainEdge[] }> {
   const [nodeRows, edgeRows] = await Promise.all([
     loadAll<NodeRow>(
       'brain_nodes',
       'id, kind, key, label, score, confidence, metadata, first_seen_at, last_seen_at',
       userId,
       ['id'],
+      filter.nodeKinds,
     ),
     loadAll<EdgeRow>(
       'brain_edges',
       'src, dst, kind, weight, source_id, metadata, created_at',
       userId,
       ['src', 'dst', 'kind'],
+      filter.edgeKinds,
     ),
   ]);
 
@@ -247,6 +275,136 @@ export async function loadProjection(userId: string): Promise<{ nodes: BrainNode
       metadata: row.metadata ?? {},
       createdAt: row.created_at,
     })),
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * Recall
+ * ------------------------------------------------------------------ */
+
+/**
+ * How long a question will wait for its memory. Recall is an improvement to
+ * an answer, never a precondition for one: past this, the answer goes ahead
+ * without it.
+ */
+export const MEMORY_RECALL_TIMEOUT_MS = 1_500;
+
+function withTimeout<T>(work: Promise<T>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms);
+  });
+  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+}
+
+/** What a question's memory block is built from. Sessions and checkpoints are not needed. */
+const MEMORY_FILTER: ProjectionFilter = {
+  nodeKinds: ['concept', 'insight', 'mistake'],
+  edgeKinds: ['RELATED_TO'],
+};
+
+/**
+ * The learner's memory for one question, rendered for the prompt. Null when
+ * the brain has nothing relevant, is slow, or fails — never an error.
+ */
+export async function recallMemory(userId: string, query: string): Promise<MemoryBlock | null> {
+  try {
+    const source = await withTimeout(loadProjection(userId, MEMORY_FILTER), MEMORY_RECALL_TIMEOUT_MS);
+    if (!source) return null;
+    return buildMemoryBlock({ nodes: source.nodes, edges: source.edges, query });
+  } catch (err) {
+    console.error('[brain] memory recall failed:', err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/**
+ * The text a question's memory is matched against: what the learner typed,
+ * plus the topic and technology the interview established — "how do I fix
+ * this" says nothing until the interview has filled in that it is about
+ * closures in JavaScript.
+ */
+export function memoryQueryFor(compiled: CompiledQuery): string {
+  return [compiled.originalQuery, compiled.slots['topic']?.value, compiled.slots['tech']?.value]
+    .filter((part): part is string => Boolean(part))
+    .join(' ');
+}
+
+/** How many of a learner's latest questions a near match is searched among. */
+const RECALL_WINDOW = 500;
+
+export interface QuestionRecall extends RecallMatch {
+  /** The earlier conversation's title, for the banner. */
+  title: string | null;
+  /** That conversation's node in the brain. */
+  nodeId: string;
+}
+
+interface FingerprintRow {
+  fingerprint: string;
+  canonical: string;
+  thread_id: string;
+  created_at: string;
+}
+
+const toCandidate = (row: FingerprintRow): RecallCandidate => ({
+  fingerprint: row.fingerprint,
+  canonical: row.canonical,
+  threadId: row.thread_id,
+  createdAt: row.created_at,
+});
+
+/**
+ * Has the learner asked this before, in another conversation? Exact matches
+ * are looked up by fingerprint across all of history; near matches among the
+ * most recent questions. A match whose conversation has since been deleted is
+ * not offered — there would be nothing to open.
+ */
+export async function findQuestionRecall(
+  userId: string,
+  query: string,
+  currentThreadId: string | null,
+): Promise<QuestionRecall | null> {
+  const { canonical, fingerprint } = describeQuestion(query);
+  if (!canonical) return null;
+
+  const columns = 'fingerprint, canonical, thread_id, created_at';
+  const [exact, recent] = await Promise.all([
+    db()
+      .from('brain_query_fingerprints')
+      .select(columns)
+      .eq('user_id', userId)
+      .eq('fingerprint', fingerprint)
+      .maybeSingle(),
+    db()
+      .from('brain_query_fingerprints')
+      .select(columns)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(RECALL_WINDOW),
+  ]);
+  const failure = exact.error ?? recent.error;
+  if (failure) throw new Error(`could not read fingerprints: ${failure.message}`);
+
+  const candidates = [
+    ...(exact.data ? [toCandidate(exact.data as FingerprintRow)] : []),
+    ...((recent.data ?? []) as FingerprintRow[]).map(toCandidate),
+  ];
+  const match = findRecall(canonical, fingerprint, candidates, { excludeThreadId: currentThreadId });
+  if (!match) return null;
+
+  const { data: thread } = await db()
+    .from('threads')
+    .select('id, title')
+    .eq('id', match.threadId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (!thread) return null;
+
+  return {
+    ...match,
+    title: typeof thread.title === 'string' ? thread.title : null,
+    nodeId: brainNodeId.threadSession(match.threadId),
   };
 }
 

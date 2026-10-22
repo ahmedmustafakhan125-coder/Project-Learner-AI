@@ -127,12 +127,24 @@ export function canonicalizeConcept(label: string): string {
   return key;
 }
 
+/**
+ * A deliberately crude stemmer: a trailing plural `s` goes, so "closures" and
+ * "closure" compare equal. It will also turn "redis" into "redi", which is
+ * harmless — both sides of every comparison are stemmed the same way. Anything
+ * cleverer starts rewriting identifiers like "useEffect". Used only for
+ * overlap; the canonical form and its fingerprint keep every word as typed.
+ */
+function stem(word: string): string {
+  return word.length > 3 && word.endsWith('s') && !word.endsWith('ss') ? word.slice(0, -1) : word;
+}
+
 /** The meaningful words of a text, for overlap comparison. */
 export function tokenSet(text: string): Set<string> {
   return new Set(
     canonicalizeQuery(text)
       .split(' ')
-      .filter((w) => w.length >= 2 && !OVERLAP_STOPWORDS.has(w)),
+      .filter((w) => w.length >= 2 && !OVERLAP_STOPWORDS.has(w))
+      .map(stem),
   );
 }
 
