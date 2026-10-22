@@ -5,7 +5,11 @@
     "outDir": "./dist",
     "types": ["node"]
   },
-  "references": [{ "path": "../../packages/llm" }, { "path": "../../packages/core" }],
+  "references": [
+    { "path": "../../packages/llm" },
+    { "path": "../../packages/core" },
+    { "path": "../../packages/gateway" }
+  ],
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "test/**"]
 }

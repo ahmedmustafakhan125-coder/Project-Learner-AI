@@ -86,13 +86,13 @@ apps/
   api/          Fastify 5 — orchestration and SSE      interview, fan-out, projects,
                                                        attempts, follow-ups, tutor,
                                                        brain, assessment
-  gateway/      FastAPI — prompt screening             rule + semantic detectors,
-                                                       Presidio PII, ALLOW/MASK/BLOCK
 packages/
   llm/          provider-agnostic LLM layer            registry + 2 adapters
   core/         portable domain logic                  interview, agents, generation,
                                                        pacing, knowledge, tutor, brain,
                                                        assessment
+  gateway/      prompt screening, run by the API       rule + semantic detectors,
+                                                       PII, ALLOW/MASK/BLOCK
   api-client/   typed SDK + SSE streaming              the only way the web app talks
                                                        to the API
   runners/      checkpoint verification                static layers, short-circuiting
@@ -104,7 +104,8 @@ supabase/
 Two things sit in front of every model call, both in `apps/api` because
 `packages/core` must stay portable ([invariant 4](#4-packagescore-and-packagesapi-client-must-stay-portable)):
 
-- `gateway.ts` — screens every learner-supplied string before it reaches a model.
+- `gateway.ts` — screens every learner-supplied string before it reaches a model,
+  with `packages/gateway`, in process.
 - `knowledge.ts` — loads the OKF bundle off disk; selection and rendering are
   pure and live in `packages/core/src/knowledge/`.
 
@@ -125,8 +126,8 @@ to that route. The same is true of `/api/projects/blueprint`. Screening at the
 interview alone enforces nothing.
 
 Screening runs **before** the budget check and before a provider is constructed,
-so a blocked prompt costs nothing. Model-bound routes fail **closed**: if the
-gateway cannot be reached, the request is refused rather than sent unscreened.
+so a blocked prompt costs nothing. Model-bound routes fail **closed**: if
+screening fails, the request is refused rather than sent unscreened.
 
 **A project:**
 
@@ -492,12 +493,12 @@ against a live endpoint:
 |---|---|
 | `npm run dev` | web on :3000, api on :3001 |
 | `npm run build` | Build everything (Turborepo, cached) |
-| `npm test` | 914 unit tests — no network, no browser, no keys, no database |
+| `npm test` | 970 unit tests — no network, no browser, no keys, no database |
 | `npm run typecheck` | `tsc --noEmit` per workspace |
 | `npm run lint` | ESLint, including the portability guards |
 | `npm run smoke` | Live provider round-trip + cost accounting |
 | `npm run db:start` / `db:stop` / `db:reset` | Local Supabase stack (`db:reset` destroys local data) |
-| `npm run gateway` | Security gateway on :8000, after its one-time setup in [DEPLOY.md](DEPLOY.md#security-gateway) |
+| `npm run eval --workspace @ai-edu/gateway` | The security gateway's 164-prompt evaluation, rule-only and hybrid |
 | `npm run test:conformance --workspace @ai-edu/llm` | Provider conformance, after a registry edit |
 | `npm run test:calibration --workspace @ai-edu/api` | Viva grader agreement with human-marked answers. Calls a real model; reads `.env`; skips without a key. |
 | `npm run test:containment --workspace @ai-edu/web` | Drives a real browser at the sandbox. Needs `npm run build` and an installed Chrome or Edge. |
@@ -593,14 +594,15 @@ Known and open, none of it blocking:
 ## Tests
 
 `npm test` is hermetic by design — no network, no browser, no keys, no database.
-914 tests, about 30 seconds cold.
+970 tests, about 30 seconds cold.
 
 | Package | Tests | What they protect |
 |---|---:|---|
-| `@ai-edu/core` | 577 | prompt-prefix stability, interview logic, fan-out stagger and isolation, generation schemas, prefetch policy, pacing, hint unlocking, knowledge determinism, tutor gate, sandbox-runnability guard, finished-project assembly, brain projection determinism, canonical-question goldens, mastery formula, graph selection and styling, memory block budget and placement, question recall, replay and recurring mistakes, assessment validation, grader isolation and scoring, offer and retake rules |
-| `@ai-edu/api` | 143 | attachment allowlist, binary detection, PDF extraction, gateway failure policy, OKF loader, thread routes, ZIP writer, brain event log, projection writes and read routes, memory recall and its timeout, memory through the fan-out route, forgetting on delete, the assessment state machine end to end, calibration fixture consistency |
+| `@ai-edu/core` | 579 | prompt-prefix stability, interview logic, fan-out stagger and isolation, generation schemas, prefetch policy, pacing, hint unlocking, knowledge determinism, tutor gate, sandbox-runnability guard, finished-project assembly, brain projection determinism, canonical-question goldens, mastery formula, graph selection and styling, memory block budget and placement, question recall, replay and recurring mistakes, assessment validation, grader isolation and scoring, offer and retake rules |
+| `@ai-edu/api` | 140 | attachment allowlist, binary detection, PDF extraction, gateway failure policy and audit trail, OKF loader, thread routes, ZIP writer, brain event log, projection writes and read routes, memory recall and its timeout, memory through the fan-out route, forgetting on delete, the assessment state machine end to end, calibration fixture consistency |
 | `@ai-edu/llm` | 68 | registry, cost nulls, stream utils, adapter mapping, structured-output repair, retry backoff |
-| `@ai-edu/web` | 100 | sandbox configuration guards, CSP shape, Markdown rendering without a Markdown library, stylesheet invariants (contrast, full-bleed artwork), brain layout budget and geometry, brain read-only guard, recall banner and chips, replay controls and growth layout, assessment screens |
+| `@ai-edu/gateway` | 48 | the Python gateway's suites and its twelve mandatory scenarios, rule matching as Python's regex engine reads the patterns, n-grams and probabilities against scikit-learn's, each PII recognizer against Presidio's results, the evaluation-set floor |
+| `@ai-edu/web` | 109 | sandbox configuration guards, CSP shape, Markdown rendering without a Markdown library, stylesheet invariants (contrast, full-bleed artwork), brain layout budget and geometry, brain read-only guard, recall banner and chips, replay controls and growth layout, assessment screens |
 | `@ai-edu/api-client` | 17 | SSE framing across chunk boundaries, multi-byte splits, CRLF, errors |
 | `@ai-edu/runners` | 9 | static verification layering and short-circuiting |
 

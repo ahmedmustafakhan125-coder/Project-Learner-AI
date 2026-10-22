@@ -1,11 +1,13 @@
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import Fastify from 'fastify';
+import { prepare as prepareScreening } from '@ai-edu/gateway';
 import { listAvailableModels, registryReport } from '@ai-edu/llm';
 
 import { requireAuth, userOf } from './auth.js';
 import { checkBudget } from './db.js';
 import { loadEnv } from './env.js';
+import { reportScreeningTo } from './gateway.js';
 import { registerRateLimit } from './rateLimit.js';
 import { agentRoutes } from './routes/agents.js';
 import { assessmentRoutes } from './routes/assessment.js';
@@ -30,6 +32,12 @@ export async function buildServer() {
     // Without this, every request behind a proxy or load balancer reports the
     // proxy's address and they all share one bucket.
     trustProxy: true,
+  });
+
+  // The security gateway's audit trail: one line per screened prompt.
+  reportScreeningTo({
+    decision: (record) => app.log.info({ screening: record }, 'screening decision'),
+    failure: (inputId, err) => app.log.error({ err, inputId }, 'screening failed'),
   });
 
   await app.register(cors, {
@@ -82,6 +90,9 @@ export async function buildServer() {
 
 async function main(): Promise<void> {
   const env = loadEnv();
+  // Trains the screening model before the port opens, so a broken install
+  // stops here instead of refusing every question with 422.
+  prepareScreening();
   const app = await buildServer();
 
   const report = registryReport();

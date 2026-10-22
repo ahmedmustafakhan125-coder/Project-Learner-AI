@@ -22,8 +22,7 @@
     "db:start": ".\\.tools\\supabase.exe start",
     "db:stop": ".\\.tools\\supabase.exe stop",
     "db:reset": ".\\.tools\\supabase.exe db reset",
-    "gateway": "cd apps\\gateway && .venv\\Scripts\\python -m uvicorn app.main:app --port 8000",
-    "smoke": "node --env-file-if-exists=.env scripts/smoke-providers.mjs"
+    "smoke":"node --env-file-if-exists=.env scripts/smoke-providers.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

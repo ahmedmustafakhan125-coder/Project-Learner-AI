@@ -1,26 +1,25 @@
-import { loadEnv } from './env.js';
+import { analyze, auditRecord, type Analysis, type AuditRecord } from '@ai-edu/gateway';
 
 /**
  * The LLM security gateway.
  *
  * Every piece of learner-supplied text is screened here before it can reach a
- * model. The gateway itself is a separate Python service (FastAPI) that runs
- * rule-based detection, a semantic classifier, and Presidio PII analysis, then
- * returns a decision.
+ * model. The screening is `@ai-edu/gateway`, run in this process: rule-based
+ * detection, a semantic classifier and PII analysis, then a decision.
  *
- * Three things this module is responsible for, none of which belong in a route:
+ * Two things this module is responsible for, neither of which belongs in a
+ * route:
  *
  *   1. **One failure policy.** Screening sits in front of anything that spends
- *      money or reaches a model, so "what if the gateway is down" has to be
+ *      money or reaches a model, so "what if screening fails" has to be
  *      answered once, here, rather than per route where it would drift.
- *   2. **A bounded wait.** The gateway is on the hot path ahead of the fan-out's
- *      lead request, so a hung gateway must not become a hung answer.
- *   3. **Never trusting the response shape.** A malformed reply is treated as a
- *      screening failure, not as an ALLOW.
+ *   2. **An audit trail.** Every decision is reported, with the request's input
+ *      id and without the text, so it can be traced back to what caused it;
+ *      so is every failure to screen, with the error behind it.
  *
  * It deliberately lives in `apps/api` and not in `packages/core`: core must stay
- * portable to React Native, where neither this dependency nor an HTTP client of
- * this shape belongs. Core sees only already-screened text.
+ * portable to React Native, where the screening package, which reads its
+ * training data from disk, does not belong. Core sees only already-screened text.
  */
 
 /* ------------------------------------------------------------------ *
@@ -33,22 +32,22 @@ export interface GatewayVerdict {
   decision: GatewayDecision;
   /** Text to actually send onward. For MASK this carries the redactions. */
   safeText: string;
-  /** Machine-readable reasons — e.g. jailbreak, system_prompt_extraction, secret. */
+  /** Machine-readable reasons, e.g. RULE_JAILBREAK, SEMANTIC_INJECTION, PII_DETECTED. */
   reasonCodes: string[];
   finalRisk: number | null;
-  /** True when the gateway could not be consulted at all. */
+  /** True when the text could not be screened at all. */
   unscreened: boolean;
 }
 
 /**
- * Where a screening call is happening, which decides what a gateway outage means.
+ * Where a screening call is happening, which decides what a screening failure means.
  *
  * `model-bound` covers anything whose next step is an LLM call. Those fail
  * closed: an unscreened prompt must never reach a model, and refusing is
  * recoverable in a way an injected prompt is not.
  *
- * `read` covers everything else. Those fail open so a gateway outage degrades
- * the security layer rather than taking the whole platform offline.
+ * `read` covers everything else. Those fail open so a screening failure
+ * degrades the security layer rather than taking the whole platform offline.
  */
 export type ScreenContext = 'model-bound' | 'read';
 
@@ -66,138 +65,61 @@ export class GatewayBlockedError extends Error {
 }
 
 /* ------------------------------------------------------------------ *
- * Client
+ * Screening
  * ------------------------------------------------------------------ */
 
-interface AnalyzeResponse {
-  decision?: unknown;
-  safe_text?: unknown;
-  masked_text?: unknown;
-  sanitized_prompt?: unknown;
-  reason_codes?: unknown;
-  final_risk?: unknown;
-  policy?: {
-    decision?: unknown;
-    reason?: unknown;
-  };
-  injection_analysis?: {
-    score?: unknown;
-    matched_patterns?: unknown;
-  };
-  pii_analysis?: {
-    masked_text?: unknown;
-    entities_found?: unknown;
-  };
+export interface ScreeningReporter {
+  /** One audit record per decision. */
+  decision(record: AuditRecord): void;
+  /** Screening threw: a bug or a broken install. The refusal alone does not say which. */
+  failure(inputId: string, err: unknown): void;
 }
 
-function asStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+let reporter: ScreeningReporter | null = null;
+
+/** Where decisions and failures are reported; the server points this at its log. */
+export function reportScreeningTo(next: ScreeningReporter): void {
+  reporter = next;
 }
 
 /**
  * Screen one piece of text.
  *
- * `inputId` is passed through to the gateway's audit log so a decision can be
- * traced back to the request that caused it.
+ * `inputId` goes into the decision's audit record, so a decision can be traced
+ * back to the request that caused it.
  */
 export async function screen(
   text: string,
   inputId: string,
   context: ScreenContext = 'model-bound',
 ): Promise<GatewayVerdict> {
-  const env = loadEnv();
-  const url = env.SECURITY_GATEWAY_URL;
-
-  // Empty input cannot carry an injection and is not worth a round trip.
+  // Empty input cannot carry an injection and is not worth analysing.
   if (!text.trim()) {
     return { decision: 'ALLOW', safeText: text, reasonCodes: [], finalRisk: null, unscreened: false };
   }
 
-  if (!url) {
-    // Unconfigured is treated exactly like unreachable: the deployment decides
-    // whether that is survivable, not this function.
-    return unavailable(context, 'security gateway is not configured');
-  }
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), env.SECURITY_GATEWAY_TIMEOUT_MS);
-
-  let payload: AnalyzeResponse;
+  let analysis: Analysis;
   try {
-    const parsedUrl = new URL(url);
-    const targetEndpoint =
-      parsedUrl.pathname && parsedUrl.pathname !== '/'
-        ? parsedUrl
-        : new URL('/api/analyze', url);
-
-    let response = await fetch(targetEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, prompt: text, input_id: inputId }),
-      signal: controller.signal,
-    });
-
-    // If /api/analyze 404s, try fallback /analyze for compatibility
-    if (response.status === 404 && targetEndpoint.pathname === '/api/analyze') {
-      response = await fetch(new URL('/analyze', url), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, prompt: text, input_id: inputId }),
-        signal: controller.signal,
-      });
-    }
-
-    if (!response.ok) {
-      return unavailable(context, `security gateway returned ${response.status}`);
-    }
-    payload = (await response.json()) as AnalyzeResponse;
+    analysis = analyze(text, { inputId });
   } catch (err) {
-    const reason = err instanceof Error && err.name === 'AbortError' ? 'timed out' : 'unreachable';
-    return unavailable(context, `security gateway ${reason}`);
-  } finally {
-    clearTimeout(timer);
+    reporter?.failure(inputId, err);
+    return unavailable(context, `security gateway failed: ${err instanceof Error ? err.message : String(err)}`);
   }
+  reporter?.decision(auditRecord(analysis));
 
-  const rawDecision = payload.policy?.decision ?? payload.decision;
-  const decision = rawDecision === 'FLAG' ? 'ALLOW' : rawDecision;
-  if (decision !== 'ALLOW' && decision !== 'MASK' && decision !== 'BLOCK') {
-    // An unrecognised verdict is a screening failure. Defaulting to ALLOW here
-    // would turn every future gateway change into a silent bypass.
-    return unavailable(context, 'security gateway returned an unrecognised decision');
-  }
-
-  const reasonCodes =
-    asStringArray(payload.reason_codes).length > 0
-      ? asStringArray(payload.reason_codes)
-      : asStringArray(payload.injection_analysis?.matched_patterns);
-
-  const finalRisk =
-    typeof payload.final_risk === 'number'
-      ? payload.final_risk
-      : typeof payload.injection_analysis?.score === 'number'
-        ? payload.injection_analysis.score
-        : null;
-
+  const { decision, reasonCodes, finalRisk } = analysis;
   if (decision === 'BLOCK') {
     return { decision, safeText: '', reasonCodes, finalRisk, unscreened: false };
   }
-
-  // MASK must come back with the redacted text. If it does not, the original is
-  // NOT a safe fallback — that is precisely the text the gateway wanted changed.
-  const rawSafeText =
-    payload.safe_text ??
-    payload.pii_analysis?.masked_text ??
-    payload.masked_text ??
-    payload.sanitized_prompt;
-  const safeText = typeof rawSafeText === 'string' ? rawSafeText : null;
-  if (decision === 'MASK' && safeText === null) {
-    return unavailable(context, 'security gateway masked a prompt but returned no safe_text');
+  // MASK always carries the redacted text. Were it ever missing, the original
+  // would not be a safe fallback: it is precisely the text that needed changing.
+  if (analysis.safeText === null) {
+    return unavailable(context, 'security gateway returned no safe text');
   }
-
-  return { decision, safeText: safeText ?? text, reasonCodes, finalRisk, unscreened: false };
+  return { decision, safeText: analysis.safeText, reasonCodes, finalRisk, unscreened: false };
 }
 
-/** One place to decide what an unusable gateway means. */
+/** One place to decide what a screening failure means. */
 function unavailable(context: ScreenContext, detail: string): GatewayVerdict {
   if (context === 'model-bound') {
     throw new GatewayBlockedError(detail, ['gateway_unavailable'], true);
