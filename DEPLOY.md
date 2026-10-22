@@ -151,8 +151,9 @@ Then run it alongside `npm run dev`:
 npm run gateway
 ```
 
-To bring in later changes from the original repository:
-`git subtree pull --prefix=apps/gateway <gateway-repo-url> main`.
+The gateway is maintained here now. Do not `git subtree pull` from the old
+`llm-security-gateway-final` repository: its history was rewritten on the way
+in to strip example API keys, and a pull would bring them back.
 
 Set `SECURITY_GATEWAY_URL=http://127.0.0.1:8000` in the root `.env`. Questions,
 interview answers, tutor turns, project generation prompts, and attachment text
