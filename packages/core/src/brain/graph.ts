@@ -50,6 +50,12 @@ export interface GraphView {
     /** True when the cap cut nodes or links — the view must say so. */
     truncated: boolean;
     focus: string | null;
+    /**
+     * Every node in the learner's brain, before the window or focus. Zero
+     * means no brain has formed yet — which a view needs to tell apart from
+     * a brain whose activity is all older than the window it is showing.
+     */
+    brainSize: number;
   };
 }
 
@@ -229,6 +235,7 @@ export function projectGraph(
       total,
       truncated: kept.length < total || links.length < between.length,
       focus,
+      brainSize: nodes.length,
     },
   };
 }
