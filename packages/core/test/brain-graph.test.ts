@@ -94,7 +94,22 @@ describe('projectGraph', () => {
     const nodes = [node('concept:new', 'concept', 5), node('concept:old', 'concept', 200)];
     const view = projectGraph(nodes, [], { now: NOW, windowDays: 90 });
     expect(view.nodes.map((n) => n.id)).toEqual(['concept:new']);
-    expect(view.meta).toEqual({ total: 1, truncated: false, focus: null });
+    expect(view.meta).toEqual({ total: 1, truncated: false, focus: null, brainSize: 2 });
+  });
+
+  it('reports an empty brain as empty, whatever the window', () => {
+    expect(projectGraph([], [], { now: NOW, windowDays: 90 }).meta).toEqual({
+      total: 0,
+      truncated: false,
+      focus: null,
+      brainSize: 0,
+    });
+  });
+
+  it('tells an empty window apart from an empty brain', () => {
+    const view = projectGraph([node('concept:old', 'concept', 400)], [], { now: NOW, windowDays: 90 });
+    expect(view.nodes).toEqual([]);
+    expect(view.meta.brainSize).toBe(1);
   });
 
   it('shows all time when no window is given', () => {
@@ -106,7 +121,7 @@ describe('projectGraph', () => {
     const nodes = Array.from({ length: 12 }, (_, i) => node(`concept:n${String(i).padStart(2, '0')}`, 'concept', i));
     const view = projectGraph(nodes, [], { now: NOW, maxNodes: 5 });
     expect(view.nodes.map((n) => n.id)).toEqual(['concept:n00', 'concept:n01', 'concept:n02', 'concept:n03', 'concept:n04']);
-    expect(view.meta).toEqual({ total: 12, truncated: true, focus: null });
+    expect(view.meta).toEqual({ total: 12, truncated: true, focus: null, brainSize: 12 });
   });
 
   it('defaults to the specification’s caps of 500 nodes and 1500 edges', () => {

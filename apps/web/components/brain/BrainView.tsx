@@ -1,7 +1,6 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -21,6 +20,7 @@ import { api } from '../../lib/api';
 import { Legend } from './Legend';
 import { NodeDetailPanel } from './NodeDetailPanel';
 import { TimelineScrubber } from './TimelineScrubber';
+import { BrainEmptyState, emptyVariantFor, errorVariantFor, type BrainEmptyVariant } from './BrainEmptyState';
 import { TruncationChip } from './TruncationChip';
 
 /**
@@ -77,6 +77,10 @@ export function BrainView() {
   const [graph, setGraph] = useState<BrainGraph | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  /** Why the graph could not be loaded, as the learner should hear it — never the raw server message. */
+  const [loadFailure, setLoadFailure] = useState<BrainEmptyVariant | null>(null);
+  /** Bumped by "Try again" to refetch. */
+  const [reloadKey, setReloadKey] = useState(0);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<BrainNodeDetail | null>(null);
@@ -107,13 +111,17 @@ export function BrainView() {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setLoadFailure(null);
     api
       .getBrainGraph({ windowDays, focus, depth: 2 })
       .then((view) => {
         if (!cancelled) setGraph(view);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(describe(err));
+        if (cancelled) return;
+        // Kept for whoever is debugging; the learner gets a sentence instead.
+        console.warn('[brain] could not load the graph:', err);
+        setLoadFailure(errorVariantFor(err));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -121,7 +129,7 @@ export function BrainView() {
     return () => {
       cancelled = true;
     };
-  }, [windowDays, focus]);
+  }, [windowDays, focus, reloadKey]);
 
   /* ---------------- replay ---------------- */
 
@@ -155,7 +163,12 @@ export function BrainView() {
         setPlaying(true);
       }
     } catch (err) {
-      setError(describe(err));
+      console.warn('[brain] could not load the event log:', err);
+      setError(
+        errorVariantFor(err) === 'unavailable'
+          ? 'Replay isn’t available on this server yet.'
+          : 'Could not load your brain’s history. Try again in a moment.',
+      );
     } finally {
       setEventsLoading(false);
     }
@@ -288,53 +301,55 @@ export function BrainView() {
         </div>
       </header>
 
-      <div className="brain-toolbar">
-        <div className="brain-windows" role="group" aria-label="Time window">
-          {WINDOWS.map((w) => (
-            <button
-              key={w.label}
-              type="button"
-              className="chip"
-              aria-pressed={windowDays === w.days}
-              onClick={() => setWindowDays(w.days)}
-            >
-              {w.label}
-            </button>
-          ))}
-        </div>
-        {focus && (
-          <div className="brain-focus">
-            Focused on <strong>{nodes.find((n) => n.id === focus)?.label ?? focus}</strong>
-            <button type="button" className="btn" onClick={() => setFocus(null)}>
-              Show everything
-            </button>
+      {/* Windows and focus only mean something once there is a brain to filter. */}
+      {graph && !(graph.nodes.length === 0 && emptyVariantFor(graph, windowDays) === 'new') && (
+        <div className="brain-toolbar">
+          <div className="brain-windows" role="group" aria-label="Time window">
+            {WINDOWS.map((w) => (
+              <button
+                key={w.label}
+                type="button"
+                className="chip"
+                aria-pressed={windowDays === w.days}
+                onClick={() => setWindowDays(w.days)}
+              >
+                {w.label}
+              </button>
+            ))}
           </div>
-        )}
-      </div>
+          {focus && (
+            <div className="brain-focus">
+              Focused on <strong>{nodes.find((n) => n.id === focus)?.label ?? focus}</strong>
+              <button type="button" className="btn" onClick={() => setFocus(null)}>
+                Show everything
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {error && <div className="notice error">{error}</div>}
 
-      {loading && !graph && (
+      {/* A refresh that failed under a graph already on screen: keep the graph, say so plainly. */}
+      {loadFailure && graph && (
+        <div className="notice warn">
+          Couldn’t refresh your brain — showing what was loaded before.{' '}
+          <button type="button" className="linklike" onClick={() => setReloadKey((k) => k + 1)}>
+            Try again
+          </button>
+        </div>
+      )}
+
+      {loading && !graph && !loadFailure && (
         <div className="brain-canvas-wrap brain-canvas-loading">Loading your brain…</div>
       )}
 
+      {loadFailure && !graph && !loading && (
+        <BrainEmptyState variant={loadFailure} onRetry={() => setReloadKey((k) => k + 1)} />
+      )}
+
       {graph && graph.nodes.length === 0 && !loading && !replaying && (
-        <div className="brain-empty">
-          <h2>{windowDays ? 'Nothing in this window yet' : 'Your brain is empty so far'}</h2>
-          <p className="muted">
-            Ask a question or work through a project step and it starts filling in — every concept you touch becomes a
-            node, and every session draws a wire between them.
-          </p>
-          {windowDays ? (
-            <button type="button" className="btn" onClick={() => setWindowDays(null)}>
-              Show all time
-            </button>
-          ) : (
-            <Link className="btn primary" href="/ask">
-              Ask a question
-            </Link>
-          )}
-        </div>
+        <BrainEmptyState variant={emptyVariantFor(graph, windowDays)} onShowAllTime={() => setWindowDays(null)} />
       )}
 
       {shown && (shown.nodes.length > 0 || replaying) && (

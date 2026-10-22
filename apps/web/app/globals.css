@@ -5597,23 +5597,8 @@ body[data-tutor-resizing='true'] {
   margin-top: 20px;
 }
 
-.brain-empty {
-  text-align: center;
-  padding: 56px 24px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2xl);
-}
 
-.brain-empty h2 {
-  font-size: 20px;
-  margin: 0 0 8px;
-}
 
-.brain-empty p {
-  max-width: 460px;
-  margin: 0 auto 20px;
-}
 
 @media (max-width: 940px) {
   .brain-layout {
@@ -6281,4 +6266,101 @@ body[data-tutor-resizing='true'] {
   .assess-stages {
     font-size: 12px;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Brain — nothing to draw yet                                        */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The same dark stage the live graph sits on, with a dormant network in it,
+ * so an empty brain looks like the beginning of one rather than an error.
+ */
+.brain-empty-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 420px;
+  padding: 40px 24px 48px;
+  border-radius: var(--radius-2xl);
+  background: radial-gradient(ellipse at 50% 40%, #13213d 0%, #0b1428 55%, #070d1c 100%);
+  border: 1px solid #1e293b;
+  box-shadow: var(--shadow-lifted);
+  text-align: center;
+  overflow: hidden;
+}
+
+.brain-dormant {
+  width: min(560px, 100%);
+  height: auto;
+  margin-bottom: 8px;
+}
+
+.brain-dormant line {
+  stroke: #334155;
+  stroke-width: 1.2;
+  stroke-dasharray: 3 5;
+}
+
+.brain-dormant circle {
+  fill: #475569;
+  opacity: 0.55;
+  animation: brain-dormant-pulse 3.2s ease-in-out infinite;
+}
+
+@keyframes brain-dormant-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.8; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brain-dormant circle {
+    animation: none;
+  }
+}
+
+.brain-empty-copy {
+  max-width: 520px;
+}
+
+.brain-empty-copy h2 {
+  margin: 0 0 8px;
+  font-family: var(--font-heading);
+  font-size: 22px;
+  color: #f1f5f9;
+}
+
+.brain-empty-copy p {
+  margin: 0 auto 20px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #cbd5e1;
+}
+
+.brain-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+/* A plain button on the dark stage needs its own contrast. */
+.brain-empty-actions .btn:not(.primary) {
+  background: rgba(30, 41, 59, 0.85);
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+.brain-empty-actions .btn:not(.primary):hover {
+  background: #1e293b;
+}
+
+.brain-empty-stage.is-unavailable .brain-dormant circle,
+.brain-empty-stage.is-error .brain-dormant circle {
+  fill: #64748b;
+  animation: none;
+  opacity: 0.4;
 }

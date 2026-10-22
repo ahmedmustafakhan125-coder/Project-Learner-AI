@@ -76,7 +76,7 @@ describe('GET /api/brain/graph', () => {
     expect(body.nodes).toHaveLength(3);
     expect(body.nodes[0].style).toEqual(expect.objectContaining({ tone: expect.any(String), radius: expect.any(Number) }));
     expect(body.links).toEqual([expect.objectContaining({ source: 'session:thread:t1', target: 'concept:closures', order: 0 })]);
-    expect(body.meta).toEqual({ total: 3, truncated: false, focus: null });
+    expect(body.meta).toEqual({ total: 3, truncated: false, focus: null, brainSize: 3 });
   });
 
   it('applies the time window', async () => {
