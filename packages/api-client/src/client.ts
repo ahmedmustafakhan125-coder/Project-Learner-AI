@@ -2,6 +2,7 @@ import type {
   AgentKind,
   Alternative,
   AttachmentRef,
+  BrainEvent,
   BrainNodeDetail,
   Checkpoint,
   CompiledQuery,
@@ -665,6 +666,15 @@ export class ApiClient {
     if (options.depth !== undefined) params.set('depth', String(options.depth));
     const query = params.toString();
     return this.get<GraphView>(`/api/brain/graph${query ? `?${query}` : ''}`);
+  }
+
+  /**
+   * The learner's whole event log. The brain on any past day is
+   * `projectAt(events, day)` from @ai-edu/core — replay needs nothing else.
+   */
+  async getBrainEvents(): Promise<BrainEvent[]> {
+    const { events } = await this.get<{ events: BrainEvent[] }>('/api/brain/events');
+    return events;
   }
 
   /** Node ids carry colons (`session:thread:<uuid>`), so they are always encoded. */

@@ -225,9 +225,17 @@ describe('rebuildProjection', () => {
     warn.mockRestore();
   });
 
-  it('does not touch the database for an empty log', async () => {
+  it('clears the stored projection when the log is empty — after forgetting, nothing may remain', async () => {
     await expect(brain.rebuildProjection(USER)).resolves.toBe(true);
-    expect(state.rpcCalls).toEqual([]);
+    expect(state.rpcCalls).toHaveLength(1);
+    expect(state.rpcCalls[0]?.args).toMatchObject({
+      p_user_id: USER,
+      p_watermark_at: null,
+      p_watermark_id: null,
+      p_nodes: [],
+      p_edges: [],
+      p_fingerprints: [],
+    });
   });
 
   it('reports a snapshot that lost the race as false, not as an error', async () => {
@@ -357,6 +365,33 @@ describe('findQuestionRecall', () => {
   it('never looks anything up for a question that was only filler', async () => {
     await expect(brain.findQuestionRecall(USER, 'please explain', null)).resolves.toBeNull();
     expect(mockDb.from).not.toHaveBeenCalled();
+  });
+});
+
+describe('forgetSource', () => {
+  it('deletes the source’s events through the locked RPC, then rebuilds from what remains', async () => {
+    state.rpcResult = { data: 3, error: null };
+    state.pages = [[questionRow('kept', 0)]];
+    await brain.forgetSource(USER, 'thread', THREAD);
+    expect(state.rpcCalls[0]).toEqual({
+      name: 'brain_forget_source',
+      args: { p_user_id: USER, p_source_kind: 'thread', p_source_id: THREAD },
+    });
+    expect(state.rpcCalls[1]?.name).toBe('brain_replace_projection');
+  });
+
+  it('does not rebuild when there was nothing to forget', async () => {
+    state.rpcResult = { data: 0, error: null };
+    await brain.forgetSource(USER, 'project', THREAD);
+    expect(state.rpcCalls.map((c) => c.name)).toEqual(['brain_forget_source']);
+  });
+
+  it('never throws — the deletion the learner asked for already happened', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    state.rpcResult = { data: null, error: { message: 'function does not exist' } };
+    await expect(brain.forgetSource(USER, 'thread', THREAD)).resolves.toBeUndefined();
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
   });
 });
 

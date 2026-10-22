@@ -9,6 +9,8 @@ import {
   pointAlong,
   settled,
   toScreen,
+  UPDATE_WARM_TICKS,
+  WARM_TICKS,
   warm,
   zoomAt,
 } from './brainLayout';
@@ -153,7 +155,7 @@ export class BrainRenderer {
     const previous = new Map(this.layout?.nodes.map((n) => [n.id, { x: n.x, y: n.y }]) ?? []);
     this.layout?.simulation.stop();
     this.layout = createLayout(nodes, links, previous);
-    warm(this.layout);
+    warm(this.layout, previous.size > 0 ? UPDATE_WARM_TICKS : WARM_TICKS);
     this.neighbours = neighboursOf(this.layout);
     if (this.hovered && !this.layout.byId.has(this.hovered)) this.hovered = null;
     // A graph new to the screen is fitted; a refetch under a learner who has
@@ -347,12 +349,27 @@ export class BrainRenderer {
     ctx.font = '500 11.5px Inter, system-ui, sans-serif';
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
-    for (const n of layout.nodes) {
-      if (!this.shouldLabel(n, lit, wireIds)) continue;
+    // Most important first, and a label that would sit on top of one already
+    // drawn is skipped: a crowded graph shows fewer names, never a pile of
+    // unreadable ones. The selection and its wire always win.
+    const rank = (n: LayoutNode) =>
+      n.id === this.view.selectedId ? 0 : n.id === this.hovered ? 1 : wireIds.has(n.id) ? 2 : 3;
+    const candidates = layout.nodes
+      .filter((n) => this.shouldLabel(n, lit, wireIds))
+      .sort((a, b) => rank(a) - rank(b) || b.radius - a.radius || (a.id < b.id ? -1 : 1));
+    const placed: Array<{ x: number; y: number; w: number; h: number }> = [];
+    const LABEL_HEIGHT = 14;
+    for (const n of candidates) {
       const p = toScreen(t, n.x ?? 0, n.y ?? 0);
       if (p.x < -50 || p.y < -20 || p.x > this.width + 50 || p.y > this.height + 20) continue;
       const text = clipLabel(n.node.label);
       const x = p.x + n.radius * t.k + 5;
+      const box = { x, y: p.y - LABEL_HEIGHT / 2, w: ctx.measureText(text).width, h: LABEL_HEIGHT };
+      const overlaps = placed.some(
+        (o) => box.x < o.x + o.w + 4 && o.x < box.x + box.w + 4 && box.y < o.y + o.h && o.y < box.y + box.h,
+      );
+      if (overlaps && rank(n) > 2) continue;
+      placed.push(box);
       ctx.lineWidth = 3;
       ctx.strokeStyle = palette.labelHalo;
       ctx.strokeText(text, x, p.y);

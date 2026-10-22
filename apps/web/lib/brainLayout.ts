@@ -50,6 +50,13 @@ export interface ViewTransform {
  */
 export const WARM_TICKS = 50;
 
+/**
+ * Ticks run when a graph already on screen changes — a refetch, or a step of
+ * the replay. Most nodes keep their places, so the layout needs only a nudge,
+ * and replay steps arrive several times a second.
+ */
+export const UPDATE_WARM_TICKS = 12;
+
 export const MIN_ZOOM = 0.2;
 export const MAX_ZOOM = 4;
 
@@ -84,6 +91,29 @@ export function createLayout(
     };
   });
   const byId = new Map(layoutNodes.map((n) => [n.id, n]));
+
+  // A node new to a graph already on screen grows out of something it is
+  // wired to, rather than appearing at the centre and flying across — which
+  // is what makes a replay read as the brain growing. Offsets step round a
+  // golden angle so siblings fan out instead of stacking.
+  if (previous && previous.size > 0) {
+    let seeded = 0;
+    for (const link of links) {
+      const pairs: Array<[string, string]> = [
+        [link.source, link.target],
+        [link.target, link.source],
+      ];
+      for (const [newId, anchorId] of pairs) {
+        const fresh = byId.get(newId);
+        const anchor = byId.get(anchorId);
+        if (!fresh || !anchor || fresh.x !== undefined || anchor.x === undefined || anchor.y === undefined) continue;
+        const angle = seeded * 2.39996;
+        fresh.x = anchor.x + Math.cos(angle) * (anchor.radius + 14);
+        fresh.y = anchor.y + Math.sin(angle) * (anchor.radius + 14);
+        seeded += 1;
+      }
+    }
+  }
 
   const layoutLinks: LayoutLink[] = links
     .filter((link) => byId.has(link.source) && byId.has(link.target))

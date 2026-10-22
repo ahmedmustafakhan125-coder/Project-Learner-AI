@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AGENT_ORDER, type AgentKind } from '@ai-edu/core';
 
 import { requireAuth, userOf } from '../auth.js';
+import { forgetSource } from '../brain.js';
 import { db } from '../db.js';
 
 /**
@@ -236,6 +237,9 @@ export async function threadRoutes(app: FastifyInstance): Promise<void> {
         .send({ error: 'delete_failed', message: 'Could not delete that conversation.' });
     }
     if (!data) return reply.code(404).send({ error: 'not_found', message: 'Conversation not found.' });
+
+    // Deleted means deleted: the brain forgets what it learned here too.
+    void forgetSource(user.id, 'thread', params.data.id);
 
     return reply.send({ ok: true });
   });

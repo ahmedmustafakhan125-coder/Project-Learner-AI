@@ -4,6 +4,7 @@ import type { BrainGraphLink, BrainGraphNode } from '@ai-edu/api-client';
 import {
   MAX_ZOOM,
   MIN_ZOOM,
+  UPDATE_WARM_TICKS,
   WARM_TICKS,
   createLayout,
   fitTransform,
@@ -88,6 +89,30 @@ describe('createLayout', () => {
     const second = createLayout([node('a'), node('b'), node('c')], [link('a', 'b')], previous);
     expect(second.byId.get('a')?.x).toBe(previous.get('a')?.x);
     expect(second.byId.get('a')?.y).toBe(previous.get('a')?.y);
+  });
+});
+
+describe('growing a graph already on screen (replay)', () => {
+  it('places a new node beside something it is wired to, not at the centre', () => {
+    const previous = new Map([['a', { x: 300, y: -200 }]]);
+    const layout = createLayout([node('a', 6), node('b', 4)], [link('a', 'b', 'ACTIVATED')], previous);
+    const b = layout.byId.get('b');
+    expect(Math.hypot((b?.x ?? 0) - 300, (b?.y ?? 0) + 200)).toBeLessThan(40);
+  });
+
+  it('fans several new siblings out rather than stacking them', () => {
+    const previous = new Map([['a', { x: 0, y: 0 }]]);
+    const layout = createLayout(
+      [node('a'), node('b'), node('c'), node('d')],
+      [link('a', 'b'), link('a', 'c'), link('a', 'd')],
+      previous,
+    );
+    const spots = ['b', 'c', 'd'].map((id) => `${layout.byId.get(id)?.x?.toFixed(2)},${layout.byId.get(id)?.y?.toFixed(2)}`);
+    expect(new Set(spots).size).toBe(3);
+  });
+
+  it('warms an update far less than a first layout, so replay steps stay quick', () => {
+    expect(UPDATE_WARM_TICKS).toBeLessThan(WARM_TICKS / 2);
   });
 });
 

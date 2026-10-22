@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { nodeDetail, projectGraph } from '@ai-edu/core';
 
 import { requireAuth, userOf } from '../auth.js';
-import { findQuestionRecall, loadProjection, scheduleRebuild } from '../brain.js';
+import { findQuestionRecall, loadBrainEvents, loadProjection, scheduleRebuild } from '../brain.js';
 import { rateLimitConfig } from '../rateLimit.js';
 
 /**
@@ -75,6 +75,21 @@ export async function brainRoutes(app: FastifyInstance): Promise<void> {
     const detail = nodeDetail(parsed.data.id, projection.nodes, projection.edges);
     if (!detail) return reply.code(404).send({ error: 'not_found' });
     return detail;
+  });
+
+  /*
+   * The caller's whole event log, for replay. The projection is a pure
+   * function in packages/core, so the browser can fold these up to any day
+   * and show the brain as it stood then — every step of the scrubber without
+   * a round trip.
+   */
+  app.get('/api/brain/events', { preHandler: requireAuth }, async (request, reply) => {
+    try {
+      return { events: await loadBrainEvents(userOf(request).id) };
+    } catch (err) {
+      request.log.error({ err }, 'brain events load failed');
+      return reply.code(500).send({ error: 'brain_unavailable', message: 'Could not load your brain’s history.' });
+    }
   });
 
   /*

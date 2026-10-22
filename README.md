@@ -318,6 +318,13 @@ racing rebuilds otherwise let the stale one land last and drop the newest event.
 `brain_events` itself is append-only: a trigger rejects `UPDATE`. Editing an
 event would silently rewrite the learner's history on the next rebuild.
 
+The one deletion is forgetting. Deleting a conversation or a project deletes
+its events through `brain_forget_source` (`0012_brain_forget.sql`), under the
+same per-learner lock as the projection write, and clears the stored
+watermark — the log has just lost events, possibly its newest, so the rebuild
+from what remains carries an older watermark and would otherwise be refused as
+stale, leaving the forgotten conversation in the graph. Deleted means deleted.
+
 ### 10. The browser can read the brain and write none of it
 
 The anon key may `SELECT` a learner's own brain rows and nothing else.
@@ -445,7 +452,7 @@ against a live endpoint:
 |---|---|
 | `npm run dev` | web on :3000, api on :3001 |
 | `npm run build` | Build everything (Turborepo, cached) |
-| `npm test` | 804 unit tests — no network, no browser, no keys, no database |
+| `npm test` | 830 unit tests — no network, no browser, no keys, no database |
 | `npm run typecheck` | `tsc --noEmit` per workspace |
 | `npm run lint` | ESLint, including the portability guards |
 | `npm run smoke` | Live provider round-trip + cost accounting |
@@ -493,8 +500,16 @@ tutor with its write-code gate, and per-specialist follow-up threads.
   (`findRecall`, `packages/core/src/brain/recall.ts`). It is an offer, never a
   redirect: the new question is answered either way.
 
-Still to come: mistakes with a timeline (Phase 4), and the MCQ gate with a
-graded viva (Phase 4.5).
+- **Phase 4** — mistakes and time. With nothing selected, the brain leads with
+  the mistakes that keep coming back (`recurringMistakes`), and a mistake says
+  how many sessions it spans. "Replay how your brain grew" fetches the event
+  log once and folds it to any past day in the browser (`projectAt`,
+  `activityTimeline` in `packages/core/src/brain/timeline.ts`) — scrub or play,
+  with new concepts growing out of the ones they connect to. Deleting a
+  conversation or project now makes the brain forget it too (see
+  [invariant 9](#9-the-brain-is-rebuilt-from-events-never-edited)).
+
+Still to come: the MCQ gate with a graded viva (Phase 4.5).
 
 P3's exit criterion is deliberately adversarial, and it is met **by execution,
 not by inspection**. `apps/web/test/sandbox-containment.browser.test.ts` drives
@@ -522,14 +537,14 @@ Known and open, none of it blocking:
 ## Tests
 
 `npm test` is hermetic by design — no network, no browser, no keys, no database.
-804 tests, about 25 seconds cold.
+830 tests, about 25 seconds cold.
 
 | Package | Tests | What they protect |
 |---|---:|---|
-| `@ai-edu/core` | 518 | prompt-prefix stability, interview logic, fan-out stagger and isolation, generation schemas, prefetch policy, pacing, hint unlocking, knowledge determinism, tutor gate, sandbox-runnability guard, finished-project assembly, brain projection determinism, canonical-question goldens, mastery formula, graph selection and styling, memory block budget and placement, question recall |
-| `@ai-edu/api` | 112 | attachment allowlist, binary detection, PDF extraction, gateway failure policy, OKF loader, thread routes, ZIP writer, brain event log, projection writes and read routes, memory recall and its timeout, memory through the fan-out route |
+| `@ai-edu/core` | 530 | prompt-prefix stability, interview logic, fan-out stagger and isolation, generation schemas, prefetch policy, pacing, hint unlocking, knowledge determinism, tutor gate, sandbox-runnability guard, finished-project assembly, brain projection determinism, canonical-question goldens, mastery formula, graph selection and styling, memory block budget and placement, question recall, replay and recurring mistakes |
+| `@ai-edu/api` | 117 | attachment allowlist, binary detection, PDF extraction, gateway failure policy, OKF loader, thread routes, ZIP writer, brain event log, projection writes and read routes, memory recall and its timeout, memory through the fan-out route, forgetting on delete |
 | `@ai-edu/llm` | 68 | registry, cost nulls, stream utils, adapter mapping, structured-output repair, retry backoff |
-| `@ai-edu/web` | 80 | sandbox configuration guards, CSP shape, Markdown rendering without a Markdown library, stylesheet invariants (contrast, full-bleed artwork), brain layout budget and geometry, brain read-only guard, recall banner and chips |
+| `@ai-edu/web` | 89 | sandbox configuration guards, CSP shape, Markdown rendering without a Markdown library, stylesheet invariants (contrast, full-bleed artwork), brain layout budget and geometry, brain read-only guard, recall banner and chips, replay controls and growth layout |
 | `@ai-edu/api-client` | 17 | SSE framing across chunk boundaries, multi-byte splits, CRLF, errors |
 | `@ai-edu/runners` | 9 | static verification layering and short-circuiting |
 

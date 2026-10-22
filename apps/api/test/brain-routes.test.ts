@@ -10,16 +10,18 @@ import type { BrainEdge, BrainNode } from '@ai-edu/core';
  * validation, scoping every load to the caller, and the error shapes.
  */
 
-const { mockLoadProjection, mockScheduleRebuild, mockFindQuestionRecall } = vi.hoisted(() => ({
+const { mockLoadProjection, mockScheduleRebuild, mockFindQuestionRecall, mockLoadBrainEvents } = vi.hoisted(() => ({
   mockLoadProjection: vi.fn(),
   mockScheduleRebuild: vi.fn(async () => {}),
   mockFindQuestionRecall: vi.fn(),
+  mockLoadBrainEvents: vi.fn(),
 }));
 
 vi.mock('../src/brain.js', () => ({
   loadProjection: mockLoadProjection,
   scheduleRebuild: mockScheduleRebuild,
   findQuestionRecall: mockFindQuestionRecall,
+  loadBrainEvents: mockLoadBrainEvents,
 }));
 
 vi.mock('../src/auth.js', async (importOriginal) => {
@@ -160,5 +162,23 @@ describe('POST /api/brain/recall', () => {
     const res = await app.inject({ method: 'POST', url: '/api/brain/recall', payload: { query: 'closures?' } });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ match: null });
+  });
+});
+
+describe('GET /api/brain/events', () => {
+  it('returns the caller’s own event log, for replay', async () => {
+    const events = [{ id: 'e1', kind: 'offer_dismissed', sourceKind: 'thread', sourceId: 't', dedupeKey: 'k', createdAt: recent, payload: { conceptKey: 'closures' } }];
+    mockLoadBrainEvents.mockResolvedValue(events);
+    const res = await app.inject({ method: 'GET', url: '/api/brain/events' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ events });
+    expect(mockLoadBrainEvents).toHaveBeenCalledWith('user-1');
+  });
+
+  it('reports a load failure without leaking it', async () => {
+    mockLoadBrainEvents.mockRejectedValue(new Error('relation does not exist'));
+    const res = await app.inject({ method: 'GET', url: '/api/brain/events' });
+    expect(res.statusCode).toBe(500);
+    expect(res.json().error).toBe('brain_unavailable');
   });
 });
