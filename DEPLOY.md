@@ -30,7 +30,7 @@ uses the same application processes with Supabase running in Docker.
 | Node.js | `>=20.11.0` | Use a current LTS release. |
 | npm | `11.10.0` | Install from the repository root; npm workspaces are used. |
 | Docker Desktop | Running | Required for the local Supabase stack. |
-| Python | 3.11+ | Required only for the security gateway repository. |
+| Python | 3.11 | Required only for the security gateway in `apps/gateway`. The setup below uses [uv](https://docs.astral.sh/uv/), which fetches 3.11 itself. |
 | Git | Any recent version | |
 
 The Supabase CLI is vendored at `.tools/supabase.exe` and is gitignored. On
@@ -51,8 +51,9 @@ npm run dev
 ```
 
 The web app runs at `http://localhost:3000` and the API at
-`http://localhost:3001`. Start the security gateway before asking questions;
-model-bound routes fail closed when screening is unavailable.
+`http://localhost:3001`. Start the security gateway (`npm run gateway`, after
+the one-time setup under [Security gateway](#security-gateway)) before asking
+questions; model-bound routes fail closed when screening is unavailable.
 
 ## Environment
 
@@ -131,11 +132,26 @@ Local email confirmation is disabled, so any test address works in the UI.
 
 ## Security gateway
 
-The gateway runs from the separate `llm-security-gateway-final` repository:
+The gateway lives in `apps/gateway`, merged with its history from the
+`llm-security-gateway-final` repository. It is a Python service, not an npm
+workspace, so `npm run dev` does not start it. Set it up once:
 
-```bash
-uvicorn app.main:app --reload --port 8000
+```powershell
+cd apps\gateway
+uv venv --python 3.11.9
+uv pip install -r requirements.txt
+.venv\Scripts\python -m app.detectors.semantic_detector   # trains the classifier once
+cd ..\..
 ```
+
+Then run it alongside `npm run dev`:
+
+```powershell
+npm run gateway
+```
+
+To bring in later changes from the original repository:
+`git subtree pull --prefix=apps/gateway <gateway-repo-url> main`.
 
 Set `SECURITY_GATEWAY_URL=http://127.0.0.1:8000` in the root `.env`. Questions,
 interview answers, tutor turns, project generation prompts, and attachment text
@@ -284,14 +300,13 @@ loads `../../.env` itself and systemd is already supplying the environment.
 
 ## 4. The security gateway
 
-From the `llm-security-gateway-final` repository:
+The gateway ships in this repository under `apps/gateway`, so the checkout from
+step 3 already contains it. `requirements.txt` installs the spaCy model it uses.
 
 ```bash
-cd /srv/ai-edu
-git clone <gateway-repo-url> gateway && cd gateway
+cd /srv/ai-edu/app/apps/gateway
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m spacy download en_core_web_lg   # if not vendored
 .venv/bin/python -m app.detectors.semantic_detector # trains the classifier once
 ```
 
@@ -305,8 +320,8 @@ After=network.target
 [Service]
 Type=simple
 User=deploy
-WorkingDirectory=/srv/ai-edu/gateway
-ExecStart=/srv/ai-edu/gateway/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+WorkingDirectory=/srv/ai-edu/app/apps/gateway
+ExecStart=/srv/ai-edu/app/apps/gateway/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=3
 
