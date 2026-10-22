@@ -3,13 +3,14 @@
 Local development and production operations for Project Learner.
 
 The repository is an npm-workspaces monorepo: a Next.js web app, a Fastify API,
-portable domain packages, a Supabase database, and a separate Python security
-gateway. [README.md](README.md) explains the architecture and the eight
+portable domain packages, a Supabase database, and the Python security gateway
+in `apps/gateway`. [README.md](README.md) explains the architecture and the eight
 invariants that must be preserved when changing the system.
 
-The deployment shape is **Next.js on Vercel**, **Fastify and the Python security
-gateway on a Linux VPS**, and **Postgres on Supabase cloud**. The local setup
-uses the same application processes with Supabase running in Docker.
+The deployment shape is **Next.js on Vercel**, **the Fastify API and the Python
+security gateway on Render**, and **Postgres on Supabase cloud**. A single Linux
+VPS can stand in for Render. The local setup uses the same application processes
+with Supabase running in Docker.
 
 ---
 
@@ -17,7 +18,7 @@ uses the same application processes with Supabase running in Docker.
 
 - [Local development](#local-development)
 - [Production deployment](#production-deployment)
-- [Troubleshooting](#troubleshooting)
+- [Troubleshooting](#failure-modes-and-what-each-looks-like)
 
 ---
 
@@ -30,7 +31,7 @@ uses the same application processes with Supabase running in Docker.
 | Node.js | `>=20.11.0` | Use a current LTS release. |
 | npm | `11.10.0` | Install from the repository root; npm workspaces are used. |
 | Docker Desktop | Running | Required for the local Supabase stack. |
-| Python | 3.11+ | Required only for the security gateway repository. |
+| Python | 3.11 | Required only for the security gateway in `apps/gateway`. The setup below uses [uv](https://docs.astral.sh/uv/), which fetches 3.11 itself. |
 | Git | Any recent version | |
 
 The Supabase CLI is vendored at `.tools/supabase.exe` and is gitignored. On
@@ -51,8 +52,9 @@ npm run dev
 ```
 
 The web app runs at `http://localhost:3000` and the API at
-`http://localhost:3001`. Start the security gateway before asking questions;
-model-bound routes fail closed when screening is unavailable.
+`http://localhost:3001`. Start the security gateway (`npm run gateway`, after
+the one-time setup under [Security gateway](#security-gateway)) before asking
+questions; model-bound routes fail closed when screening is unavailable.
 
 ## Environment
 
@@ -131,11 +133,27 @@ Local email confirmation is disabled, so any test address works in the UI.
 
 ## Security gateway
 
-The gateway runs from the separate `llm-security-gateway-final` repository:
+The gateway lives in `apps/gateway`, merged with its history from the
+`llm-security-gateway-final` repository. It is a Python service, not an npm
+workspace, so `npm run dev` does not start it. Set it up once:
 
-```bash
-uvicorn app.main:app --reload --port 8000
+```powershell
+cd apps\gateway
+uv venv --python 3.11.9
+uv pip install -r requirements.txt
+.venv\Scripts\python -m app.detectors.semantic_detector   # trains the classifier once
+cd ..\..
 ```
+
+Then run it alongside `npm run dev`:
+
+```powershell
+npm run gateway
+```
+
+The gateway is maintained here now. Do not `git subtree pull` from the old
+`llm-security-gateway-final` repository: its history was rewritten on the way
+in to strip example API keys, and a pull would bring them back.
 
 Set `SECURITY_GATEWAY_URL=http://127.0.0.1:8000` in the root `.env`. Questions,
 interview answers, tutor turns, project generation prompts, and attachment text
@@ -162,7 +180,16 @@ Pyodide into `apps/web/public/` from installed packages.
 # Production deployment
 
 Production deployment: **Next.js web app on Vercel**, **Fastify API and the Python
-security gateway on a Linux VPS**, **Postgres on Supabase cloud**.
+security gateway on Render**, **Postgres on Supabase cloud**. Sections 1–4 set
+that up. [Alternative: one VPS](#alternative-one-vps) replaces section 2 with a
+server you run yourself.
+
+```
+Vercel           project-learner-ai-web.vercel.app         → Next.js
+Render           project-learner-ai.onrender.com           → Fastify
+                 llm-security-gateway-final.onrender.com   → security gateway
+Supabase cloud                                             → Postgres + auth
+```
 
 ---
 
@@ -178,7 +205,203 @@ Fastify process:
 - Rate limiting is in-memory. Across serverless instances it would count nothing.
 
 Vercel runs functions, not servers. The web app deploys there cleanly; the API
-needs a host that runs a Node process.
+needs a host that runs a Node process. A Vercel project pointed at `apps/api`
+answers every request with `500 FUNCTION_INVOCATION_FAILED`, so delete one if it
+exists rather than repairing its build.
+
+---
+
+## 1. Supabase
+
+Create a cloud project. Apply the migrations **in order** — `0001` through
+`0013` — via the SQL editor or `supabase db push`. Order matters: `0003` makes
+the attempt-insert policy `RESTRICTIVE`, which only behaves correctly on top of
+the permissive owner policy `0001` creates, and `0011` revokes privileges that
+`0004`'s default grants would otherwise hand the browser.
+
+On a project that already has some of them, apply only the missing ones, in
+order. `supabase db push` works that out from its migration history, but only
+if the earlier ones went through it too; if they were pasted into the SQL
+editor, that history is empty and the CLI would start again at `0001`. Check
+with `.\.tools\supabase.exe migration list --linked` first, and paste the
+missing files into the SQL editor when the history is empty.
+
+From **Settings → API**, take:
+
+| Value | Goes to |
+|---|---|
+| Project URL | The API (Render or VPS) and Vercel |
+| `anon` key | Vercel (browser). Safe — RLS gates every table. |
+| `service_role` key | **The API only** (Render or VPS). Bypasses RLS. Never `NEXT_PUBLIC_`, never in the browser. |
+
+---
+
+## 2. The API and the gateway on Render
+
+Two Render **Web Services**, both deploying `main` of this repository. Create
+them with **New → Web Service**, or change an existing one under **Settings**;
+a service's repository is under **Build → Source → Edit**.
+
+**The API** — service `project-learner-ai`, at `https://project-learner-ai.onrender.com`
+
+| Setting | Value |
+|---|---|
+| Language | Node |
+| Branch | `main` |
+| Root Directory | *(empty)* |
+| Build Command | `npm ci --include=dev && npx turbo run build --filter=@ai-edu/api` |
+| Start Command | `node apps/api/dist/server.js` |
+| Health Check Path | `/health` |
+| Auto-Deploy | On Commit |
+| Build Filters → Included Paths | `apps/api/**`, `packages/core/**`, `packages/llm/**`, `knowledge/**`, `package.json`, `package-lock.json`, `turbo.json`, `tsconfig.base.json` |
+
+Root Directory stays empty because the API needs the workspace packages,
+`knowledge/` and the root lockfile, and Render drops everything outside a
+service's root directory. `--include=dev` is needed because turbo and
+typescript are devDependencies, and with `NODE_ENV=production` set a plain
+`npm ci` skips them. The build command builds only the API and the two packages
+it imports; a root `npm run build` would also build the web app, which is
+Vercel's job.
+
+| Environment variable | Value |
+|---|---|
+| `NODE_VERSION` | `22` |
+| `NODE_ENV` | `production` |
+| `WEB_ORIGIN` | `https://project-learner-ai-web.vercel.app` — CORS accepts exactly this origin |
+| `SUPABASE_URL` | `https://<ref>.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | From Supabase **Settings → API**. Here only — never Vercel. |
+| `SECURITY_GATEWAY_URL` | `https://llm-security-gateway-final.onrender.com` |
+| `SECURITY_GATEWAY_TIMEOUT_MS` | `100000` on the free plan; see below |
+| `DAILY_USD_BUDGET_PER_USER` | `2` |
+| Provider keys | At least one of `OPENAI_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `MOONSHOT_API_KEY` |
+
+**The gateway** — service `llm-security-gateway-final`, at `https://llm-security-gateway-final.onrender.com`
+
+| Setting | Value |
+|---|---|
+| Language | Python 3 |
+| Branch | `main` |
+| Root Directory | `apps/gateway` |
+| Build Command | `pip install -r requirements.txt && python -m app.detectors.semantic_detector` |
+| Start Command | `uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
+| Health Check Path | `/health` |
+| Auto-Deploy | On Commit |
+| Environment variable | `PYTHON_VERSION` = `3.11.9` |
+
+The service is named after the `llm-security-gateway-final` repository it
+deployed before the gateway moved into `apps/gateway`. Keeping the service keeps
+its URL, so the API's `SECURITY_GATEWAY_URL` stays the same. A gateway created
+anew gets its own URL; put that in `SECURITY_GATEWAY_URL` instead.
+
+```bash
+curl https://llm-security-gateway-final.onrender.com/health   # {"status":"ok",...}
+curl https://project-learner-ai.onrender.com/health           # {"ok":true}
+```
+
+**On the free plan both services sleep** after 15 idle minutes. The API wakes
+within a minute; the gateway takes about 90 seconds, loading spaCy. Hence
+`SECURITY_GATEWAY_TIMEOUT_MS=100000`: at the code default of 15 s, every
+question asked while the gateway woke would be refused as
+`screening_unavailable`. The first question after a quiet spell is slow rather
+than lost. On a paid instance type, set the timeout back to `15000`, and make
+the gateway a private service reached at its internal address: it has no
+authentication of its own, and a free web service is public.
+
+Delete any Vercel project pointed at `apps/api`; see
+[Why the API is not on Vercel](#why-the-api-is-not-on-vercel).
+
+---
+
+## 3. The web app on Vercel
+
+Import the repository. It is an npm-workspaces monorepo, so:
+
+| Setting | Value |
+|---|---|
+| Framework | Next.js (auto-detected) |
+| Root Directory | `apps/web` — **tick "Include files outside the root directory"** |
+| Install Command | `npm install --prefix ../..` |
+| Build Command | `npm run build` (leave default) |
+
+Leave the build command alone: `npm run build` fires `prebuild`, which runs
+`apps/web/scripts/vendor-assets.mjs` and copies Monaco and the Pyodide runtime
+out of `node_modules` into `public/`. Those ~27 MB are gitignored on purpose, so
+they are rebuilt on every deploy and cannot drift from `package.json`. **If that
+script does not run, the code editor and the Python sandbox silently never
+load.**
+
+Environment variables:
+
+```
+NEXT_PUBLIC_SUPABASE_URL       = https://<ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY  = <anon key>
+NEXT_PUBLIC_API_URL            = https://project-learner-ai.onrender.com
+NEXT_PUBLIC_APP_ORIGIN         = https://project-learner-ai-web.vercel.app
+```
+
+`NEXT_PUBLIC_APP_ORIGIN` is the origin of this site itself, and it is a security
+control rather than a convenience. The `/sandbox` route builds its CSP from it
+and names it as the target of every `postMessage` the sandbox sends back. Unset,
+the route rebuilds the origin from the request's `Host` header — which a proxy
+forwarding `$host` unvalidated lets a caller choose, putting their origin into
+the sandbox's `script-src` and `connect-src`. The route logs a warning on every
+boot that falls back, so check the deploy log if you are unsure.
+
+`NEXT_PUBLIC_*` values are **inlined at build time**. Set them before the first
+build; changing them later does nothing until you redeploy. Moving an existing
+project to a new API therefore means changing `NEXT_PUBLIC_API_URL` and then
+redeploying.
+
+Then close the loop: `WEB_ORIGIN` on the API service must be this site's exact
+origin. CORS accepts exactly one origin.
+
+---
+
+## 4. Verify
+
+```bash
+curl https://project-learner-ai.onrender.com/health                          # {"ok":true}
+curl https://project-learner-ai.onrender.com/api/brain/graph                 # 401, not 404
+curl -I https://project-learner-ai-web.vercel.app | grep -i content-security  # nonce-... present
+```
+
+In the browser: sign up, ask a question, watch four agents stream in parallel.
+Open a project, edit a file, run a checkpoint.
+
+---
+
+## Failure modes, and what each looks like
+
+| Symptom | Cause |
+|---|---|
+| Site loads, lists models, **refuses every question** with 422 | Gateway down or unreachable. Model-bound routes fail **closed** by design — an unscreened prompt never reaches a model. Check the gateway's `/health` first, always. |
+| Only the first question after a quiet spell is refused | A free-plan gateway took longer to wake than `SECURITY_GATEWAY_TIMEOUT_MS`. See section 2. |
+| Brain and assessment features fail with 404 (`Route GET:/api/brain/graph not found`) | The API is running an old build: its latest Render deploy failed or never started. Check the service's **Events**, then its settings (section 2). |
+| Brain and assessment features fail with a database error | Migrations `0011`–`0013` are missing from Supabase. See section 1. |
+| Vercel reports a failed deployment for an API project on every push | A Vercel project points at `apps/api`. Delete it; the API deploys on Render. |
+| Browser CORS error on `/api/agents/ask` | `WEB_ORIGIN` does not exactly match the Vercel origin. Scheme and host must both match. |
+| Answers arrive in one lump at the end instead of streaming | nginx buffering, or `proxy_read_timeout` too low (VPS). |
+| Pages render correctly but **nothing is interactive** | `apps/web/proxy.ts` is not running. It mints the per-request CSP nonce; without it Next's inline hydration scripts are refused and React never hydrates. No error appears — the page just looks fine and does nothing. `app/layout.tsx` sets `force-dynamic` for the same reason; removing it reintroduces the bug. |
+| Code editor stuck on "Loading editor…", Python checkpoints hang | `vendor-assets.mjs` did not run during the Vercel build. Both libraries default to a CDN and the app CSP lists none. |
+| Login does nothing | `NEXT_PUBLIC_SUPABASE_*` missing at build time, or set after the build with no redeploy. |
+| Deploy log warns `NEXT_PUBLIC_APP_ORIGIN is not set` | The sandbox is deriving its own CSP from the `Host` header. Set the variable and redeploy — see the environment list above. |
+| API will not start | `SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` missing. It fails loudly at boot on purpose. |
+
+---
+
+## Updating
+
+Render and Vercel redeploy from `main` on every push. Supabase does not: apply
+new migrations yourself, in order, **before** merging the code that needs them,
+or the new routes run against the old schema.
+
+---
+
+## Alternative: one VPS
+
+Instead of section 2, run the API and the gateway on one Linux server behind
+nginx. Sections 1, 3 and 4 still apply, with your own domains in place of the
+Render URLs.
 
 ```
 VPS   nginx :443 ──► api.example.com   → Fastify   127.0.0.1:3001
@@ -191,27 +414,7 @@ Supabase cloud                         → Postgres + auth
 anything that can reach it can spend your CPU on spaCy. Only the API talks to
 it, and that is a local hop.
 
----
-
-## 1. Supabase
-
-Create a cloud project. Apply the migrations **in order** — `0001` through
-`0013` — via the SQL editor or `supabase db push`. Order matters: `0003` makes
-the attempt-insert policy `RESTRICTIVE`, which only behaves correctly on top of
-the permissive owner policy `0001` creates, and `0011` revokes privileges that
-`0004`'s default grants would otherwise hand the browser.
-
-From **Settings → API**, take:
-
-| Value | Goes to |
-|---|---|
-| Project URL | VPS and Vercel |
-| `anon` key | Vercel (browser). Safe — RLS gates every table. |
-| `service_role` key | **VPS only.** Bypasses RLS. Never `NEXT_PUBLIC_`, never in the browser. |
-
----
-
-## 2. VPS prerequisites
+### VPS prerequisites
 
 ```bash
 sudo apt update && sudo apt install -y nginx git python3-venv python3-pip
@@ -223,9 +426,7 @@ sudo adduser --system --group --home /srv/ai-edu deploy
 `package.json` requires Node `>=20.11.0`. The gateway loads spaCy and Presidio
 models — budget **1.5–2 GB RAM** for it alone.
 
----
-
-## 3. The API
+### The API
 
 ```bash
 sudo -u deploy -H bash
@@ -243,7 +444,7 @@ Create `/srv/ai-edu/app/.env`, then `chmod 600` it:
 ```bash
 NODE_ENV=production
 PORT=3001
-WEB_ORIGIN=https://app.example.com          # exact Vercel origin, see §6
+WEB_ORIGIN=https://app.example.com          # exact Vercel origin, see section 3
 SUPABASE_URL=https://<ref>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<service_role key>
 ANTHROPIC_API_KEY=<key>                     # at least one provider key
@@ -280,18 +481,15 @@ WantedBy=multi-user.target
 `ExecStart` calls node directly rather than `npm start`, because that script
 loads `../../.env` itself and systemd is already supplying the environment.
 
----
+### The security gateway
 
-## 4. The security gateway
-
-From the `llm-security-gateway-final` repository:
+The gateway ships in this repository under `apps/gateway`, so the checkout from
+[The API](#the-api) already contains it. `requirements.txt` installs the spaCy model it uses.
 
 ```bash
-cd /srv/ai-edu
-git clone <gateway-repo-url> gateway && cd gateway
+cd /srv/ai-edu/app/apps/gateway
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m spacy download en_core_web_lg   # if not vendored
 .venv/bin/python -m app.detectors.semantic_detector # trains the classifier once
 ```
 
@@ -305,8 +503,8 @@ After=network.target
 [Service]
 Type=simple
 User=deploy
-WorkingDirectory=/srv/ai-edu/gateway
-ExecStart=/srv/ai-edu/gateway/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+WorkingDirectory=/srv/ai-edu/app/apps/gateway
+ExecStart=/srv/ai-edu/app/apps/gateway/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=3
 
@@ -323,9 +521,7 @@ curl 127.0.0.1:8000/health
 curl 127.0.0.1:3001/health          # {"ok":true}
 ```
 
----
-
-## 5. nginx
+### nginx
 
 The SSE directives are not optional. The fan-out holds one connection open
 while four agents stream; default buffering collects the whole response and
@@ -367,80 +563,7 @@ sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d api.example.com
 ```
 
----
-
-## 6. The web app on Vercel
-
-Import the repository. It is an npm-workspaces monorepo, so:
-
-| Setting | Value |
-|---|---|
-| Framework | Next.js (auto-detected) |
-| Root Directory | `apps/web` — **tick "Include files outside the root directory"** |
-| Install Command | `npm install --prefix ../..` |
-| Build Command | `npm run build` (leave default) |
-
-Leave the build command alone: `npm run build` fires `prebuild`, which runs
-`apps/web/scripts/vendor-assets.mjs` and copies Monaco and the Pyodide runtime
-out of `node_modules` into `public/`. Those ~27 MB are gitignored on purpose, so
-they are rebuilt on every deploy and cannot drift from `package.json`. **If that
-script does not run, the code editor and the Python sandbox silently never
-load.**
-
-Environment variables:
-
-```
-NEXT_PUBLIC_SUPABASE_URL       = https://<ref>.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY  = <anon key>
-NEXT_PUBLIC_API_URL            = https://api.example.com
-NEXT_PUBLIC_APP_ORIGIN         = https://app.example.com
-```
-
-`NEXT_PUBLIC_APP_ORIGIN` is the origin of this site itself, and it is a security
-control rather than a convenience. The `/sandbox` route builds its CSP from it
-and names it as the target of every `postMessage` the sandbox sends back. Unset,
-the route rebuilds the origin from the request's `Host` header — which a proxy
-forwarding `$host` unvalidated lets a caller choose, putting their origin into
-the sandbox's `script-src` and `connect-src`. The route logs a warning on every
-boot that falls back, so check the deploy log if you are unsure.
-
-`NEXT_PUBLIC_*` values are **inlined at build time**. Set them before the first
-build; changing them later does nothing until you redeploy.
-
-Then close the loop: set `WEB_ORIGIN` in `/srv/ai-edu/app/.env` to the final
-Vercel origin and `sudo systemctl restart ai-edu-api`. CORS accepts exactly one
-origin.
-
----
-
-## 7. Verify
-
-```bash
-curl https://api.example.com/health                       # {"ok":true}
-curl -I https://app.example.com | grep -i content-security # nonce-... present
-```
-
-In the browser: sign up, ask a question, watch four agents stream in parallel.
-Open a project, edit a file, run a checkpoint.
-
----
-
-## Failure modes, and what each looks like
-
-| Symptom | Cause |
-|---|---|
-| Site loads, lists models, **refuses every question** with 422 | Gateway down or unreachable. Model-bound routes fail **closed** by design — an unscreened prompt never reaches a model. Check `curl 127.0.0.1:8000/health` first, always. |
-| Browser CORS error on `/api/agents/ask` | `WEB_ORIGIN` does not exactly match the Vercel origin. Scheme and host must both match. |
-| Answers arrive in one lump at the end instead of streaming | nginx buffering, or `proxy_read_timeout` too low. |
-| Pages render correctly but **nothing is interactive** | `apps/web/proxy.ts` is not running. It mints the per-request CSP nonce; without it Next's inline hydration scripts are refused and React never hydrates. No error appears — the page just looks fine and does nothing. `app/layout.tsx` sets `force-dynamic` for the same reason; removing it reintroduces the bug. |
-| Code editor stuck on "Loading editor…", Python checkpoints hang | `vendor-assets.mjs` did not run during the Vercel build. Both libraries default to a CDN and the app CSP lists none. |
-| Login does nothing | `NEXT_PUBLIC_SUPABASE_*` missing at build time, or set after the build with no redeploy. |
-| Deploy log warns `NEXT_PUBLIC_APP_ORIGIN is not set` | The sandbox is deriving its own CSP from the `Host` header. Set the variable and redeploy — see the environment list above. |
-| API will not start | `SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` missing. It fails loudly at boot on purpose. |
-
----
-
-## Updating
+### Updating a VPS
 
 ```bash
 cd /srv/ai-edu/app && git pull
@@ -449,8 +572,9 @@ npx turbo run build --filter=@ai-edu/api --force
 sudo systemctl restart ai-edu-api
 ```
 
-Vercel redeploys from git automatically. New migrations must be applied to
-Supabase separately, in order, before restarting the API.
+When `apps/gateway` changed too, run `.venv/bin/pip install -r requirements.txt`
+in it if its requirements did, then `sudo systemctl restart ai-edu-gateway`.
+New migrations go to Supabase first, as in [Updating](#updating).
 
 ---
 

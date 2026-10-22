@@ -86,6 +86,8 @@ apps/
   api/          Fastify 5 — orchestration and SSE      interview, fan-out, projects,
                                                        attempts, follow-ups, tutor,
                                                        brain, assessment
+  gateway/      FastAPI — prompt screening             rule + semantic detectors,
+                                                       Presidio PII, ALLOW/MASK/BLOCK
 packages/
   llm/          provider-agnostic LLM layer            registry + 2 adapters
   core/         portable domain logic                  interview, agents, generation,
@@ -495,6 +497,7 @@ against a live endpoint:
 | `npm run lint` | ESLint, including the portability guards |
 | `npm run smoke` | Live provider round-trip + cost accounting |
 | `npm run db:start` / `db:stop` / `db:reset` | Local Supabase stack (`db:reset` destroys local data) |
+| `npm run gateway` | Security gateway on :8000, after its one-time setup in [DEPLOY.md](DEPLOY.md#security-gateway) |
 | `npm run test:conformance --workspace @ai-edu/llm` | Provider conformance, after a registry edit |
 | `npm run test:calibration --workspace @ai-edu/api` | Viva grader agreement with human-marked answers. Calls a real model; reads `.env`; skips without a key. |
 | `npm run test:containment --workspace @ai-edu/web` | Drives a real browser at the sandbox. Needs `npm run build` and an installed Chrome or Edge. |
