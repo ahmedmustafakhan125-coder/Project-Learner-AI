@@ -12,7 +12,7 @@ The API runs it in process. The failure policy and the audit trail live in
 ```ts
 import { analyze, prepare } from '@ai-edu/gateway';
 
-prepare(); // at startup: trains the classifier, loads the name lexicon
+prepare(); // at startup: trains the classifier, then screens two warm-up texts
 const result = analyze(text, { inputId });
 // { decision, safeText, reasonCodes, finalRisk, ruleScore, semanticScore, piiEntities, … }
 ```
@@ -42,9 +42,10 @@ otherwise.
 This is a TypeScript port of a Python service, `llm-security-gateway-final`
 (CSC 262 lab final), built with FastAPI, Presidio, spaCy and scikit-learn. It
 ran beside the API as a second deployment. The port lets the platform run on
-Node alone: one deployment instead of two, about 0.1 s for screening to start
-instead of about 90 s on Render's free plan, and about 120 MB for the whole API,
-screening included, where the Python service alone took about 1 GB.
+Node alone, one deployment instead of two. Measured locally, screening is ready
+about a second after the API starts, and the whole API, screening included,
+takes about 120 MB, where the Python service alone took about 1 GB and, on
+Render's free plan, about 90 s to start.
 
 It was checked against the Python service on 514 prompts: the evaluation set,
 the training set, the Python tests and about 150 edge cases.

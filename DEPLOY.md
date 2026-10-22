@@ -139,10 +139,10 @@ spaCy, scikit-learn) merged in from the `llm-security-gateway-final` repository;
 the port keeps its rules, weights and thresholds, and
 [its README](packages/gateway/README.md) compares the two.
 
-The API trains the screening classifier from
-`packages/gateway/data/train_injection.csv` as it starts, in about a tenth of a
-second, and does not start if that fails. Should screening fail on a request
-anyway, model-bound routes refuse it by design and the API logs
+As it starts, the API loads the screening code, trains its classifier from
+`packages/gateway/data/train_injection.csv` and screens two warm-up texts, about
+a second in all, and does not start if that fails. Should screening fail on a
+request anyway, model-bound routes refuse it by design and the API logs
 `screening failed` with the error; read-only routes keep working.
 
 To measure it against its 164 labelled prompts:
@@ -273,8 +273,9 @@ curl https://project-learner-ai.onrender.com/health   # {"ok":true}
 
 The free instance type's 512 MB is enough: the API with screening loaded runs
 in well under half of it. On the free plan the service sleeps after 15 idle
-minutes and wakes within a minute; screening adds about a tenth of a second to
-that.
+minutes and wakes within a minute. Screening's start-up work (about a second on
+a laptop, more on the free plan's shared CPU) is part of that wake-up: it
+finishes before the port opens, so later requests do not wait for it.
 
 Once this service is deployed, delete the separate gateway service
 (`llm-security-gateway-final`), and any Vercel project pointed at `apps/api`

@@ -90,7 +90,7 @@ export async function buildServer() {
 
 async function main(): Promise<void> {
   const env = loadEnv();
-  // Trains the screening model before the port opens, so a broken install
+  // Trains and warms up screening before the port opens, so a broken install
   // stops here instead of refusing every question with 422.
   prepareScreening();
   const app = await buildServer();
