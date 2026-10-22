@@ -1,0 +1,83 @@
+# Render Blueprint: the API and the security gateway.
+#
+# The web app is not here; it deploys to Vercel (DEPLOY.md, "The web app on
+# Vercel"). These two need long-lived processes, which Vercel does not run —
+# see DEPLOY.md, "Why the API is not on Vercel".
+#
+# `sync: false` values are asked for once, when the Blueprint is created, and
+# never live in this file.
+
+services:
+  - type: web
+    name: project-learner-ai-gateway
+    runtime: python
+    rootDir: apps/gateway
+    region: singapore
+    plan: free
+    buildCommand: pip install -r requirements.txt && python -m app.detectors.semantic_detector
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+
+  - type: web
+    name: project-learner-ai-api
+    runtime: node
+    region: singapore
+    plan: free
+    # No rootDir: the API needs the workspace packages, knowledge/ and the root
+    # lockfile, and Render drops everything outside a service's rootDir.
+    # --include=dev because turbo and typescript are devDependencies, and
+    # NODE_ENV=production below would otherwise make npm ci skip them.
+    buildCommand: npm ci --include=dev && npx turbo run build --filter=@ai-edu/api
+    startCommand: node apps/api/dist/server.js
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    buildFilter:
+      paths:
+        - apps/api/**
+        - packages/core/**
+        - packages/llm/**
+        - knowledge/**
+        - package.json
+        - package-lock.json
+        - turbo.json
+        - tsconfig.base.json
+      ignoredPaths:
+        - apps/api/test/**
+        - packages/core/test/**
+        - packages/llm/test/**
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      # CORS accepts exactly this origin. Change it if the site moves to its own domain.
+      - key: WEB_ORIGIN
+        value: https://project-learner-ai-web.vercel.app
+      - key: SUPABASE_URL
+        value: https://kvrylfdqcmcwucioauag.supabase.co
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # The gateway's public https URL, copied from its Render page. Free
+      # services cannot receive private-network traffic, so there is no
+      # internal address to use instead.
+      - key: SECURITY_GATEWAY_URL
+        sync: false
+      # A free gateway sleeps after 15 idle minutes and takes about 90 s to
+      # wake. The code default of 15000 would refuse every question asked while
+      # it wakes. Lower this again on a paid instance type.
+      - key: SECURITY_GATEWAY_TIMEOUT_MS
+        value: "100000"
+      - key: DAILY_USD_BUDGET_PER_USER
+        value: "2"
+      # At least one provider key. Any other vendor's key can be added in the
+      # dashboard; variables missing from this file are left alone on sync.
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
