@@ -20,7 +20,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    // Browser extensions (Twilio, Grammarly, ...) stamp attributes on <html>
+    // before React hydrates. This silences that one element's attribute
+    // mismatch only; its children are still checked.
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
