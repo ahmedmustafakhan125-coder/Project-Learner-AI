@@ -581,6 +581,10 @@ interface ArchitectureRule {
 - A dependency manifest is planned whenever the brief has third-party packages.
 - Every stub has `docTopics`, and `needsDocs` is set when its concepts name an external API.
 
+As built in phase 3 (`generation/verifyBlueprint.ts`, called by `generatePlannedBlueprint`): the step count against `STEP_RANGE` (T1 3 to 6, T2 5 to 9, T3 8 to 12, T4 and T5 3 to 12 for milestone 1) and the architecture rule's `requiredPaths`, `firstStepCreates` and `everyStepEdits` are serious and cost the one regeneration. A plan more than 25% over the learner's stated time is a warning shown with the plan. Stub `docRefs` not in the dossier are dropped, and a stub that cites none gets the references of the brief layers it names. `techStack` is always set from the brief. A plan that still breaks a rule after the regeneration ships with the violations as warnings. Still to build: the milestone count, the layer-used-by-a-file check, the dependency manifest check, `docTopics` and `needsDocs`, and `forbiddenImports`, which belongs to `verifyDependencies` because a plan has no code yet.
+
+The blueprint call keeps `generateBlueprint`'s static system prompt. The brief and dossier form a 5-minute cached prefix in the user turn, followed by the profile addendum, a `<plan_rules>` block, an optional `<template_plan>` and the request. Step expansions carry `renderProjectPrefix`: the brief, dossier and blueprint, byte-identical for every step of a project (invariant 21).
+
 `verifyDependencies(step, priorFiles, brief, profile)`: every import resolves to a planned file, the standard library, or a package in the brief; nothing the brief did not approve; and nothing the architecture rule forbids in that path.
 
 `verifyGrounding` (section 7): every external symbol the step requires is in a dossier or a tech card.
@@ -705,13 +709,14 @@ Creating a project means everything that runs before the learner can start step 
 1. **Opus for one call only.** Opus 5.5 writes the blueprint from T3 up. The research, the Stack Brief, the blueprint for T1 and T2, every step and the finish run on Sonnet 5.5, at half Opus's price per token. Steps never escalate to Opus.
 2. **Lower effort.** Thinking tokens bill as output, the most expensive token. The blueprint drops from `xhigh` to `medium` (`high` for T4 and T5), steps from `high` to `low` for T1 and T2 and `medium` from T3, finish from `high` to `low`, research to `low`.
 3. **Research only what is missing.** None for T1; from T2, only technologies with no fresh tech card and no cached dossier; 3 searches, 4 fetches and 8,000 tokens per page; no retry. The 30-day technology cache ships in the 12 hours, so the second Tauri project pays nothing for research.
-4. **Smaller outputs.** `maxTokens` per stage and tier: brief 4,000 for T1 and T2 and 8,000 from T3; blueprint 8,000 for T1 and T2 and 12,000 from T3; steps 8,000 for T1 and T2 and 16,000 from T3; finish 6,000 (today 12,000). Layer alternatives drop from up to 3 to up to 2 (1 for T1). A step lists at most one alternative, and only when it introduces a choice the brief did not already explain.
+4. **Smaller outputs.** `maxTokens` per stage and tier: brief 6,000 for T1 and T2 (raised from 4,000 in phase 3, after a live T2 brief was truncated twice) and 8,000 from T3; blueprint 8,000 for T1 and T2 and 12,000 from T3; steps 8,000 for T1, 12,000 for T2 (raised from 8,000 in phase 3, after a live twelve-file Lox step 1 was truncated three times) and 16,000 from T3; finish 6,000 (today 12,000). Layer alternatives drop from up to 3 to up to 2 (1 for T1). A step lists at most one alternative, and only when it introduces a choice the brief did not already explain.
 5. **Repair, don't retry.** Checks fix what code can fix and retry only what it cannot (section 9). Research, finish and steps retry at most once or not at all.
 6. **Cache what is read again, and only that.** The per-project prefix uses the 5-minute TTL; the shared system prompts keep the 1-hour TTL (section 4).
 7. **Prefetch only after the learner starts.** Today step N+1 is expanded in the background as soon as step N opens. It now waits until the learner saves a draft or submits an attempt on step N, so a learner who looks at step 1 and leaves costs one step, not two. `planExpansion` in `packages/core/src/generation/prefetch.ts` gains that condition.
 8. **Code writes what code can.** The README's Stack and Sources sections, `techStack`, versions, the toolchain card and the verification badges are built from stored data, never generated.
 9. **No critic below T4**, and the learner may regenerate the brief or the plan only twice per intake.
-10. **Tested ceilings.** `projectCostCeiling(stage, tier)` in `packages/core/src/budget/` multiplies each stage's `maxTokens`, input estimate and retry ceiling by the registry price. A test asserts that creation stays under $0.60 for T1 and $1.50 for T3 even if every stage uses its full `maxTokens` and every retry (invariant 28; the expected cost is about a third of that), so a prompt or limit change that breaks the target fails `npm test`.
+10. **Tested ceilings.** `projectCostCeiling(tier, path)` and `stageCostCeiling(stage, tier)` in `packages/core/src/budget/ceiling.ts` multiply each stage's `maxTokens`, input estimate and retry ceiling by the registry price, with every input token at the base rate (no cache discount) and every search used. A test asserts that creation stays under $0.60 for T1 and $1.50 for T3 even if every stage uses its full `maxTokens` and every retry (invariant 28; the expected cost is about a third of that), so a prompt or limit change that breaks the target fails `npm test`. As built (phase 3): T1 $0.57, T2 $0.80, T3 to T5 $1.45 on the full path; $0.44 to $0.75 on the template path. Creation counts the scope call (one Gemini Flash classify, 1,024 output tokens) as well as research, brief, blueprint and step 1. Research's paused turns share one `maxTokens` budget in the Anthropic adapter, so a `pause_turn` continuation cannot write past the stage's ceiling.
+11. **Reuse a very similar project.** When a stored Project Learner project (any learner's) has the same profile, the same tier, exactly the same named technologies and a near-identical request (word overlap of at least 0.7, `SIMILARITY_FLOOR` in `generation/template.ts`), the new intake adapts it instead of planning from nothing, automatically. Its dossier is copied (no research call) and its brief is copied and re-checked with `verifyStackBrief` against this learner's slots (no brief call). The plan is rewritten from the template by one call on the `adapt` stage of `PROJECT_MODELS`, which is Sonnet at every tier with the blueprint's `maxTokens`, instead of the Opus blueprint. Step 1 is copied with no call when the adapted plan keeps step 1, step 2 and the file plan unchanged. Step 1 starts from nothing, so it carries no other learner's code; later steps are always written for this learner. Regenerating the brief or the plan drops the template and plans from nothing. Nothing about the first learner travels with the template, neither memory nor code: the comparison runs on the server, and only model output is copied.
 
 ### A rough cost per project
 
@@ -727,6 +732,16 @@ Back-of-envelope figures to size the allowance, not measurements. Assumptions: C
 | Steps 2 to 12 | Sonnet 5.5, medium | as step 1 | $1.37 | $1.05 |
 | Finish | Sonnet 5.5, low | 25k / 3k | $0.11 | $0.08 |
 | **Whole project** |  |  | **about $2.30** | **about $1.65** |
+
+Measured in phase 3 (2026-10-23), from `llm_usage`, intake to step 1 through the real interview, first runs:
+
+| Golden request | Profile, tier | Scope | Research | Brief | Blueprint | Step 1 | Created for |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| "I want to build an operating system" | systems-os T5 | $0.001 | $0 (cards and cache) | $0.062 | $0.270 (Opus) | $0.076 | **$0.41** |
+| "A Lox interpreter in Python" | language-tooling T2 | $0.001 | $0 (cards) | $0.037 | $0.057 (Sonnet) | $0.207 | **$0.30** |
+| "A Tauri notes app" | desktop-app T3 | $0.001 | $0 (cards) | $0.041 | $0.141 (Opus) | $0.115 | **$0.30** |
+
+All three sit at or under the estimate above for cached research ($0.42). Lox's step 1 includes one retry. Three earlier attempts at it were truncated at the old 8,000-token T2 step ceiling and are not in the table, because a truncated structured call records no usage (see HANDOFF).
 
 A T1 project (no research, Sonnet for brief and blueprint, low effort, 4 steps) costs about $0.17 to create and about $0.40 in all. The week-2 stages add little: the critic runs only on T4 and T5, and step research only on `needsDocs` steps with uncached technologies. A T5 series of six milestones comes to roughly $9 on these assumptions, spent milestone by milestone, over weeks, as each one is planned.
 
@@ -781,23 +796,28 @@ In the 12 hours:
 - Forced RLS and a policy on `project_intakes`, following `0002`; the API writes it with the service role. The RLS check gains a cross-learner case for it.
 - New enums mirror the Zod enums, per the existing convention. Old projects read back through tolerant parsers (`parseStoredStackBrief`, `parseStoredDossier`, alongside the existing `parseStoredBlueprint`) and fall back to today's "Built with" list.
 
-Week 2, in a later migration: `research_dossiers` (the shared technology cache, with project and step rows), `project_generation_runs` (stage, attempt, violations, findings, latency per call), `cli_tokens`, `step_attempts.source` / `harness_results` / `file_hashes`, and `projects.budget_reserved_usd`, `parent_project_id`, `milestone_index`. `project_generation_runs` and `cli_tokens` use the restrictive-insert pattern from `0003`.
+`research_dossiers` (the shared technology cache) landed in `0015` itself, in phase 1.
 
-Apply `0015` locally with `npm run db:reset`. Apply it to the cloud project only when the flag is about to flip in production, with the vendored CLI as in `DEPLOY.md`.
+Phase 3 added `0016_intake_plan.sql`, so that `POST /api/projects { intakeId }` reads everything from the row: `project_intakes` gains `blueprint` (the plan written against the approved brief, with step `docRefs`), `blueprint_revisions` (0 to 2), `research_summary` (limited sources, cards, cache hits, a copied template), `generation_models` (which model wrote research, brief and blueprint) and `template_project_id` (the similar project being adapted, `on delete set null`). A partial index on `projects (project_profile, complexity_tier, created_at desc)` serves the template lookup. It adds no policy or grant.
+
+Week 2, in a later migration: `project_generation_runs` (stage, attempt, violations, findings, latency per call), `cli_tokens`, `step_attempts.source` / `harness_results` / `file_hashes`, and `projects.budget_reserved_usd`, `parent_project_id`, `milestone_index`. `project_generation_runs` and `cli_tokens` use the restrictive-insert pattern from `0003`.
+
+Apply `0015` and `0016` locally with `npm run db:reset`, or `.tools/supabase.exe migration up --local` to keep local data. Apply them to the cloud project only when the flag is about to flip in production, with the vendored CLI as in `DEPLOY.md`.
 
 ### API routes
 
 In the 12 hours (`apps/api/src/routes/intake.ts`, registered only when `PROJECT_LEARNER=on`):
 
 ```
-POST  /api/projects/intake                          { compiled } -> { intakeId, profile, tier, reasons }
-PATCH /api/projects/intake/:id/scope                { profile?, tierStep?: -1 | 1 } -> { profile, tier, reasons }
-POST  /api/projects/intake/:id/research             -> { dossier }
-POST  /api/projects/intake/:id/stack-brief          -> { brief }          (regenerate = call again)
+POST  /api/projects/intake                          { compiled } -> { intakeId, profile, confidence, alternatives, tier, reasons, overTime, adapted }
+PATCH /api/projects/intake/:id/scope                { profile?, tierStep?: -1 | 1 } -> { profile, tier, reasons, ... }
+POST  /api/projects/intake/:id/research             -> { dossier, limitedSources, fromCards, fromCache, researched, fromTemplate }
+POST  /api/projects/intake/:id/stack-brief          -> { brief, sources, reused, regenerationsLeft }   (regenerate = call again)
 POST  /api/projects/intake/:id/stack-brief/approve  -> { ok }
-POST  /api/projects/intake/:id/blueprint            { teachDeployment } -> { blueprint }
-POST  /api/projects                                 { intakeId } -> { id }
-GET   /api/projects/:id/stack                       -> { brief, sources }
+POST  /api/projects/intake/:id/blueprint            { teachDeployment } -> { blueprint, warnings, adapted, regenerationsLeft }
+POST  /api/projects                                 { intakeId } -> { id, reusedFirstStep }
+GET   /api/projects/:id/stack                       -> { brief, sources, builtWith }
+GET   /api/features                                 -> { projectLearner }   (always registered; the web follows it)
 ```
 
 Week 2:
@@ -817,6 +837,7 @@ POST  /api/projects/:id/steps/:index/cli-attempt    { files, hashes, results } -
 - The research route returns when the pass finishes; the web shows staged progress text. Streaming progress over the existing SSE helpers is week 2.
 - "Ask about this" reuses the follow-up threads with the layer and dossier as context, so it runs on Gemini (week 2).
 - Intake and research routes use `rateLimitConfig.generation`.
+- As built in phase 3: the intake call runs the scoped classify itself (Gemini Flash, recorded as `project:scope`), then `detectProfile` and `scoreComplexity`. `PATCH .../scope` moves the tier one step from what was scored, never two, and clears the dossier, brief and plan. The intake routes are loaded only with the flag on. CORS now allows `PATCH`. An adapted plan records as `project:adapt`.
 
 ### Packages
 
@@ -860,7 +881,7 @@ Fourteen new invariants join the README's fourteen, numbered 15 to 28. README in
 25. **Fetched documentation is data.** (12 hours) Enforced by: dossier text reaches a prompt only through `renderDossier`, which always wraps it in `<docs_dossier>`, and a test asserts no other path exists.
 26. **The verify CLI runs only fixed command templates.** (week 2) Enforced by: the harness schema has no free-form command field, every driver builds its argument list from a template and validated parameters, and a test rejects paths outside the project and tools off the allowlist.
 27. **Profile architecture rules are checked in code.** (12 hours for the deep profiles, week 2 for the rest) Enforced by: one passing and one failing `verifyBlueprint` fixture per profile.
-28. **Project creation has a tested cost ceiling.** (12 hours) Enforced by: `projectCostCeiling` computes the worst case for research, brief, blueprint and step 1 from `PROJECT_MODELS`, each stage's `maxTokens`, its retry ceiling and registry prices, and a test asserts it stays under $0.60 for T1 and $1.50 for T3. Unverified prices fail the test rather than pass it as zero (invariant 3).
+28. **Project creation has a tested cost ceiling.** (12 hours) Enforced by: `projectCostCeiling` computes the worst case for research, brief, blueprint and step 1 from `PROJECT_MODELS`, each stage's `maxTokens`, its retry ceiling and registry prices, and a test asserts it stays under $0.60 for T1 and $1.50 for T3. Unverified prices fail the test rather than pass it as zero (invariant 3). The test also covers the scope call and the template path (`packages/core/test/cost-ceiling.test.ts`).
 
 ## 14. Testing strategy
 
@@ -1047,6 +1068,8 @@ Tasks, in priority order:
 4. Lean UI in `apps/web/app/projects/new/page.tsx` behind the flag: profile and tier chips, staged research progress text, `StackBriefView` with `LayerCard`, `SourcesList` and `VerificationBadge`, regenerate (twice) and Approve.
 
 Done when: web tests pass; invariants 17, 27 and 28 have tests; 3 live runs from intake to step 1 (kernel, Lox, Tauri) with each run's cost read from `llm_usage` and close to section 11's estimate.
+
+Status (2026-10-23, branch `pl-3-intake-ui`): done. The four tasks are committed, plus the template path (section 11, item 11), migration `0016` and two ceiling raises found live (brief T1 and T2 to 6,000, step T2 to 12,000). Invariant 17 is tested in `verify-blueprint.test.ts` and `intake.test.ts`, 27 in `verify-blueprint.test.ts` (a passing and a failing plan for `desktop-app`, `systems-os`, `language-tooling` and `general`), 28 in `cost-ceiling.test.ts`, and 21's prefix half in `prompt-stability.test.ts`. The three live runs and their costs are in section 11. `HANDOFF.md` lists what is left.
 
 You, meanwhile: manual QA (section 14, the 12-hour list); flag on in development.
 
