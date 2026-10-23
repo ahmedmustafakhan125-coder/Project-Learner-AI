@@ -17,11 +17,18 @@ import { createClient } from '@supabase/supabase-js';
  * specified in request URL": the client appends `/auth/v1/…` to whatever it
  * is given. A service suffix and trailing slashes are dropped, so only the
  * project URL reaches the client.
+ *
+ * Production hit the same error with the dashboard's "RESTful endpoint"
+ * (`https://<ref>.supabase.co/rest/v1/`). The GraphQL URL fails the same way
+ * (Kong sends it to PostgREST too), so a service path is dropped together
+ * with anything after it.
  */
 export function supabaseBaseUrl(raw: string | undefined): string | undefined {
   const trimmed = raw?.trim();
   if (!trimmed) return undefined;
-  return trimmed.replace(/\/+$/, '').replace(/\/(rest|auth|storage|realtime|functions)\/v1$/i, '');
+  return trimmed
+    .replace(/\/+$/, '')
+    .replace(/\/(rest|auth|storage|realtime|functions|graphql)\/v1(\/.*)?$/i, '');
 }
 
 const url = supabaseBaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);

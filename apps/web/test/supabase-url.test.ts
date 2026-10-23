@@ -17,6 +17,11 @@ describe('supabaseBaseUrl', () => {
     ['http://127.0.0.1:54321/rest/v1/', 'http://127.0.0.1:54321'],
     ['https://abc.supabase.co/auth/v1', 'https://abc.supabase.co'],
     ['  https://abc.supabase.co  ', 'https://abc.supabase.co'],
+    // The dashboard's "RESTful endpoint", which production was built with.
+    ['https://abc.supabase.co/rest/v1/', 'https://abc.supabase.co'],
+    ['https://abc.supabase.co/graphql/v1', 'https://abc.supabase.co'],
+    ['http://127.0.0.1:54321/storage/v1/s3', 'http://127.0.0.1:54321'],
+    ['https://abc.supabase.co/auth/v1/signup', 'https://abc.supabase.co'],
   ])('%s -> %s', (raw, want) => {
     expect(supabaseBaseUrl(raw)).toBe(want);
   });
