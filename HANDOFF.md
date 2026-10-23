@@ -166,9 +166,9 @@ The four tasks are committed one per task. Two additions came from you
 mid-phase: the template path (adapt a very similar stored project) and
 updating the plan. Every phase 3 "done when" check holds:
 
-- `npm run typecheck` passes (12 of 12). `npm test` passes 1,618 tests
+- `npm run typecheck` passes (12 of 12). `npm test` passes 1,622 tests
   (1,524 after phase 2): llm 137, core 1,051, api 219, api-client 26,
-  web 128, gateway 48, runners 9. `npx eslint packages apps` is clean.
+  web 132, gateway 48, runners 9. `npx eslint packages apps` is clean.
   `npm run lint` still runs no task (phase 1 note).
 - Invariant 17: `packages/core/test/verify-blueprint.test.ts` and
   `apps/api/test/intake.test.ts`. Invariant 27: `verify-blueprint.test.ts`,
@@ -213,6 +213,11 @@ answered the interview badly.
    and trailing slashes (`supabaseBaseUrl`, tested), and `.env.example`
    says which URL to use. Still set `NEXT_PUBLIC_SUPABASE_URL` in
    `apps/web/.env.local` to the plain API URL, `http://127.0.0.1:54321`.
+   Production failed the same way: Vercel was built with the dashboard's
+   RESTful endpoint (`https://<ref>.supabase.co/rest/v1/`), seen in the
+   live bundle. The function now also strips `/graphql/v1`, which fails
+   the same way, and anything after a service path. Set the Vercel
+   variable to the project URL as well.
 
 ### How to see it in the browser
 
