@@ -1,0 +1,347 @@
+{
+  "recordedAt": "2026-10-23T08:52:04.694Z",
+  "golden": {
+    "name": "lox",
+    "request": "A Lox interpreter in Python",
+    "profile": "language-tooling",
+    "tier": "T2",
+    "slots": {
+      "domain": "Lox interpreter",
+      "tech": "Python",
+      "source_language": "Lox",
+      "impl_language": "Python"
+    }
+  },
+  "limitedSources": false,
+  "dossier": {
+    "scope": "project",
+    "notes": "# python\n## Notes\n- An interpreted language with a large standard library, readable syntax and no build step. [d1]\n## Versions\n- Python 3 | 3 [d1]\n## Setup\n- Python 3 on linux | sudo apt install python3 [d1]\n- Python 3 on macos | brew install python [d1]\n- Python 3 on windows | winget install Python.Python.3.12 [d1]\n\n# lox\n## Notes\n- A small dynamic teaching language from the free book Crafting Interpreters, built twice there, as a tree-walker and as a bytecode VM. [d2]",
+    "docRefs": [
+      {
+        "id": "d1",
+        "url": "https://docs.python.org/3/",
+        "title": "Python 3",
+        "citedText": "An interpreted language with a large standard library, readable syntax and no build step.",
+        "retrievedAt": "2026-10-23",
+        "vetted": true
+      },
+      {
+        "id": "d2",
+        "url": "https://craftinginterpreters.com/contents.html",
+        "title": "Lox (Crafting Interpreters)",
+        "citedText": "A small dynamic teaching language from the free book Crafting Interpreters, built twice there, as a tree-walker and as a bytecode VM.",
+        "retrievedAt": "2026-10-23",
+        "vetted": true
+      }
+    ],
+    "versions": [
+      {
+        "tech": "python",
+        "versionSeen": "3",
+        "ref": "d1"
+      }
+    ],
+    "apis": [],
+    "toolchain": [
+      {
+        "tool": "Python 3 (linux)",
+        "install": "sudo apt install python3",
+        "ref": "d1"
+      },
+      {
+        "tool": "Python 3 (macos)",
+        "install": "brew install python",
+        "ref": "d1"
+      },
+      {
+        "tool": "Python 3 (windows)",
+        "install": "winget install Python.Python.3.12",
+        "ref": "d1"
+      }
+    ]
+  },
+  "brief": {
+    "profile": "language-tooling",
+    "tier": "T2",
+    "summary": "A tree-walking Lox interpreter written in stdlib Python, following Crafting Interpreters' structure. It stays small, runs in the browser via Pyodide, and is tested by a corpus of Lox programs from step 1.",
+    "layers": [
+      {
+        "layer": "host-language",
+        "name": "Python 3",
+        "versionMajor": "3",
+        "whatItIs": "A readable interpreted language with a large standard library and no build step.",
+        "roleHere": "Implements every stage of the Lox interpreter, using only the standard library.",
+        "whyChosen": "Beats Rust because there is no borrow checker to fight, and beats Java or C, the book's languages, because you translate ideas rather than boilerplate. Stdlib-only code also runs in the browser.",
+        "pros": [
+          "No compile step",
+          "Stdlib-only code runs in the browser",
+          "Concise classes and dispatch"
+        ],
+        "cons": [
+          "Slow for deep recursion",
+          "Types only checked by optional tools"
+        ],
+        "learnerCost": "Classes, dataclasses, exceptions, and file I/O.",
+        "alternatives": [
+          {
+            "name": "Rust",
+            "pros": [
+              "Fast",
+              "Enums fit ASTs well"
+            ],
+            "cons": [
+              "Steep learning curve",
+              "Needs the command line"
+            ],
+            "pickWhen": "You want speed and are willing to learn ownership",
+            "switchCost": "high"
+          },
+          {
+            "name": "JavaScript",
+            "pros": [
+              "Runs in browser natively",
+              "Flexible objects"
+            ],
+            "cons": [
+              "Loose typing quirks",
+              "Less standard tooling"
+            ],
+            "pickWhen": "The interpreter is a web-first project",
+            "switchCost": "high"
+          }
+        ],
+        "requestedByLearner": true,
+        "assumptions": [
+          "Python 3.12 is installed",
+          "You use only the standard library"
+        ],
+        "docRefs": [
+          "d1"
+        ],
+        "verification": "browser",
+        "cardId": "python"
+      },
+      {
+        "layer": "parser",
+        "name": "Recursive descent parser",
+        "versionMajor": null,
+        "whatItIs": "A parser where each grammar rule is a function that calls other rule functions.",
+        "roleHere": "Turns Lox tokens into expression and statement trees, with precedence levels as functions.",
+        "whyChosen": "Beats ANTLR because it adds no tool or generated code and matches the book's approach. Beats a full Pratt parser because plain precedence functions are easier to read at first.",
+        "pros": [
+          "No dependencies",
+          "Maps directly to Lox's grammar",
+          "Easy to debug"
+        ],
+        "cons": [
+          "Many functions for precedence levels",
+          "Error recovery needs care"
+        ],
+        "learnerCost": "Reading a grammar and turning each rule into a function.",
+        "alternatives": [
+          {
+            "name": "Pratt parser",
+            "pros": [
+              "Compact expressions",
+              "Easy to add operators"
+            ],
+            "cons": [
+              "Less obvious at first"
+            ],
+            "pickWhen": "You want fewer functions for operators",
+            "switchCost": "medium"
+          },
+          {
+            "name": "ANTLR",
+            "pros": [
+              "Grammar-driven",
+              "Generated parser"
+            ],
+            "cons": [
+              "Java toolchain needed",
+              "Hides how parsing works"
+            ],
+            "pickWhen": "The grammar keeps changing",
+            "switchCost": "high"
+          }
+        ],
+        "requestedByLearner": false,
+        "assumptions": [
+          "You follow the book's Lox grammar unchanged"
+        ],
+        "docRefs": [
+          "d2"
+        ],
+        "verification": "browser",
+        "cardId": null
+      },
+      {
+        "layer": "backend",
+        "name": "Tree-walking evaluator",
+        "versionMajor": null,
+        "whatItIs": "An evaluator that runs a program by visiting each node of its syntax tree.",
+        "roleHere": "Executes Lox statements and expressions directly from the tree, with environments for variables and closures.",
+        "whyChosen": "Beats a bytecode VM because it is far less code and Python's speed would waste a VM's benefits. Beats code generation because it needs no target toolchain.",
+        "pros": [
+          "Smallest path to running programs",
+          "Closures and classes map to Python objects",
+          "Easy to step through"
+        ],
+        "cons": [
+          "Slower than a VM",
+          "Deep Lox recursion can hit Python's limit"
+        ],
+        "learnerCost": "The visitor pattern, environments, and exceptions for control flow.",
+        "alternatives": [
+          {
+            "name": "Bytecode VM",
+            "pros": [
+              "Faster",
+              "Teaches real VM design"
+            ],
+            "cons": [
+              "More code",
+              "Python overhead limits gains"
+            ],
+            "pickWhen": "You want the book's second half",
+            "switchCost": "high"
+          }
+        ],
+        "requestedByLearner": false,
+        "assumptions": [
+          "Following the book's first (tree-walking) half only"
+        ],
+        "docRefs": [
+          "d2",
+          "d1"
+        ],
+        "verification": "browser",
+        "cardId": null
+      },
+      {
+        "layer": "test-corpus",
+        "name": "File-based Lox test corpus",
+        "versionMajor": null,
+        "whatItIs": "A folder of Lox programs, each with its expected output and exit code.",
+        "roleHere": "tests/programs/ holds .lox files with expected stdout and exit code, run by a Python script after every step, including programs that must fail with specific messages.",
+        "whyChosen": "Beats unittest-only tests because the corpus is language-level and could check any implementation. Beats pytest because the stdlib is enough and keeps things browser-friendly.",
+        "pros": [
+          "Fixed grammar means tests exist from step 1",
+          "Checks error messages and exit codes",
+          "Reusable if you reimplement"
+        ],
+        "cons": [
+          "Need a runner script",
+          "Output diffs need clear reporting"
+        ],
+        "learnerCost": "Subprocess calls, file layout, and exit-code conventions.",
+        "alternatives": [
+          {
+            "name": "pytest",
+            "pros": [
+              "Nice failure reports",
+              "Parametrised tests"
+            ],
+            "cons": [
+              "Extra install"
+            ],
+            "pickWhen": "You want richer test tooling",
+            "switchCost": "low"
+          }
+        ],
+        "requestedByLearner": true,
+        "assumptions": [
+          "Expected files sit next to each program, such as .out and .exit files"
+        ],
+        "docRefs": [
+          "d2",
+          "d1"
+        ],
+        "verification": "browser",
+        "cardId": "lox"
+      }
+    ],
+    "toolchain": [
+      {
+        "tool": "Python 3",
+        "minVersion": null,
+        "installHint": {
+          "linux": "sudo apt install python3",
+          "macos": "brew install python",
+          "windows": "winget install Python.Python.3.12"
+        }
+      }
+    ],
+    "architecture": {
+      "style": "Pipeline: source to tokens to tree to evaluation, with a test runner around it.",
+      "components": [
+        {
+          "id": "parser",
+          "name": "Recursive descent parser",
+          "layer": "parser",
+          "purpose": "Builds the tree from Lox tokens."
+        },
+        {
+          "id": "eval",
+          "name": "Tree-walking evaluator",
+          "layer": "backend",
+          "purpose": "Runs the tree."
+        },
+        {
+          "id": "corpus",
+          "name": "Test corpus runner",
+          "layer": "test-corpus",
+          "purpose": "Runs Lox programs and compares output and exit codes."
+        },
+        {
+          "id": "host",
+          "name": "Python 3 runtime",
+          "layer": "host-language",
+          "purpose": "Hosts all interpreter code."
+        }
+      ],
+      "flows": [
+        {
+          "from": "corpus",
+          "to": "parser",
+          "label": "Lox source"
+        },
+        {
+          "from": "parser",
+          "to": "eval",
+          "label": "syntax tree"
+        },
+        {
+          "from": "eval",
+          "to": "corpus",
+          "label": "stdout and exit code"
+        },
+        {
+          "from": "host",
+          "to": "eval",
+          "label": "executes"
+        }
+      ]
+    },
+    "howItFitsTogether": "The test runner starts the interpreter on a .lox file. The source is split into tokens, the recursive descent parser builds a tree, and the evaluator walks it, printing output. The runner then compares stdout and the exit code to the expected files.",
+    "milestones": [],
+    "risks": [
+      "Python's recursion limit breaks deeply recursive Lox programs",
+      "Translating the book's Java code line by line gives unidiomatic Python",
+      "Scope and closure bugs show up late"
+    ],
+    "friction": [
+      "The book's code is Java and C, so you translate rather than copy",
+      "Lox is dynamically typed, so there is no type checking stage to practise"
+    ]
+  },
+  "attempts": 1,
+  "repaired": [],
+  "usage": {
+    "inputTokens": 2354,
+    "outputTokens": 2381,
+    "cacheReadTokens": 2726,
+    "cacheWriteTokens": 0,
+    "cacheWrite5mTokens": 0
+  }
+}

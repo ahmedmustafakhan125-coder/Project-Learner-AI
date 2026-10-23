@@ -31,6 +31,12 @@ export * from './research/render.js';
 export * from './research/verify.js';
 export * from './research/project.js';
 
+export * from './stack/draft.js';
+export * from './stack/pins.js';
+export * from './stack/verify.js';
+export * from './stack/techStack.js';
+export * from './stack/brief.js';
+
 export * from './generation/blueprint.js';
 export * from './generation/assemble.js';
 export * from './generation/finish.js';

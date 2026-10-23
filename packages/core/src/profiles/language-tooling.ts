@@ -86,7 +86,8 @@ export const languageTooling: Profile = {
   ],
   requiredLayersByTier: {
     T1: ['host-language', 'parser'],
-    T2: ['host-language', 'lexer', 'parser', 'backend', 'test-corpus'],
+    // §5: T2 is 2 to 4 layers. The lexer is covered with the parser until T3.
+    T2: ['host-language', 'parser', 'backend', 'test-corpus'],
     T3: ['host-language', 'lexer', 'parser', 'ast', 'backend', 'error-reporting', 'repl', 'test-corpus'],
     T4: [
       'host-language', 'lexer', 'parser', 'ast', 'semantic-analysis', 'ir', 'backend', 'runtime-gc',

@@ -1,0 +1,545 @@
+{
+  "recordedAt": "2026-10-23T08:52:34.191Z",
+  "golden": {
+    "name": "tauri",
+    "request": "A Tauri notes app",
+    "profile": "desktop-app",
+    "tier": "T3",
+    "slots": {
+      "domain": "notes app",
+      "tech": "Tauri"
+    }
+  },
+  "limitedSources": false,
+  "dossier": {
+    "scope": "project",
+    "notes": "# tauri\n## Notes\n- A toolkit for small desktop apps whose UI is a web page in the system webview and whose core is Rust. [d1]\n## Versions\n- Tauri 2 | 2 [d1]\n## Setup\n- Tauri 2 on linux | Install Rust with rustup, the webkit2gtk and build packages, then npm create tauri-app@latest [d1]\n- Tauri 2 on macos | Install Rust with rustup and the Xcode command line tools, then npm create tauri-app@latest [d1]\n- Tauri 2 on windows | Install Rust with rustup and the Microsoft C++ build tools (WebView2 ships with Windows 11), then npm create tauri-app@latest [d1]\n\n# sqlite\n## Notes\n- A SQL database stored in a single file, embedded in the program rather than run as a server. [d2]\n## Versions\n- SQLite | 3 [d2]\n## Setup\n- SQLite on linux | sudo apt install sqlite3 [d2]\n- SQLite on macos | brew install sqlite [d2]\n- SQLite on windows | winget install SQLite.SQLite [d2]",
+    "docRefs": [
+      {
+        "id": "d1",
+        "url": "https://v2.tauri.app/start/",
+        "title": "Tauri 2",
+        "citedText": "A toolkit for small desktop apps whose UI is a web page in the system webview and whose core is Rust.",
+        "retrievedAt": "2026-10-23",
+        "vetted": true
+      },
+      {
+        "id": "d2",
+        "url": "https://www.sqlite.org/docs.html",
+        "title": "SQLite",
+        "citedText": "A SQL database stored in a single file, embedded in the program rather than run as a server.",
+        "retrievedAt": "2026-10-23",
+        "vetted": true
+      }
+    ],
+    "versions": [
+      {
+        "tech": "tauri",
+        "versionSeen": "2",
+        "ref": "d1"
+      },
+      {
+        "tech": "sqlite",
+        "versionSeen": "3",
+        "ref": "d2"
+      }
+    ],
+    "apis": [],
+    "toolchain": [
+      {
+        "tool": "Tauri 2 (linux)",
+        "install": "Install Rust with rustup, the webkit2gtk and build packages, then npm create tauri-app@latest",
+        "ref": "d1"
+      },
+      {
+        "tool": "Tauri 2 (macos)",
+        "install": "Install Rust with rustup and the Xcode command line tools, then npm create tauri-app@latest",
+        "ref": "d1"
+      },
+      {
+        "tool": "Tauri 2 (windows)",
+        "install": "Install Rust with rustup and the Microsoft C++ build tools (WebView2 ships with Windows 11), then npm create tauri-app@latest",
+        "ref": "d1"
+      },
+      {
+        "tool": "SQLite (linux)",
+        "install": "sudo apt install sqlite3",
+        "ref": "d2"
+      },
+      {
+        "tool": "SQLite (macos)",
+        "install": "brew install sqlite",
+        "ref": "d2"
+      },
+      {
+        "tool": "SQLite (windows)",
+        "install": "winget install SQLite.SQLite",
+        "ref": "d2"
+      }
+    ]
+  },
+  "brief": {
+    "profile": "desktop-app",
+    "tier": "T3",
+    "summary": "A small Tauri 2 notes app: a web UI in the system webview, a Rust core holding all note logic, SQLite for storage, and the Tauri bundler for installers. Business logic stays in core/ and the UI calls only what commands.rs declares.",
+    "layers": [
+      {
+        "layer": "ui-toolkit",
+        "name": "Tauri 2",
+        "versionMajor": "2",
+        "whatItIs": "A toolkit for small desktop apps whose UI is a web page in the system webview and whose core is Rust.",
+        "roleHere": "Draws the notes window: note list, editor and search box, as a web page.",
+        "whyChosen": "You named Tauri. It gives much smaller installers than Electron and a more explicit IPC surface than a plain webview wrapper.",
+        "pros": [
+          "Small installers",
+          "Explicit commands and capabilities",
+          "One bundler for all three OSes"
+        ],
+        "cons": [
+          "Core is Rust, a second language",
+          "Webviews differ per OS"
+        ],
+        "learnerCost": "Basic Tauri project layout, plus enough HTML/JS for the UI and enough Rust for the core.",
+        "alternatives": [
+          {
+            "name": "Electron",
+            "pros": [
+              "Same Chromium everywhere",
+              "All JavaScript"
+            ],
+            "cons": [
+              "Large installers",
+              "Heavier memory use"
+            ],
+            "pickWhen": "You want zero Rust and identical rendering on every OS.",
+            "switchCost": "high"
+          }
+        ],
+        "requestedByLearner": true,
+        "assumptions": [
+          "The UI is plain web tech (TypeScript, no heavy framework) that you can change.",
+          "You are comfortable with some web basics."
+        ],
+        "docRefs": [
+          "d1"
+        ],
+        "verification": "cli",
+        "cardId": "tauri"
+      },
+      {
+        "layer": "app-architecture",
+        "name": "Rust core behind a thin web UI",
+        "versionMajor": null,
+        "whatItIs": "The app is split so all logic lives in a Rust library and the UI only shows results and sends requests.",
+        "roleHere": "core/ holds note create, edit, search and delete rules with no Tauri imports, so it is tested without a window.",
+        "whyChosen": "A UI-free core is required and is easy to test. It beats keeping logic in JavaScript, which would blur the line between UI and rules.",
+        "pros": [
+          "Core tests need no window",
+          "Clear UI and logic boundary"
+        ],
+        "cons": [
+          "More files than a single-script app",
+          "Data crosses a language boundary"
+        ],
+        "learnerCost": "Rust modules and crates, structs, Result error handling, and serde for converting data to JSON.",
+        "alternatives": [
+          {
+            "name": "Logic in the JavaScript frontend",
+            "pros": [
+              "One language",
+              "Faster first prototype"
+            ],
+            "cons": [
+              "Logic tied to the UI",
+              "Harder to test without a webview"
+            ],
+            "pickWhen": "You want to avoid Rust entirely.",
+            "switchCost": "high"
+          }
+        ],
+        "requestedByLearner": false,
+        "assumptions": [
+          "You accept writing the core in Rust, since Tauri requires it."
+        ],
+        "docRefs": [
+          "d1"
+        ],
+        "verification": "cli",
+        "cardId": "rust"
+      },
+      {
+        "layer": "ipc",
+        "name": "Tauri commands and capabilities",
+        "versionMajor": "2",
+        "whatItIs": "Named Rust functions the web page can call, with a permission list saying what it may call.",
+        "roleHere": "All calls like list_notes, save_note and delete_note are declared in one commands.rs file, and capabilities grant the UI only those.",
+        "whyChosen": "It is Tauri's built-in security model, so no extra library is needed. It beats raw custom protocols, which have no permission model.",
+        "pros": [
+          "One contract file",
+          "Least-privilege capabilities"
+        ],
+        "cons": [
+          "Every new feature needs a command and a permission",
+          "Argument types must be serialisable"
+        ],
+        "learnerCost": "The #[tauri::command] attribute, invoke from JS, and capability JSON files.",
+        "alternatives": [
+          {
+            "name": "Tauri events only",
+            "pros": [
+              "Simple for pushing updates",
+              "Loose coupling"
+            ],
+            "cons": [
+              "No return values",
+              "Weaker contract"
+            ],
+            "pickWhen": "The core must push updates to the UI.",
+            "switchCost": "medium"
+          }
+        ],
+        "requestedByLearner": true,
+        "assumptions": [
+          "The UI uses no filesystem or shell plugins directly."
+        ],
+        "docRefs": [
+          "d1"
+        ],
+        "verification": "cli",
+        "cardId": "tauri"
+      },
+      {
+        "layer": "local-storage",
+        "name": "SQLite",
+        "versionMajor": "3",
+        "whatItIs": "A SQL database stored in a single file, embedded in the program rather than run as a server.",
+        "roleHere": "Stores notes in one database file in the app-data directory, accessed only by the Rust core.",
+        "whyChosen": "Search, ordering and transactions come built in. That beats plain files, where you write search and safe saving yourself.",
+        "pros": [
+          "No server to run",
+          "Full SQL with transactions",
+          "Easy search over notes"
+        ],
+        "cons": [
+          "Schema changes need care",
+          "Needs a Rust binding crate"
+        ],
+        "learnerCost": "Basic SQL, a simple migration step, and a Rust SQLite crate.",
+        "alternatives": [
+          {
+            "name": "Markdown files in app-data",
+            "pros": [
+              "Human-readable",
+              "Easy to back up"
+            ],
+            "cons": [
+              "Search is hand-built",
+              "No transactions"
+            ],
+            "pickWhen": "Notes must be editable in other editors.",
+            "switchCost": "medium"
+          }
+        ],
+        "requestedByLearner": false,
+        "assumptions": [
+          "Notes are text only, with no sync between devices."
+        ],
+        "docRefs": [
+          "d2"
+        ],
+        "verification": "cli",
+        "cardId": "sqlite"
+      },
+      {
+        "layer": "os-integration",
+        "name": "Tauri dialog plugin",
+        "versionMajor": null,
+        "whatItIs": "An official add-on that opens native file dialogs from the app.",
+        "roleHere": "Lets the user export a note to a file or import one with the system file picker.",
+        "whyChosen": "It is the official route and works through capabilities. It beats a browser file input, which cannot choose a save location.",
+        "pros": [
+          "Native dialogs",
+          "Fits the permission model"
+        ],
+        "cons": [
+          "Extra plugin to configure",
+          "Needs capability entries"
+        ],
+        "learnerCost": "Installing a plugin and granting its permission.",
+        "alternatives": [
+          {
+            "name": "Skip OS integration",
+            "pros": [
+              "Fewer parts",
+              "Faster finish"
+            ],
+            "cons": [
+              "No import or export"
+            ],
+            "pickWhen": "Time is short.",
+            "switchCost": "low"
+          }
+        ],
+        "requestedByLearner": true,
+        "assumptions": [
+          "Import and export is wanted; tray and shortcuts are left out."
+        ],
+        "docRefs": [
+          "d1"
+        ],
+        "verification": "static",
+        "cardId": "tauri"
+      },
+      {
+        "layer": "packaging",
+        "name": "Tauri bundler",
+        "versionMajor": "2",
+        "whatItIs": "The Tauri build step that packages the app into an installer for each OS.",
+        "roleHere": "Runs tauri build to produce a real installer, such as MSI, DMG or deb/AppImage, as the final artifact.",
+        "whyChosen": "It is built in, with no setup beyond config. Third-party packagers would add steps for no gain.",
+        "pros": [
+          "Built in",
+          "Real installers per OS"
+        ],
+        "cons": [
+          "Builds only for the host OS",
+          "Signing needs extra setup"
+        ],
+        "learnerCost": "Fields in tauri.conf.json such as app name, identifier and icons.",
+        "alternatives": [
+          {
+            "name": "Plain release binary",
+            "pros": [
+              "No installer config",
+              "Fastest"
+            ],
+            "cons": [
+              "Not a real installer",
+              "No shortcuts or uninstall"
+            ],
+            "pickWhen": "The app is only for yourself.",
+            "switchCost": "low"
+          }
+        ],
+        "requestedByLearner": true,
+        "assumptions": [
+          "You build on your own OS; cross-OS builds need CI."
+        ],
+        "docRefs": [
+          "d1"
+        ],
+        "verification": "cli",
+        "cardId": "tauri"
+      },
+      {
+        "layer": "updates",
+        "name": "No auto-update (manual reinstall)",
+        "versionMajor": null,
+        "whatItIs": "New versions are shipped by building and installing a fresh installer.",
+        "roleHere": "Keeps the first release simple: users reinstall to update.",
+        "whyChosen": "Auto-update needs signing keys and a hosted manifest. For a learner project that costs more than it gives.",
+        "pros": [
+          "No signing keys",
+          "No update server"
+        ],
+        "cons": [
+          "Users must update by hand"
+        ],
+        "learnerCost": "None beyond bumping the version number.",
+        "alternatives": [
+          {
+            "name": "Tauri updater plugin",
+            "pros": [
+              "In-app updates",
+              "Official"
+            ],
+            "cons": [
+              "Needs signing keys and hosting"
+            ],
+            "pickWhen": "You plan to distribute to real users.",
+            "switchCost": "medium"
+          }
+        ],
+        "requestedByLearner": false,
+        "assumptions": [
+          "The app is not publicly distributed yet."
+        ],
+        "docRefs": [
+          "d1"
+        ],
+        "verification": "static",
+        "cardId": null
+      },
+      {
+        "layer": "testing",
+        "name": "cargo test on the core, plus contract checks",
+        "versionMajor": null,
+        "whatItIs": "Rust's built-in test runner, run against the UI-free core.",
+        "roleHere": "Unit-tests note logic against an in-memory SQLite, and checks that every command the UI calls is declared in commands.rs.",
+        "whyChosen": "Cargo ships it, so no new tool is needed. It beats end-to-end UI tests, which are slow and need a window.",
+        "pros": [
+          "No window needed",
+          "Built into Cargo"
+        ],
+        "cons": [
+          "Does not test the real webview",
+          "Contract check needs a small script"
+        ],
+        "learnerCost": "Writing #[test] functions and using in-memory databases.",
+        "alternatives": [
+          {
+            "name": "WebDriver end-to-end tests",
+            "pros": [
+              "Tests the real UI"
+            ],
+            "cons": [
+              "Slow",
+              "Complex setup"
+            ],
+            "pickWhen": "The UI becomes complex.",
+            "switchCost": "medium"
+          }
+        ],
+        "requestedByLearner": false,
+        "assumptions": [
+          "Manual checks cover the UI itself."
+        ],
+        "docRefs": [
+          "d1",
+          "d2"
+        ],
+        "verification": "cli",
+        "cardId": "rust"
+      }
+    ],
+    "toolchain": [
+      {
+        "tool": "Rust (rustup)",
+        "minVersion": null,
+        "installHint": {
+          "linux": "Install Rust with rustup, then the webkit2gtk and build packages",
+          "macos": "Install Rust with rustup and the Xcode command line tools",
+          "windows": "Install Rust with rustup and the Microsoft C++ build tools"
+        }
+      },
+      {
+        "tool": "Tauri 2 project",
+        "minVersion": null,
+        "installHint": {
+          "linux": "npm create tauri-app@latest",
+          "macos": "npm create tauri-app@latest",
+          "windows": "npm create tauri-app@latest (WebView2 ships with Windows 11)"
+        }
+      },
+      {
+        "tool": "SQLite",
+        "minVersion": null,
+        "installHint": {
+          "linux": "sudo apt install sqlite3",
+          "macos": "brew install sqlite",
+          "windows": "winget install SQLite.SQLite"
+        }
+      }
+    ],
+    "architecture": {
+      "style": "Rust core library behind Tauri commands, with a web UI in the system webview",
+      "components": [
+        {
+          "id": "ui",
+          "name": "Notes web UI",
+          "layer": "ui-toolkit",
+          "purpose": "Shows the note list and editor."
+        },
+        {
+          "id": "core",
+          "name": "core/ notes logic",
+          "layer": "app-architecture",
+          "purpose": "Note rules with no Tauri imports."
+        },
+        {
+          "id": "commands",
+          "name": "commands.rs",
+          "layer": "ipc",
+          "purpose": "Declares every command the UI may call."
+        },
+        {
+          "id": "db",
+          "name": "SQLite file",
+          "layer": "local-storage",
+          "purpose": "Stores notes in app-data."
+        },
+        {
+          "id": "dialog",
+          "name": "Dialog plugin",
+          "layer": "os-integration",
+          "purpose": "Native import and export dialogs."
+        },
+        {
+          "id": "bundle",
+          "name": "Tauri bundler",
+          "layer": "packaging",
+          "purpose": "Builds the installer."
+        },
+        {
+          "id": "tests",
+          "name": "cargo tests",
+          "layer": "testing",
+          "purpose": "Test core and contract."
+        }
+      ],
+      "flows": [
+        {
+          "from": "ui",
+          "to": "commands",
+          "label": "invoke save_note"
+        },
+        {
+          "from": "commands",
+          "to": "core",
+          "label": "calls note logic"
+        },
+        {
+          "from": "core",
+          "to": "db",
+          "label": "reads and writes rows"
+        },
+        {
+          "from": "ui",
+          "to": "dialog",
+          "label": "export or import file"
+        },
+        {
+          "from": "tests",
+          "to": "core",
+          "label": "unit tests"
+        },
+        {
+          "from": "bundle",
+          "to": "ui",
+          "label": "packages UI and core into installer"
+        }
+      ]
+    },
+    "howItFitsTogether": "You type a note and press save, so the web UI calls invoke('save_note'). Tauri checks that the capabilities allow it and runs the matching function in commands.rs. That function calls the core, which validates the note and writes it to the SQLite file in app-data. The result returns as JSON and the UI refreshes the list. The bundler later packs the built UI and Rust core into an installer.",
+    "milestones": [],
+    "risks": [
+      "Rust's borrow checker slows a web developer at first",
+      "Webview rendering differs across operating systems",
+      "Missing capability entries make commands fail silently",
+      "Linux builds need the right webkit2gtk packages"
+    ],
+    "friction": [
+      "Tauri's core is Rust, a second language for a web developer; keeping it small limits the cost.",
+      "The browser can check only the web UI as a plain page; commands, SQLite, testing and packaging need the command line."
+    ]
+  },
+  "attempts": 1,
+  "repaired": [],
+  "usage": {
+    "inputTokens": 2486,
+    "outputTokens": 3995,
+    "cacheReadTokens": 2726,
+    "cacheWriteTokens": 0,
+    "cacheWrite5mTokens": 0
+  }
+}

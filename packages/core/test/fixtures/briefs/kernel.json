@@ -1,0 +1,699 @@
+{
+  "recordedAt": "2026-10-23T08:51:46.531Z",
+  "golden": {
+    "name": "kernel",
+    "request": "I want to build an operating system",
+    "profile": "systems-os",
+    "tier": "T5",
+    "slots": {
+      "domain": "operating system"
+    }
+  },
+  "limitedSources": false,
+  "dossier": {
+    "scope": "project",
+    "notes": "# x86-64-cross\n## Notes\n- A compiler, assembler and linker that build freestanding code for x86_64-elf instead of the host operating system. [d1]\n## Setup\n- x86-64 cross toolchain on linux | Build x86_64-elf binutils and GCC as the OSDev wiki describes, or use clang with --target=x86_64-elf [d1]\n- x86-64 cross toolchain on macos | brew install x86_64-elf-gcc [d1]\n- x86-64 cross toolchain on windows | Inside WSL 2, build x86_64-elf binutils and GCC, or use clang with --target=x86_64-elf [d1]\n\n# limine\n## Notes\n- A bootloader with its own boot protocol that loads a 64-bit kernel in long mode with a framebuffer and a memory map. [d2]\n\n# qemu\n## Notes\n- A machine emulator that boots a kernel image headless, with a serial port on stdio and a GDB stub. [d3]\n## Setup\n- QEMU on linux | sudo apt install qemu-system-x86 [d3]\n- QEMU on macos | brew install qemu [d3]\n- QEMU on windows | Inside WSL 2, sudo apt install qemu-system-x86 [d3]\n\n# c\n## Versions\n- C23 | The reference treats C23 as the most recently published C Standard, so it is the main focus. [d4]\n- C standard revisions | The reference covers C89, C95, C99, C11, C17 and C23. [d5]\n\n# osdev-core\n## APIs\n- LIDT | The instruction loads the IDTR from a pointer to an IDT descriptor made of a 16-bit Size and an Offset. Offset is 4 bytes in 32-bit mode and 8 bytes in 64-bit mode. [d6]\n- IDT gate descriptor | A 32-bit entry is 8 bytes. It holds an ISR offset split in two parts, a code-segment selector, a gate type, a DPL and a present bit. [d6]\n- struct InterruptDescriptor32 | The page gives a C struct that starts with a `uint16_t offset_1` field and a `uint16_t selector` field. [d6]\n- Page directory and page table | On 32-bit x86, each has 1024 four-byte entries, so each is 4 KiB. A directory entry points to a page table. [d7]\n- Round Robin scheduler | It uses one queue. When the system timer fires, it switches to the next process. Each process gets a quantum counted in timer ticks. [d8]\n## Pitfalls\n- Set up a working GDT before the IDT. [d6]\n- Any IDT entry that is not present causes a General Protection Fault when it is used. [d6]\n- The IDTR Offset must be a linear address, not a physical one, because paging applies. [d6]\n- The page table address in a directory entry must be 4 KiB aligned, because the low bits are used for flags. [d7]\n- The CPU never clears the Accessed bit, so the OS must clear it if it needs it. [d7]\n- To make a page a user page, set the user bit in both the directory entry and the table entry. [d7]\n- Plain Round Robin has no priorities, so many low-priority processes can starve a high-priority one. [d8]\n- A smaller quantum means more time spent on context switches. A larger one makes the system feel laggier. [d8]\n## Notes\n- The IDT has 256 vectors, 0 to 255. [d6]\n- Serial ports are much easier to write drivers for than USB, and they are commonly used for debugging in early kernel work. [d9]\n- QEMU and Bochs can redirect serial output to stdio or to a file. [d9]\n- On x86-64, paging fully replaces segmentation for memory protection. [d7]\n- The page lists a 20–50 ms quantum as a common compromise. [d8]",
+    "docRefs": [
+      {
+        "id": "d1",
+        "url": "https://wiki.osdev.org/GCC_Cross-Compiler",
+        "title": "x86-64 cross toolchain",
+        "citedText": "A compiler, assembler and linker that build freestanding code for x86_64-elf instead of the host operating system.",
+        "retrievedAt": "2026-10-23",
+        "vetted": true
+      },
+      {
+        "id": "d2",
+        "url": "https://github.com/limine-bootloader/limine/blob/trunk/PROTOCOL.md",
+        "title": "Limine",
+        "citedText": "A bootloader with its own boot protocol that loads a 64-bit kernel in long mode with a framebuffer and a memory map.",
+        "retrievedAt": "2026-10-23",
+        "vetted": true
+      },
+      {
+        "id": "d3",
+        "url": "https://www.qemu.org/docs/master/",
+        "title": "QEMU",
+        "citedText": "A machine emulator that boots a kernel image headless, with a serial port on stdio and a GDB stub.",
+        "retrievedAt": "2026-10-23",
+        "vetted": true
+      },
+      {
+        "id": "d4",
+        "url": "https://en.cppreference.com/Cppreference:About",
+        "title": "Frequently asked questions - cppreference.com",
+        "citedText": "",
+        "retrievedAt": "2026-10-23T08:40:47.014Z",
+        "vetted": true
+      },
+      {
+        "id": "d5",
+        "url": "https://en.cppreference.com/",
+        "title": "cppreference.com",
+        "citedText": "",
+        "retrievedAt": "2026-10-23T08:40:47.014Z",
+        "vetted": true
+      },
+      {
+        "id": "d6",
+        "url": "https://wiki.osdev.org/Interrupt_Descriptor_Table",
+        "title": "Interrupt Descriptor Table - OSDev Wiki",
+        "citedText": "",
+        "retrievedAt": "2026-08-29T00:00:00+00:00",
+        "vetted": true
+      },
+      {
+        "id": "d7",
+        "url": "https://wiki.osdev.org/Paging",
+        "title": "Paging (wiki.osdev.org)",
+        "citedText": "",
+        "retrievedAt": "2025-09-21T17:39:17+00:00",
+        "vetted": true
+      },
+      {
+        "id": "d8",
+        "url": "https://wiki.osdev.org/Scheduling_Algorithms",
+        "title": "Scheduling Algorithms - OSDev Wiki",
+        "citedText": "",
+        "retrievedAt": "2026-10-22T22:56:54+00:00",
+        "vetted": true
+      },
+      {
+        "id": "d9",
+        "url": "https://wiki.osdev.org/Serial_ports",
+        "title": "Serial Ports - OSDev Wiki",
+        "citedText": "",
+        "retrievedAt": "2026-10-23T08:40:47.014Z",
+        "vetted": true
+      }
+    ],
+    "versions": [
+      {
+        "tech": "C23",
+        "versionSeen": "The reference treats C23 as the most recently published C Standard, so it is the main focus.",
+        "ref": "d4"
+      },
+      {
+        "tech": "C standard revisions",
+        "versionSeen": "The reference covers C89, C95, C99, C11, C17 and C23.",
+        "ref": "d5"
+      }
+    ],
+    "apis": [
+      {
+        "symbol": "LIDT",
+        "signature": "The instruction loads the IDTR from a pointer to an IDT descriptor made of a 16-bit Size and an Offset. Offset is 4 bytes in 32-bit mode and 8 bytes in 64-bit mode.",
+        "ref": "d6"
+      },
+      {
+        "symbol": "IDT gate descriptor",
+        "signature": "A 32-bit entry is 8 bytes. It holds an ISR offset split in two parts, a code-segment selector, a gate type, a DPL and a present bit.",
+        "ref": "d6"
+      },
+      {
+        "symbol": "struct InterruptDescriptor32",
+        "signature": "The page gives a C struct that starts with a uint16_t offset_1 field and a uint16_t selector field.",
+        "ref": "d6"
+      },
+      {
+        "symbol": "Page directory and page table",
+        "signature": "On 32-bit x86, each has 1024 four-byte entries, so each is 4 KiB. A directory entry points to a page table.",
+        "ref": "d7"
+      },
+      {
+        "symbol": "Round Robin scheduler",
+        "signature": "It uses one queue. When the system timer fires, it switches to the next process. Each process gets a quantum counted in timer ticks.",
+        "ref": "d8"
+      }
+    ],
+    "toolchain": [
+      {
+        "tool": "x86-64 cross toolchain (linux)",
+        "install": "Build x86_64-elf binutils and GCC as the OSDev wiki describes, or use clang with --target=x86_64-elf",
+        "ref": "d1"
+      },
+      {
+        "tool": "x86-64 cross toolchain (macos)",
+        "install": "brew install x86_64-elf-gcc",
+        "ref": "d1"
+      },
+      {
+        "tool": "x86-64 cross toolchain (windows)",
+        "install": "Inside WSL 2, build x86_64-elf binutils and GCC, or use clang with --target=x86_64-elf",
+        "ref": "d1"
+      },
+      {
+        "tool": "QEMU (linux)",
+        "install": "sudo apt install qemu-system-x86",
+        "ref": "d3"
+      },
+      {
+        "tool": "QEMU (macos)",
+        "install": "brew install qemu",
+        "ref": "d3"
+      },
+      {
+        "tool": "QEMU (windows)",
+        "install": "Inside WSL 2, sudo apt install qemu-system-x86",
+        "ref": "d3"
+      }
+    ]
+  },
+  "brief": {
+    "profile": "systems-os",
+    "tier": "T5",
+    "summary": "A 64-bit x86 hobby kernel written in Rust, booted by Limine and run under QEMU. Pure logic sits in a host-testable library, and a serial test mode reports results and exits QEMU. Only milestone 1 is planned in detail now.",
+    "layers": [
+      {
+        "layer": "toolchain",
+        "name": "x86-64 cross toolchain",
+        "versionMajor": null,
+        "whatItIs": "A compiler, assembler and linker that build freestanding code for x86_64-elf instead of your host OS.",
+        "roleHere": "Provides the linker and binutils that link the Rust kernel for x86_64-elf, and clang or GCC for any assembly.",
+        "whyChosen": "A cross toolchain stops host libraries leaking into the kernel, which a plain host gcc would allow. It is better documented than ad-hoc clang flags.",
+        "pros": [
+          "Nothing from the host leaks in",
+          "OSDev wiki documents every step"
+        ],
+        "cons": [
+          "Building GCC from source is slow",
+          "Easy to call the host compiler by mistake"
+        ],
+        "learnerCost": "Learn target triples and how to check which compiler you are calling.",
+        "alternatives": [
+          {
+            "name": "clang --target=x86_64-elf",
+            "pros": [
+              "No build from source",
+              "One compiler for all targets"
+            ],
+            "cons": [
+              "Needs a separate linker setup",
+              "Fewer step-by-step guides"
+            ],
+            "pickWhen": "You want setup in minutes, not an hour.",
+            "switchCost": "low"
+          }
+        ],
+        "requestedByLearner": false,
+        "assumptions": [
+          "x86-64 under QEMU",
+          "Windows runs inside WSL 2"
+        ],
+        "docRefs": [
+          "d1"
+        ],
+        "verification": "cli",
+        "cardId": "x86-64-cross"
+      },
+      {
+        "layer": "build-system",
+        "name": "Cargo",
+        "versionMajor": null,
+        "whatItIs": "Rust's build tool that compiles, tests and fetches dependencies.",
+        "roleHere": "Builds the kernel for a bare-metal target and runs the host unit tests of the library. A small script makes the Limine image.",
+        "whyChosen": "Cargo comes with Rust and runs host tests with one command, unlike Make or CMake, which need extra glue.",
+        "pros": [
+          "One tool builds and tests",
+          "Host tests run with cargo test"
+        ],
+        "cons": [
+          "Image creation needs a script",
+          "Custom target config is fiddly"
+        ],
+        "learnerCost": "Learn Cargo workspaces and a custom target file.",
+        "alternatives": [
+          {
+            "name": "Make",
+            "pros": [
+              "Simple and transparent",
+              "Fits C kernels"
+            ],
+            "cons": [
+              "No dependency fetching",
+              "Rust needs a cargo call inside"
+            ],
+            "pickWhen": "You choose C as the kernel language.",
+            "switchCost": "medium"
+          }
+        ],
+        "requestedByLearner": false,
+        "assumptions": [
+          "A workspace: no_std kernel crate plus a host-testable library crate"
+        ],
+        "docRefs": [
+          "d1"
+        ],
+        "verification": "cli",
+        "cardId": "rust"
+      },
+      {
+        "layer": "boot-protocol",
+        "name": "Limine",
+        "versionMajor": null,
+        "whatItIs": "A bootloader that loads a 64-bit kernel in long mode with a framebuffer and memory map.",
+        "roleHere": "Starts the kernel in 64-bit mode and hands over the memory map and framebuffer, so you skip real-mode setup.",
+        "whyChosen": "It skips real-mode setup that Multiboot2 with GRUB leaves to you, and it hands over a memory map that a custom loader would have to build.",
+        "pros": [
+          "Starts in 64-bit long mode",
+          "Memory map and framebuffer on request"
+        ],
+        "cons": [
+          "Hides the boot process",
+          "Own protocol, not Multiboot2"
+        ],
+        "learnerCost": "Learn Limine requests and its config file.",
+        "alternatives": [
+          {
+            "name": "Multiboot2 with GRUB",
+            "pros": [
+              "Widely documented standard",
+              "Works with many kernels"
+            ],
+            "cons": [
+              "Starts in 32-bit mode",
+              "You write long-mode switch code"
+            ],
+            "pickWhen": "You want to see the mode switch yourself.",
+            "switchCost": "high"
+          }
+        ],
+        "requestedByLearner": false,
+        "assumptions": [
+          "BIOS or UEFI boot is fine"
+        ],
+        "docRefs": [
+          "d2"
+        ],
+        "verification": "cli",
+        "cardId": "limine"
+      },
+      {
+        "layer": "kernel-language",
+        "name": "Rust",
+        "versionMajor": "1",
+        "whatItIs": "A compiled systems language whose ownership rules catch memory errors at compile time.",
+        "roleHere": "Writes the whole kernel with no_std, and the host-testable library of allocators and parsers.",
+        "whyChosen": "Rust's checks catch pointer bugs early and Cargo gives host tests. C has less to learn but gives no such safety net.",
+        "pros": [
+          "Memory safety without a garbage collector",
+          "Library code tests on the host"
+        ],
+        "cons": [
+          "Borrow checker takes weeks to feel natural",
+          "Longer compile times"
+        ],
+        "learnerCost": "Learn ownership, no_std and unsafe blocks.",
+        "alternatives": [
+          {
+            "name": "C",
+            "pros": [
+              "Most OSDev tutorials use it",
+              "Small language"
+            ],
+            "cons": [
+              "No memory safety",
+              "Manual build and test glue"
+            ],
+            "pickWhen": "You already know C and want to follow the wiki line by line.",
+            "switchCost": "high"
+          }
+        ],
+        "requestedByLearner": false,
+        "assumptions": [
+          "You are new to Rust, so early steps stay small"
+        ],
+        "docRefs": [
+          "d4"
+        ],
+        "verification": "cli",
+        "cardId": "rust"
+      },
+      {
+        "layer": "memory-management",
+        "name": "Frame allocator, paging and heap",
+        "versionMajor": null,
+        "whatItIs": "Code that hands out physical memory frames, maps virtual pages and serves a kernel heap.",
+        "roleHere": "Reads Limine's memory map, allocates 4 KiB frames, edits page tables and backs a heap for alloc.",
+        "whyChosen": "A bitmap frame allocator is the simplest to test on the host, unlike a buddy allocator.",
+        "pros": [
+          "Allocator is pure logic, host-testable",
+          "Bitmap is easy to reason about"
+        ],
+        "cons": [
+          "Paging bugs crash silently",
+          "Bitmap scans are slow"
+        ],
+        "learnerCost": "Learn page tables, alignment and flags.",
+        "alternatives": [
+          {
+            "name": "Buddy allocator",
+            "pros": [
+              "Fast, less fragmentation"
+            ],
+            "cons": [
+              "More complex to write"
+            ],
+            "pickWhen": "You need contiguous multi-frame blocks.",
+            "switchCost": "medium"
+          }
+        ],
+        "requestedByLearner": false,
+        "assumptions": [
+          "Later milestone; 4 KiB pages"
+        ],
+        "docRefs": [
+          "d7"
+        ],
+        "verification": "cli",
+        "cardId": null
+      },
+      {
+        "layer": "interrupts",
+        "name": "GDT and IDT",
+        "versionMajor": null,
+        "whatItIs": "Tables that tell the CPU which segments exist and which handler runs for each interrupt.",
+        "roleHere": "Sets a GDT, then an IDT of 256 vectors with handlers for faults and the timer.",
+        "whyChosen": "On x86-64 the GDT and IDT are required. Hand-written tables teach more than a crate, though a crate saves time.",
+        "pros": [
+          "Turns crashes into readable faults",
+          "Needed by the timer"
+        ],
+        "cons": [
+          "Wrong entries cause General Protection Faults",
+          "Assembly stubs needed"
+        ],
+        "learnerCost": "Learn descriptor layouts and the interrupt stack frame.",
+        "alternatives": [
+          {
+            "name": "x86_64 crate tables",
+            "pros": [
+              "Typed, fewer layout bugs"
+            ],
+            "cons": [
+              "Hides the structures"
+            ],
+            "pickWhen": "You want speed over insight.",
+            "switchCost": "low"
+          }
+        ],
+        "requestedByLearner": false,
+        "assumptions": [
+          "Set the GDT before the IDT"
+        ],
+        "docRefs": [
+          "d6"
+        ],
+        "verification": "cli",
+        "cardId": null
+      },
+      {
+        "layer": "scheduler",
+        "name": "Round-robin scheduler",
+        "versionMajor": null,
+        "whatItIs": "A queue of kernel threads switched on each timer tick.",
+        "roleHere": "Switches threads on the timer with a quantum of a few ticks.",
+        "whyChosen": "Round robin is the simplest fair scheduler and easy to test. Priority schemes add complexity that is not needed yet.",
+        "pros": [
+          "One queue, easy to test",
+          "Fair by default"
+        ],
+        "cons": [
+          "No priorities",
+          "Starvation is possible"
+        ],
+        "learnerCost": "Learn context switching and saved registers.",
+        "alternatives": [
+          {
+            "name": "Priority queues",
+            "pros": [
+              "Favors urgent work"
+            ],
+            "cons": [
+              "More logic, starvation tuning"
+            ],
+            "pickWhen": "Threads need different urgency.",
+            "switchCost": "medium"
+          }
+        ],
+        "requestedByLearner": false,
+        "assumptions": [
+          "Cooperative first, then timer-driven"
+        ],
+        "docRefs": [
+          "d8"
+        ],
+        "verification": "cli",
+        "cardId": null
+      },
+      {
+        "layer": "drivers",
+        "name": "Serial first, then framebuffer and keyboard",
+        "versionMajor": null,
+        "whatItIs": "Small programs that talk to hardware such as the serial port.",
+        "roleHere": "Serial (COM1) prints text and test results to QEMU's stdio. Later: framebuffer, keyboard and timer.",
+        "whyChosen": "Serial is far simpler than USB or a framebuffer console, and tests read it.",
+        "pros": [
+          "Serial is a few port writes",
+          "Tests read it from stdio"
+        ],
+        "cons": [
+          "No graphics",
+          "Real hardware may lack serial"
+        ],
+        "learnerCost": "Learn x86 port I/O and the UART registers.",
+        "alternatives": [
+          {
+            "name": "Framebuffer console",
+            "pros": [
+              "Visible on screen"
+            ],
+            "cons": [
+              "Needs a font and rendering",
+              "Hard to script in tests"
+            ],
+            "pickWhen": "You want visual output first.",
+            "switchCost": "low"
+          }
+        ],
+        "requestedByLearner": false,
+        "assumptions": [
+          "COM1 at 0x3F8"
+        ],
+        "docRefs": [
+          "d9"
+        ],
+        "verification": "cli",
+        "cardId": null
+      },
+      {
+        "layer": "emulator",
+        "name": "QEMU",
+        "versionMajor": null,
+        "whatItIs": "A machine emulator that boots a kernel with serial on stdio and a GDB stub.",
+        "roleHere": "Boots the image headless in tests, and exits with a status code via isa-debug-exit.",
+        "whyChosen": "QEMU is scriptable and has a GDB stub, which Bochs and VirtualBox do less conveniently.",
+        "pros": [
+          "Boots in seconds",
+          "Scriptable with -serial stdio"
+        ],
+        "cons": [
+          "Kinder than real hardware",
+          "Many options"
+        ],
+        "learnerCost": "Learn a few flags: -serial, -display, -device, -s -S.",
+        "alternatives": [
+          {
+            "name": "Bochs",
+            "pros": [
+              "Built-in debugger"
+            ],
+            "cons": [
+              "Slower, less common"
+            ],
+            "pickWhen": "You want CPU state inspection.",
+            "switchCost": "low"
+          }
+        ],
+        "requestedByLearner": false,
+        "assumptions": [
+          "qemu-system-x86_64"
+        ],
+        "docRefs": [
+          "d3"
+        ],
+        "verification": "cli",
+        "cardId": "qemu"
+      },
+      {
+        "layer": "debugger",
+        "name": "GDB",
+        "versionMajor": null,
+        "whatItIs": "A debugger that stops and steps a program and shows registers.",
+        "roleHere": "Attaches to QEMU with -s -S to step from the first instruction.",
+        "whyChosen": "GDB connects to QEMU's stub directly. LLDB works but has fewer kernel guides.",
+        "pros": [
+          "Steps from the first instruction",
+          "Shows registers and memory"
+        ],
+        "cons": [
+          "Terse interface",
+          "Needs symbols"
+        ],
+        "learnerCost": "Learn break, step, info registers and x.",
+        "alternatives": [
+          {
+            "name": "LLDB",
+            "pros": [
+              "Friendlier commands"
+            ],
+            "cons": [
+              "Fewer OSDev guides"
+            ],
+            "pickWhen": "You already use LLDB.",
+            "switchCost": "low"
+          }
+        ],
+        "requestedByLearner": false,
+        "assumptions": [
+          "gdb or gdb-multiarch is available"
+        ],
+        "docRefs": [
+          "d3"
+        ],
+        "verification": "cli",
+        "cardId": null
+      }
+    ],
+    "toolchain": [
+      {
+        "tool": "x86-64 cross toolchain",
+        "minVersion": null,
+        "installHint": {
+          "linux": "Build x86_64-elf binutils and GCC per the OSDev wiki, or use clang with --target=x86_64-elf",
+          "macos": "brew install x86_64-elf-gcc",
+          "windows": "Inside WSL 2, build x86_64-elf binutils and GCC, or use clang with --target=x86_64-elf"
+        }
+      },
+      {
+        "tool": "QEMU",
+        "minVersion": null,
+        "installHint": {
+          "linux": "sudo apt install qemu-system-x86",
+          "macos": "brew install qemu",
+          "windows": "Inside WSL 2, sudo apt install qemu-system-x86"
+        }
+      },
+      {
+        "tool": "Rust",
+        "minVersion": null,
+        "installHint": {
+          "linux": "Install rustup, then add the nightly toolchain and rust-src",
+          "macos": "Install rustup, then add the nightly toolchain and rust-src",
+          "windows": "Inside WSL 2, install rustup, then add the nightly toolchain and rust-src"
+        }
+      }
+    ],
+    "architecture": {
+      "style": "Monolithic x86-64 kernel booted by Limine, tested headless in QEMU over serial.",
+      "components": [
+        {
+          "id": "limine",
+          "name": "Limine bootloader",
+          "layer": "boot-protocol",
+          "purpose": "Loads the kernel in long mode and passes boot info"
+        },
+        {
+          "id": "kernel",
+          "name": "Kernel entry",
+          "layer": "kernel-language",
+          "purpose": "Rust no_std code that starts at _start"
+        },
+        {
+          "id": "serial",
+          "name": "Serial driver",
+          "layer": "drivers",
+          "purpose": "Writes text and test results to COM1"
+        },
+        {
+          "id": "qemu",
+          "name": "QEMU",
+          "layer": "emulator",
+          "purpose": "Runs the image and exits on isa-debug-exit"
+        },
+        {
+          "id": "cargo",
+          "name": "Cargo build",
+          "layer": "build-system",
+          "purpose": "Builds the kernel and the image"
+        },
+        {
+          "id": "gdb",
+          "name": "GDB",
+          "layer": "debugger",
+          "purpose": "Steps the kernel through the QEMU stub"
+        }
+      ],
+      "flows": [
+        {
+          "from": "cargo",
+          "to": "limine",
+          "label": "packs kernel into bootable image"
+        },
+        {
+          "from": "limine",
+          "to": "kernel",
+          "label": "jumps to entry in 64-bit mode"
+        },
+        {
+          "from": "kernel",
+          "to": "serial",
+          "label": "prints test results"
+        },
+        {
+          "from": "serial",
+          "to": "qemu",
+          "label": "text appears on stdio"
+        },
+        {
+          "from": "kernel",
+          "to": "qemu",
+          "label": "writes exit code to isa-debug-exit"
+        },
+        {
+          "from": "gdb",
+          "to": "qemu",
+          "label": "attaches to the GDB stub"
+        }
+      ]
+    },
+    "howItFitsTogether": "Cargo builds the kernel with the cross toolchain's linker and packs it with Limine into a disk image. QEMU boots the image and Limine loads the kernel in 64-bit mode, then jumps to its entry point. The kernel initialises the serial port and prints its results. In test mode it writes a status code to isa-debug-exit, so QEMU quits and the script reads the serial text and the exit code.",
+    "milestones": [
+      {
+        "title": "Toolchain setup and booting test kernel",
+        "outcome": "Cross toolchain, QEMU and Cargo are checked, then Limine boots a kernel that prints over serial and exits QEMU with a status code. Later milestones follow when this is done."
+      }
+    ],
+    "risks": [
+      "Host compiler used instead of the cross compiler",
+      "Wrong linker script so Limine cannot find the kernel",
+      "Wrong isa-debug-exit exit code mapping",
+      "Rust nightly setup and custom target errors",
+      "Paging mistakes later cause silent resets"
+    ],
+    "friction": [
+      "Limine hides the boot process that Multiboot2 would make visible",
+      "Rust adds a learning curve on top of OS concepts",
+      "The docs dossier covers 32-bit paging and IDT layouts, but this kernel is 64-bit with different entry sizes"
+    ]
+  },
+  "attempts": 1,
+  "repaired": [],
+  "usage": {
+    "inputTokens": 3911,
+    "outputTokens": 4894,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 2726,
+    "cacheWrite5mTokens": 0
+  }
+}
