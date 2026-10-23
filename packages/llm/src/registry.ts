@@ -623,11 +623,11 @@ export function listAvailableModels(env: NodeJS.ProcessEnv = process.env): Model
  * ------------------------------------------------------------------ */
 
 /**
- * Gemini asks, Claude builds (docs/project-studio.md §4).
+ * Gemini asks, Claude builds (docs/project-learner.md §4).
  *
  * `interview`, `fanout`, `review` and `utility` are conversational and follow
  * the user's pick. `tutor` and the four project tasks are fixed by
- * `TASK_POLICY` once PROJECT_STUDIO is on; with it off they resolve exactly as
+ * `TASK_POLICY` once PROJECT_LEARNER is on; with it off they resolve exactly as
  * `fanout` and `projectGen` did before.
  */
 export type TaskKind =
@@ -744,7 +744,7 @@ export const TASK_PREFERENCE_CHAINS: Record<TaskKind, string[]> = {
  * - `onMissing` — `fail` throws `ProjectGenerationUnavailableError`; `chain`
  *   falls back to the task's pre-flag chain.
  *
- * Enforced only with PROJECT_STUDIO=on, so turning the flag off restores the
+ * Enforced only with PROJECT_LEARNER=on, so turning the flag off restores the
  * old routing exactly.
  */
 export interface TaskPolicy {
@@ -770,7 +770,7 @@ export const TASK_POLICY: Record<TaskKind, TaskPolicy> = {
 };
 
 /** What each new task resolved as before the flag. */
-const PRE_STUDIO_TASK: Partial<Record<TaskKind, TaskKind>> = {
+const LEGACY_TASK: Partial<Record<TaskKind, TaskKind>> = {
   tutor: 'fanout',
   projectPlan: 'projectGen',
   projectStep: 'projectGen',
@@ -778,8 +778,8 @@ const PRE_STUDIO_TASK: Partial<Record<TaskKind, TaskKind>> = {
   projectResearch: 'projectGen',
 };
 
-export function projectStudioOn(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env['PROJECT_STUDIO'] === 'on';
+export function projectLearnerOn(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env['PROJECT_LEARNER'] === 'on';
 }
 
 /** `PROJECT_GEN_FALLBACK=chain`, which production never honours. */
@@ -790,7 +790,7 @@ function devFallbackAllowed(env: NodeJS.ProcessEnv): boolean {
 /**
  * Resolve the model for a task.
  *
- * With PROJECT_STUDIO off, every task resolves as it always has:
+ * With PROJECT_LEARNER off, every task resolves as it always has:
  * 1. The user's explicit choice (if configured).
  * 2. The highest-tier model configured in the task's preference chain.
  * 3. The canonical task default.
@@ -807,8 +807,8 @@ export function resolveModel(
   userChoice?: string | undefined,
   env: NodeJS.ProcessEnv = process.env,
 ): ModelEntry | undefined {
-  if (!projectStudioOn(env)) {
-    return resolveOpen(PRE_STUDIO_TASK[task] ?? task, userChoice, env);
+  if (!projectLearnerOn(env)) {
+    return resolveOpen(LEGACY_TASK[task] ?? task, userChoice, env);
   }
 
   const policy = TASK_POLICY[task];
@@ -830,11 +830,11 @@ export function resolveModel(
     if (allowed(model) && isConfigured(candidate, env)) return model;
   }
 
-  const preStudio = PRE_STUDIO_TASK[task] ?? task;
-  if (policy.onMissing === 'chain') return resolveOpen(preStudio, undefined, env);
+  const legacyTask = LEGACY_TASK[task] ?? task;
+  if (policy.onMissing === 'chain') return resolveOpen(legacyTask, undefined, env);
   if (devFallbackAllowed(env)) {
-    console.warn(`[llm] no Claude key: ${task} falls back to the ${preStudio} chain (development)`);
-    return resolveOpen(preStudio, undefined, env);
+    console.warn(`[llm] no Claude key: ${task} falls back to the ${legacyTask} chain (development)`);
+    return resolveOpen(legacyTask, undefined, env);
   }
   throw new ProjectGenerationUnavailableError(task);
 }

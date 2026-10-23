@@ -1,8 +1,8 @@
 # HANDOFF
 
-Notes passed between Project Studio phases (docs/project-studio.md §15).
+Notes passed between Project Learner phases (docs/project-learner.md §15).
 
-## Phase 1 — done (branch `ps-1-foundation`, 2026-10-23)
+## Phase 1 — done (branch `pl-1-foundation`, 2026-10-23)
 
 All six "done when" checks hold except where noted:
 
@@ -62,5 +62,5 @@ All six "done when" checks hold except where noted:
    intake route in phase 3.
 9. `research_dossiers` is in 0015 (phase 1 task 5), not a later migration as
    §12 says. Update §12.
-10. `docs/project-studio.md` and `HANDOFF.md` were committed on this branch,
+10. `docs/project-learner.md` and `HANDOFF.md` were committed on this branch,
     not on `main` as phase 0 asked.

@@ -6,7 +6,7 @@ import { listAvailableModels, registryReport } from '@ai-edu/llm';
 
 import { requireAuth, userOf } from './auth.js';
 import { checkBudget } from './db.js';
-import { loadEnv, projectStudioBootProblem } from './env.js';
+import { loadEnv, projectLearnerBootProblem } from './env.js';
 import { reportScreeningTo } from './gateway.js';
 import { registerRateLimit } from './rateLimit.js';
 import { agentRoutes } from './routes/agents.js';
@@ -105,10 +105,10 @@ async function main(): Promise<void> {
     console.log(`  providers: ${report.configured.join(', ')}`);
   }
 
-  const studioProblem = projectStudioBootProblem(env);
-  if (studioProblem) throw new Error(studioProblem);
-  if (env.PROJECT_STUDIO === 'on') {
-    console.log('  project studio: on');
+  const bootProblem = projectLearnerBootProblem(env);
+  if (bootProblem) throw new Error(bootProblem);
+  if (env.PROJECT_LEARNER === 'on') {
+    console.log('  project learner: on');
     // As loud as unpriced models: these projects are not planned by Claude.
     if (env.PROJECT_GEN_FALLBACK === 'chain') {
       console.warn(

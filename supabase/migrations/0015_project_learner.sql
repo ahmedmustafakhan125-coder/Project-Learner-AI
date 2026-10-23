@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------ *
- * Project Studio (docs/project-studio.md §12)
+ * Project Learner (docs/project-learner.md §12)
  *
- * Intake, the Stack Brief and the Research Dossier, behind PROJECT_STUDIO.
+ * Intake, the Stack Brief and the Research Dossier, behind PROJECT_LEARNER.
  * Nothing here is read with the flag off, and every new column is nullable
  * or defaulted, so this applies under a running app without changing it.
  *

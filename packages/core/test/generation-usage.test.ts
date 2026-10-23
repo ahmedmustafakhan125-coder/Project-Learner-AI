@@ -10,7 +10,7 @@ import type { ProjectBlueprint } from '../src/schemas/project.js';
 import type { ExpandedStep } from '../src/schemas/step.js';
 
 /**
- * Honest usage (docs/project-studio.md §11, invariant 16) and the cheap
+ * Honest usage (docs/project-learner.md §11, invariant 16) and the cheap
  * settings that ride with it.
  *
  * The three generation functions used to return only their data, so the routes

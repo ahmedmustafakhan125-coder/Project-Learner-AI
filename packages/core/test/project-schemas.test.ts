@@ -10,7 +10,7 @@ import {
   parseStoredStackBrief,
 } from '../src/schemas/stack.js';
 
-/** The Project Studio schemas (docs/project-studio.md §6 to §8). */
+/** The Project Learner schemas (docs/project-learner.md §6 to §8). */
 
 const REF = {
   id: 'd1',
@@ -137,7 +137,7 @@ describe('StackBrief', () => {
     expect(LayerChoice.safeParse({ ...LAYER, docRefs: [] }).success).toBe(false);
   });
 
-  it('reads back tolerantly for projects planned before the studio', () => {
+  it('reads back tolerantly for projects planned before PROJECT_LEARNER', () => {
     expect(parseStoredStackBrief(undefined)).toBeNull();
     expect(parseStoredStackBrief({ profile: 'systems-os' })).toBeNull();
     expect(parseStoredStackBrief(BRIEF)?.tier).toBe('T5');

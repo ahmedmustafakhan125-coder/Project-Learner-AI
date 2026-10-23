@@ -1,6 +1,6 @@
-<!-- Exported from the Project Studio plan doc on 2026-10-22. Diagrams are Mermaid versions of the doc's drawings. v2.1 (2026-10-23) checks the plan against the repo at f6f7133 and re-sizes the build to 12 hours on one Claude Pro plan. Claude Code sessions read it from here (section 15). -->
+<!-- Exported from the Project Learner plan doc on 2026-10-22. Diagrams are Mermaid versions of the doc's drawings. v2.1 (2026-10-23) checks the plan against the repo at f6f7133 and re-sizes the build to 12 hours on one Claude Pro plan. Claude Code sessions read it from here (section 15). -->
 
-# Project Studio — Engineering Plan v2.1
+# Project Learner — Engineering Plan v2.1
 
 Oct 23, 2026 · @Ali Noor
 
@@ -21,7 +21,7 @@ Six changes carry the plan:
 
 Two fixes found in the code come first: project calls record zero tokens, so the budget never sees them, and the Claude registry is a generation behind.
 
-The 12 hours are planned for one Claude Pro plan: three Claude Code sessions, one per five-hour usage window, behind a `PROJECT_STUDIO` flag (section 15). They deliver routing and honest usage, profiles and tiers, project research, the Stack Brief, a blueprint held to the brief and a lean UI, proven live on three requests. The critic, step research, the self-test, layer swaps, per-project envelopes, the verify CLI, its harness drivers and the milestone planner follow in week 2. The platform's own Claude calls need Claude Console API credits, which a Pro plan does not include (section 11).
+The 12 hours are planned for one Claude Pro plan: three Claude Code sessions, one per five-hour usage window, behind a `PROJECT_LEARNER` flag (section 15). They deliver routing and honest usage, profiles and tiers, project research, the Stack Brief, a blueprint held to the brief and a lean UI, proven live on three requests. The critic, step research, the self-test, layer swaps, per-project envelopes, the verify CLI, its harness drivers and the milestone planner follow in week 2. The platform's own Claude calls need Claude Console API credits, which a Pro plan does not include (section 11).
 
 ## 2. Where the project section stands today
 
@@ -128,8 +128,8 @@ Routing becomes a policy per job: project jobs are pinned to Claude, conversatio
 - `resolveModel` honours `TASK_POLICY` before the preference chain. A user choice outside the allowed vendors is ignored and logged, never silently used.
 - With no `ANTHROPIC_API_KEY`, project routes return 503 `project_generation_unavailable` with a plain message. They never fall back to Gemini in production.
 - In development, `PROJECT_GEN_FALLBACK=chain` lets a contributor with only a Gemini key run the flow on Flash. Boot logs it loudly, the same way unpriced models are named today.
-- In production with `PROJECT_STUDIO=on`, boot fails if no Anthropic key is set, because every project route would otherwise be dead on arrival. With the flag off, boot is unchanged, so deploying this code cannot take down the live API before the Render service has a key.
-- `apps/api/src/env.ts` gains `PROJECT_STUDIO` (`on` or `off`, default `off`), `PROJECT_GEN_FALLBACK` (`fail` or `chain`, default `fail`, and `chain` is refused in production) and `PROJECT_USD_BUDGET_PER_USER_PER_WEEK`. Provider keys stay optional in the schema; the flag check lives beside the existing `registryReport` call at startup.
+- In production with `PROJECT_LEARNER=on`, boot fails if no Anthropic key is set, because every project route would otherwise be dead on arrival. With the flag off, boot is unchanged, so deploying this code cannot take down the live API before the Render service has a key.
+- `apps/api/src/env.ts` gains `PROJECT_LEARNER` (`on` or `off`, default `off`), `PROJECT_GEN_FALLBACK` (`fail` or `chain`, default `fail`, and `chain` is refused in production) and `PROJECT_USD_BUDGET_PER_USER_PER_WEEK`. Provider keys stay optional in the schema; the flag check lives beside the existing `registryReport` call at startup.
 
 ### Handoff and caching
 
@@ -768,7 +768,7 @@ Sources: [Use Claude Code with your Pro or Max plan](https://support.claude.com/
 
 One migration, one new route file for intake, a `profiles` folder inside core, and an intake row on the server so the approved brief and dossier are read from the database rather than trusted from the browser. The CLI route file and the `verify-cli` package follow in week 2.
 
-### Migration `0015_project_studio.sql`
+### Migration `0015_project_learner.sql`
 
 Migrations `0001` to `0014` are taken (`0011` is the brain, `0013` assessment, `0014` the attachments bucket), so this is `0015`. Note that a `profiles` table already exists for user profiles; project columns use `project_profile` to avoid confusion.
 
@@ -787,7 +787,7 @@ Apply `0015` locally with `npm run db:reset`. Apply it to the cloud project only
 
 ### API routes
 
-In the 12 hours (`apps/api/src/routes/intake.ts`, registered only when `PROJECT_STUDIO=on`):
+In the 12 hours (`apps/api/src/routes/intake.ts`, registered only when `PROJECT_LEARNER=on`):
 
 ```
 POST  /api/projects/intake                          { compiled } -> { intakeId, profile, tier, reasons }
@@ -921,7 +921,7 @@ Week 2: the T5 prerequisite checklist and warm-up offer; "Read first" links on `
 
 ## 15. Implementation phases
 
-The work is split into seven phases, each one a Claude Code session with its own branch, task list, files and "done when". Phases 1 to 3 are the 12-hour build on one Pro plan, one phase per five-hour usage window; they ship one vertical slice behind `PROJECT_STUDIO=on`. Phases 4 to 7 are week 2. As in the README, do not start a phase until the previous one's "done when" passes; each phase leaves `main` working.
+The work is split into seven phases, each one a Claude Code session with its own branch, task list, files and "done when". Phases 1 to 3 are the 12-hour build on one Pro plan, one phase per five-hour usage window; they ship one vertical slice behind `PROJECT_LEARNER=on`. Phases 4 to 7 are week 2. As in the README, do not start a phase until the previous one's "done when" passes; each phase leaves `main` working.
 
 | Phase | When | Delivers | Invariants tested |
 | --- | --- | --- | --- |
@@ -970,21 +970,21 @@ gantt
 2. Put `ANTHROPIC_API_KEY` in `.env` only. Check that `echo $ANTHROPIC_API_KEY` is empty in Claude Code's terminal.
 3. Read the Claude pricing page and each model page, and note, for Opus 5.5, Sonnet 5.5 and Haiku 5.5: input, output, cache read, 5-minute and 1-hour cache write, and the minimum cacheable prefix. Phase 1 needs them, and it leaves `pricing: null` for anything you could not verify.
 4. Free the ports, then `npm run db:start`, `npm install`, `npm test` to see a green baseline (970 tests).
-5. Create an empty `HANDOFF.md` at the root and commit it with `docs/project-studio.md` on `main`.
+5. Create an empty `HANDOFF.md` at the root and commit it with `docs/project-learner.md` on `main`.
 6. Start the drafts that phase 2 needs (with Gemini, reviewed by you): `knowledge/docs/sources.json`; about 8 tech cards in `knowledge/tech/` (Tauri, Rust, Limine, QEMU, x86-64 cross tooling, Python, SQLite, Lox via Crafting Interpreters); layer lists and slots for all 14 profiles; 30 scoring fixtures with expected profile and tier; the three golden requests.
 
 ### Phase 1 — Foundation, routing and cost
 
-- **When and model:** window 1, Sonnet. Branch `ps-1-foundation`.
+- **When and model:** window 1, Sonnet. Branch `pl-1-foundation`.
 - **Read:** sections 2, 4, 11, 12 (migration) and 13.
 
 Tasks, in priority order:
 
-1. `CLAUDE.md` with the rules at the end of this section. In `apps/api/src/env.ts`: `PROJECT_STUDIO`, `PROJECT_GEN_FALLBACK`, `PROJECT_USD_BUDGET_PER_USER_PER_WEEK`, and the boot check (fails only in production with the flag on and no Anthropic key).
+1. `CLAUDE.md` with the rules at the end of this section. In `apps/api/src/env.ts`: `PROJECT_LEARNER`, `PROJECT_GEN_FALLBACK`, `PROJECT_USD_BUDGET_PER_USER_PER_WEEK`, and the boot check (fails only in production with the flag on and no Anthropic key).
 2. Registry (`packages/llm/src/registry.ts`): Claude 5.5 entries with the phase 0 prices; Gemini labels and prices; `gemini-4-argon`; TaskKinds `projectPlan`, `projectStep`, `projectReview`, `projectResearch` and `tutor`, with `projectGen` as an alias; `TASK_POLICY`; `PROJECT_MODELS` (model, effort and `maxTokens` per stage and tier, from section 11); `resolveModel` honouring the policy. Project routes return 503 `project_generation_unavailable`. `routes/tutor.ts` uses `tutor`. Run conformance for `gemini-4-argon`.
 3. Honest usage: `generateBlueprint`, `expandStep` and `finishProject` return `{ data, usage }`; the three routes record it under `project:<stage>` labels; `checkBudget` gains the project scope.
 4. Cheap settings: blueprint, expand and finish read effort and `maxTokens` from `PROJECT_MODELS`; `cacheTtl` on cache boundaries, mapped by the Anthropic adapter, with `'5m'` on the per-project prefix; `planExpansion` prefetches only after a draft or an attempt.
-5. Migration `0015_project_studio.sql` (section 12, with `research_dossiers`), and the Zod schemas `schemas/stack.ts`, `schemas/research.ts` and `profiles/types.ts`.
+5. Migration `0015_project_learner.sql` (section 12, with `research_dossiers`), and the Zod schemas `schemas/stack.ts`, `schemas/research.ts` and `profiles/types.ts`.
 6. Stretch, if usage remains: the profile data and scoring from phase 2, task 1.
 
 Done when: `npm run typecheck && npm test && npm run lint` pass; invariants 15 and 16 have tests; `npm run db:reset` applies `0015`; with the flag off, the app behaves as before.
@@ -992,21 +992,21 @@ Done when: `npm run typecheck && npm test && npm run lint` pass; invariants 15 a
 You, meanwhile: finish the phase 0 drafts; review the registry diff against the pricing you noted.
 
 ```
-You are phase 1 (foundation, routing and cost) of the Project Studio plan, on branch
-ps-1-foundation. Read docs/project-studio.md sections 2, 4, 11, 12 and 13.
+You are phase 1 (foundation, routing and cost) of the Project Learner plan, on branch
+pl-1-foundation. Read docs/project-learner.md sections 2, 4, 11, 12 and 13.
 Do the six tasks of "Phase 1" in section 15, in order. Verified prices: <paste from phase 0>.
 Anything you could not verify stays pricing: null.
 First task: write CLAUDE.md from the rules at the end of section 15, then follow it.
 You own the files those tasks name and their tests. Put any other change in HANDOFF.md.
 Write the tests for each task before its code. Use /clear between tasks.
 Done when: npm run typecheck && npm test && npm run lint pass, invariants 15 and 16 have
-tests, npm run db:reset applies 0015, and the app is unchanged with PROJECT_STUDIO off.
-Commit per task as "feat(studio): ...". End by writing what is left to HANDOFF.md.
+tests, npm run db:reset applies 0015, and the app is unchanged with PROJECT_LEARNER off.
+Commit per task as "feat(learner): ...". End by writing what is left to HANDOFF.md.
 ```
 
 ### Phase 2 — Profiles, research and the Stack Brief
 
-- **When and model:** window 2, Opus if offered, else Sonnet. Branch `ps-2-research-brief`.
+- **When and model:** window 2, Opus if offered, else Sonnet. Branch `pl-2-research-brief`.
 - **Read:** sections 5, 6, 7 and 8, `HANDOFF.md`.
 
 Tasks, in priority order:
@@ -1021,8 +1021,8 @@ Done when: tests pass for `@ai-edu/llm`, `@ai-edu/core` and `@ai-edu/api`; invar
 You, meanwhile: read the live dossier and the three briefs and note prompt fixes in `HANDOFF.md`; write the UI copy for chips, badges and empty states.
 
 ```
-You are phase 2 (profiles, research and the Stack Brief) of the Project Studio plan, on branch
-ps-2-research-brief. Read CLAUDE.md, HANDOFF.md, then docs/project-studio.md sections 5 to 8.
+You are phase 2 (profiles, research and the Stack Brief) of the Project Learner plan, on branch
+pl-2-research-brief. Read CLAUDE.md, HANDOFF.md, then docs/project-learner.md sections 5 to 8.
 Do the four tasks of "Phase 2" in section 15, in order. Profile drafts, tech cards,
 sources.json and scoring fixtures are in <paths>. The installed @anthropic-ai/sdk 0.119
 already types web_search_20260318 and web_fetch_20260318.
@@ -1031,12 +1031,12 @@ with no key or personal data in them.
 You own the files those tasks name and their tests. Put any other change in HANDOFF.md.
 Write the tests for each task before its code. Use /clear between tasks.
 Done when: the "done when" of Phase 2 in section 15 holds. Commit per task as
-"feat(studio): ...". End by writing what is left to HANDOFF.md.
+"feat(learner): ...". End by writing what is left to HANDOFF.md.
 ```
 
 ### Phase 3 — Intake, blueprint and the lean UI
 
-- **When and model:** window 3, Sonnet. Branch `ps-3-intake-ui`.
+- **When and model:** window 3, Sonnet. Branch `pl-3-intake-ui`.
 - **Read:** sections 8 (what the learner sees), 9, 11 (creation cost) and 12 (routes), `HANDOFF.md`.
 
 Tasks, in priority order:
@@ -1051,15 +1051,15 @@ Done when: web tests pass; invariants 17, 27 and 28 have tests; 3 live runs from
 You, meanwhile: manual QA (section 14, the 12-hour list); flag on in development.
 
 ```
-You are phase 3 (intake, blueprint and the lean UI) of the Project Studio plan, on branch
-ps-3-intake-ui. Read CLAUDE.md, HANDOFF.md, then docs/project-studio.md sections 8, 9, 11
+You are phase 3 (intake, blueprint and the lean UI) of the Project Learner plan, on branch
+pl-3-intake-ui. Read CLAUDE.md, HANDOFF.md, then docs/project-learner.md sections 8, 9, 11
 and 12.
 Do the four tasks of "Phase 3" in section 15, in order. Build the UI against recorded
 fixtures or PROJECT_GEN_FALLBACK=chain; make live Claude calls only for the final three runs.
 You own the files those tasks name and their tests. Put any other change in HANDOFF.md.
 Write the tests for each task before its code. Use /clear between tasks.
 Done when: the "done when" of Phase 3 in section 15 holds. Commit per task as
-"feat(studio): ...". End by writing what is left to HANDOFF.md.
+"feat(learner): ...". End by writing what is left to HANDOFF.md.
 ```
 
 ### Exit gate at hour 12
@@ -1095,14 +1095,14 @@ The original two-day plan also listed the self-test for browser-runnable steps a
 ### Phase 7 — Breadth and launch (week 2)
 
 - **Read:** sections 6, 14 and 16.
-- **Tasks:** 1. Deep data for the ten remaining profiles. 2. The 28-request golden set and the model comparison, and tuning `PROJECT_MODELS` effort per stage and tier against them. 3. Invariants 15 to 28 merged into the README. 4. The production flip: apply the new migrations to the cloud project with the vendored CLI (`DEPLOY.md`), set `ANTHROPIC_API_KEY`, `PROJECT_STUDIO=on` and `PROJECT_USD_BUDGET_PER_USER_PER_WEEK` on the Render service, run the manual QA against production.
+- **Tasks:** 1. Deep data for the ten remaining profiles. 2. The 28-request golden set and the model comparison, and tuning `PROJECT_MODELS` effort per stage and tier against them. 3. Invariants 15 to 28 merged into the README. 4. The production flip: apply the new migrations to the cloud project with the vendored CLI (`DEPLOY.md`), set `ANTHROPIC_API_KEY`, `PROJECT_LEARNER=on` and `PROJECT_USD_BUDGET_PER_USER_PER_WEEK` on the Render service, run the manual QA against production.
 - **Done when:** the release gates in section 14 pass; production creates a project for each golden request at its expected cost.
 
 ### CLAUDE.md rules for every phase
 
 ```md
-## Project Studio (flag PROJECT_STUDIO)
-- The plan is docs/project-studio.md. Sections are cited as §N. Your phase is in §15.
+## Project Learner (flag PROJECT_LEARNER)
+- The plan is docs/project-learner.md. Sections are cited as §N. Your phase is in §15.
 - Invariants 1-14 (README) never change. Invariants 15-28 are in §13; any change that touches one
   adds or updates its enforcing test.
 - packages/core stays portable: no Node built-ins, no fetch, no vendor SDKs. Child processes,
@@ -1114,7 +1114,7 @@ The original two-day plan also listed the self-test for browser-runnable steps a
   raise them, add a retry or add a model call without updating §11 and the invariant 28 test.
 - Questions run on Gemini Flash, the tutor on Gemini 4 Argon, project generation on Claude.
 - New migrations start at 0015. Project columns say project_profile; `profiles` is the user table.
-- Everything new is behind PROJECT_STUDIO. With the flag off, the app behaves as it does today.
+- Everything new is behind PROJECT_LEARNER. With the flag off, the app behaves as it does today.
 - Edit only the files your phase's tasks name. Anything else goes in HANDOFF.md.
 - Do not spawn subagents. Keep replies short; show diffs, not explanations.
 - Done means: npm run typecheck && npm test && npm run lint pass for your workspaces.
@@ -1134,7 +1134,7 @@ The biggest risks are the 12-hour pace on one Pro plan, cost, and (in week 2) co
 | The Pro plan's usage runs out mid-block | High | Sonnet by default; one session at a time; /clear between tasks; no subagents; data files drafted with Gemini; usage credits as a safety valve; every block leaves main working |
 | The tutor on Gemini 4 Argon ($4 / $20 per million tokens from 2026-12-01, implicit caching only) drains the $2 daily allowance on large projects | Medium | Tutor calls are recorded under their own `tutor` task; measure cost per session in the first week and cap the files sent, or fall back to Flash, if it bites |
 | Honest usage recording pushes learners past the $2 daily allowance | High | Project spend counts against its own weekly allowance; Sonnet for steps and research; caching |
-| Turning on production boot checks takes down the live API | High | Boot fails without an Anthropic key only when `PROJECT_STUDIO=on`; Render gets the key before the flag |
+| Turning on production boot checks takes down the live API | High | Boot fails without an Anthropic key only when `PROJECT_LEARNER=on`; Render gets the key before the flag |
 | Steps ship with tests nobody can pass until the self-test lands | Medium | Existing `verifyExpansion`, `verifyInstructions` and `groundCheckpoint` stay; the self-test is week 2's first item |
 | The self-test runs model-written code on the API host (week 2) | High | Child process, no secrets, CPU, memory and time limits, egress blocked; a containment suite with a control |
 | The CLI runs commands from model-written configs on the learner's machine (week 2) | High | Fixed templates only, allowlisted tools, paths inside the project, commands shown and confirmed (invariant 26) |

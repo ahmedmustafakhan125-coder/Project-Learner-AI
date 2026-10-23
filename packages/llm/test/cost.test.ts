@@ -69,7 +69,7 @@ describe('usage helpers', () => {
   });
 });
 
-describe('cache write TTLs and searches (docs/project-studio.md §4, §11)', () => {
+describe('cache write TTLs and searches (docs/project-learner.md §4, §11)', () => {
   it('prices 5-minute writes at the 5m rate and the rest at the 1h rate', () => {
     // claude-sonnet-5-5: 5m writes $2.50/MTok, 1h writes $4/MTok.
     const cost = computeCost(

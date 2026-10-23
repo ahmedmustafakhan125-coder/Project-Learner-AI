@@ -4009,7 +4009,7 @@ select.control option {
 /*
  * Both controls in this panel — the one that submits a step for checking and
  * the one that retries it — were bare <button> elements with no class, so the
- * single most important action in the project studio rendered as unstyled
+ * single most important action on the project page rendered as unstyled
  * browser chrome sitting on a themed card. The layer rows and their dots were
  * inline styles, including a pending dot in --text-faint that was invisible on
  * white and a keyframe the component injected into the page on every render.

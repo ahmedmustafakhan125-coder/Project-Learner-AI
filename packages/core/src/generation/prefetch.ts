@@ -34,7 +34,7 @@ export interface PlanExpansionOptions {
    * submitted an attempt. When it is `false`, nothing is prefetched, so a
    * learner who looks at step 1 and leaves costs one step, not two. Left
    * undefined, the next step is prefetched as soon as this one opens, as it
-   * was before PROJECT_STUDIO.
+   * was before PROJECT_LEARNER.
    */
   currentStarted?: boolean;
 }

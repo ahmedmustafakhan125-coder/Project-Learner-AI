@@ -319,7 +319,7 @@ export class LLMStructuredOutputError extends LLMError {
 export class LLMConfigError extends LLMError {}
 
 /**
- * A project task with PROJECT_STUDIO on and no Claude key. Routes answer it
+ * A project task with PROJECT_LEARNER on and no Claude key. Routes answer it
  * with 503 `project_generation_unavailable`; it never falls back to another
  * vendor in production (invariant 15).
  */

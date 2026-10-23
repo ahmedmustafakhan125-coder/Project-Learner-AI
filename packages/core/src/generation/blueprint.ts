@@ -95,7 +95,7 @@ export interface GenerateBlueprintOptions {
   /** The learner's recalled history (brain/memory.ts), rendered. */
   memory?: string | null;
   /**
-   * Effort and output ceiling, from `PROJECT_MODELS` when PROJECT_STUDIO is
+   * Effort and output ceiling, from `PROJECT_MODELS` when PROJECT_LEARNER is
    * on. Absent, the call keeps the settings it had before the flag.
    */
   reasoning?: ReasoningEffort;

@@ -7,11 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * Invariant 16: every generation call records its real usage
- * (docs/project-studio.md §11, §13).
+ * (docs/project-learner.md §11, §13).
  *
  * The three project routes used to record zero tokens, so the budget never saw
  * project spend. A fake provider reports known usage; each route must record
- * exactly that, under its `project:<stage>` label. With PROJECT_STUDIO on the
+ * exactly that, under its `project:<stage>` label. With PROJECT_LEARNER on the
  * stage's model comes from PROJECT_MODELS and spend counts against the weekly
  * project allowance.
  */
@@ -145,7 +145,7 @@ async function server() {
 }
 
 function setFlag(value: 'on' | 'off') {
-  process.env['PROJECT_STUDIO'] = value;
+  process.env['PROJECT_LEARNER'] = value;
   resetEnvCache();
 }
 
@@ -170,7 +170,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete process.env['PROJECT_STUDIO'];
+  delete process.env['PROJECT_LEARNER'];
   resetEnvCache();
 });
 
@@ -183,7 +183,7 @@ const calls = {
     app.inject({ method: 'POST', url: '/api/projects/p1/finish', payload: {} }),
 };
 
-describe.each(['off', 'on'] as const)('invariant 16 with PROJECT_STUDIO=%s', (flag) => {
+describe.each(['off', 'on'] as const)('invariant 16 with PROJECT_LEARNER=%s', (flag) => {
   beforeEach(() => setFlag(flag));
 
   it.each([
@@ -203,7 +203,7 @@ describe.each(['off', 'on'] as const)('invariant 16 with PROJECT_STUDIO=%s', (fl
   });
 });
 
-describe('PROJECT_STUDIO=on', () => {
+describe('PROJECT_LEARNER=on', () => {
   beforeEach(() => setFlag('on'));
 
   it('takes each stage from PROJECT_MODELS and ignores the UI pick', async () => {
@@ -268,7 +268,7 @@ describe('PROJECT_STUDIO=on', () => {
   });
 });
 
-describe('PROJECT_STUDIO=off', () => {
+describe('PROJECT_LEARNER=off', () => {
   beforeEach(() => setFlag('off'));
 
   it('resolves projects as before: the projectGen chain, user pick included', async () => {

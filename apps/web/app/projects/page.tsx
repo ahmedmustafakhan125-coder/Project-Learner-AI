@@ -138,7 +138,7 @@ function Projects() {
                   </span>
                 )}
                 <span style={{ marginLeft: 'auto', fontSize: '13px', color: 'var(--primary)', fontWeight: 600 }}>
-                  Open Studio →
+                  Open project →
                 </span>
               </div>
             </Link>

@@ -46,7 +46,7 @@ export function createProvider(
 /**
  * Provider for a task, honouring the user's pick when it is usable and falling
  * back to the task default. Throws when nothing at all is configured, or, with
- * PROJECT_STUDIO on, when a project task has no Claude key.
+ * PROJECT_LEARNER on, when a project task has no Claude key.
  */
 export function createProviderForTask(
   task: TaskKind,

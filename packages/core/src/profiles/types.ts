@@ -4,7 +4,7 @@ import type { SlotDef } from '../interview/slots.js';
 import type { ComplexityTier, StackBrief, ToolRequirement } from '../schemas/stack.js';
 
 /**
- * Project profiles (docs/project-studio.md §6).
+ * Project profiles (docs/project-learner.md §6).
  *
  * A profile is a data file, not a prompt: the stack layers that kind of
  * software has, the questions it needs, the architecture rule that keeps it
@@ -15,7 +15,7 @@ import type { ComplexityTier, StackBrief, ToolRequirement } from '../schemas/sta
  * cached system prefix stays byte-identical across every profile (invariant 21).
  */
 
-/** Every kind of software the studio plans. `general` is the fallback. */
+/** Every kind of software Project Learner plans. `general` is the fallback. */
 export const PROFILE_IDS = [
   'web-frontend',
   'web-fullstack',

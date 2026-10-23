@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * Budget scopes (docs/project-studio.md §11).
+ * Budget scopes (docs/project-learner.md §11).
  *
- * With PROJECT_STUDIO on, `project:*` rows count against a weekly project
+ * With PROJECT_LEARNER on, `project:*` rows count against a weekly project
  * allowance and everything else against the daily Q&A one, so a learner who
  * spends their projects cannot lose their questions. With it off, every row
  * counts against the daily allowance, as before.
@@ -60,12 +60,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete process.env['PROJECT_STUDIO'];
+  delete process.env['PROJECT_LEARNER'];
   resetEnvCache();
 });
 
-describe('checkBudget with PROJECT_STUDIO on', () => {
-  beforeEach(() => setEnv({ PROJECT_STUDIO: 'on' }));
+describe('checkBudget with PROJECT_LEARNER on', () => {
+  beforeEach(() => setEnv({ PROJECT_LEARNER: 'on' }));
 
   it('counts project:* rows over seven days against the weekly allowance', async () => {
     const status = await checkBudget('u1', 'project');
@@ -82,8 +82,8 @@ describe('checkBudget with PROJECT_STUDIO on', () => {
   });
 });
 
-describe('checkBudget with PROJECT_STUDIO off', () => {
-  beforeEach(() => setEnv({ PROJECT_STUDIO: 'off' }));
+describe('checkBudget with PROJECT_LEARNER off', () => {
+  beforeEach(() => setEnv({ PROJECT_LEARNER: 'off' }));
 
   it('counts every row over a day against the daily allowance, whatever the scope', async () => {
     for (const scope of ['qa', 'project'] as const) {

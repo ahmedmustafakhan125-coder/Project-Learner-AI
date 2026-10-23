@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
  */
 
 const SQL = readFileSync(
-  fileURLToPath(new URL('../../../supabase/migrations/0015_project_studio.sql', import.meta.url)),
+  fileURLToPath(new URL('../../../supabase/migrations/0015_project_learner.sql', import.meta.url)),
   'utf8',
 );
 

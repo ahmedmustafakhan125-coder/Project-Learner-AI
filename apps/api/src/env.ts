@@ -21,7 +21,7 @@ const EnvSchema = z.object({
   DAILY_USD_BUDGET_PER_USER: z.coerce.number().positive().default(2),
 
   /*
-   * Project Studio (docs/project-studio.md §4). Off by default, and everything
+   * Project Learner (docs/project-learner.md §4). Off by default, and everything
    * it adds sits behind it: with the flag off the app behaves as it did.
    *
    * PROJECT_GEN_FALLBACK=chain lets a contributor with only a Gemini key run
@@ -29,7 +29,7 @@ const EnvSchema = z.object({
    * where a project route with no Claude key must say so, not quietly run on
    * another model.
    */
-  PROJECT_STUDIO: z.enum(['on', 'off']).default('off'),
+  PROJECT_LEARNER: z.enum(['on', 'off']).default('off'),
   PROJECT_GEN_FALLBACK: z.enum(['fail', 'chain']).default('fail'),
   /** Spend on `project:*` tasks over seven days. About three T3 projects. */
   PROJECT_USD_BUDGET_PER_USER_PER_WEEK: z.coerce.number().positive().default(5),
@@ -48,15 +48,15 @@ export type Env = z.infer<typeof EnvSchema>;
  * the keys, so this code can be deployed before the Render service has a key.
  * Development boots either way and logs the gap instead.
  */
-export function projectStudioBootProblem(
+export function projectLearnerBootProblem(
   env: Env,
   source: NodeJS.ProcessEnv = process.env,
 ): string | null {
-  if (env.NODE_ENV !== 'production' || env.PROJECT_STUDIO !== 'on') return null;
+  if (env.NODE_ENV !== 'production' || env.PROJECT_LEARNER !== 'on') return null;
   if (source['ANTHROPIC_API_KEY']?.trim()) return null;
   return (
-    'PROJECT_STUDIO=on needs ANTHROPIC_API_KEY: project generation runs on Claude and has no ' +
-    'fallback in production. Set the key, or set PROJECT_STUDIO=off.'
+    'PROJECT_LEARNER=on needs ANTHROPIC_API_KEY: project generation runs on Claude and has no ' +
+    'fallback in production. Set the key, or set PROJECT_LEARNER=off.'
   );
 }
 

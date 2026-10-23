@@ -15,7 +15,7 @@ import { ProjectGenerationUnavailableError } from '../src/types.js';
 
 /**
  * Invariant 15: project generation runs on Claude and never falls back
- * silently (docs/project-studio.md §13).
+ * silently (docs/project-learner.md §13).
  */
 
 const PROJECT_TASKS: TaskKind[] = [
@@ -29,7 +29,7 @@ const PROJECT_TASKS: TaskKind[] = [
 const BOTH = { ANTHROPIC_API_KEY: 'sk-ant', GEMINI_API_KEY: 'g-key' };
 const GEMINI_ONLY = { GEMINI_API_KEY: 'g-key' };
 const on = (env: Record<string, string>, extra: Record<string, string> = {}) =>
-  ({ ...env, PROJECT_STUDIO: 'on', ...extra }) as NodeJS.ProcessEnv;
+  ({ ...env, PROJECT_LEARNER: 'on', ...extra }) as NodeJS.ProcessEnv;
 const off = (env: Record<string, string>) => ({ ...env }) as NodeJS.ProcessEnv;
 
 describe('invariant 15: project tasks with the flag on', () => {

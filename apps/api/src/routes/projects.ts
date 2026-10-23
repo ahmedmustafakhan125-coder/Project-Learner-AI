@@ -98,7 +98,7 @@ type StageResult =
 /**
  * Which model writes this stage.
  *
- * With PROJECT_STUDIO on, the model, effort and output ceiling come from
+ * With PROJECT_LEARNER on, the model, effort and output ceiling come from
  * `PROJECT_MODELS` and the UI pick is ignored: plan quality must not depend on
  * a dropdown. No tier is scored before intake exists, so these routes plan at
  * `DEFAULT_PROJECT_TIER`. With no Claude key that is a 503, never a quiet
@@ -106,7 +106,7 @@ type StageResult =
  */
 function stageProvider(stage: ProjectStage, userChoice?: string): StageResult {
   try {
-    if (loadEnv().PROJECT_STUDIO !== 'on') {
+    if (loadEnv().PROJECT_LEARNER !== 'on') {
       return { ok: true, call: { provider: createProviderForTask('projectGen', userChoice) } };
     }
     return { ok: true, call: createProviderForStage(stage, DEFAULT_PROJECT_TIER) };
@@ -140,16 +140,16 @@ function stageSettings(call: StageCall): { reasoning?: ReasoningEffort; maxToken
 /**
  * The refusal for an exhausted allowance, or null to go ahead.
  *
- * With PROJECT_STUDIO on, project calls draw on the weekly project allowance
+ * With PROJECT_LEARNER on, project calls draw on the weekly project allowance
  * and say so; Q&A keeps its own. With it off, the daily allowance, as before.
  */
 async function budgetRefusal(
   userId: string,
 ): Promise<{ status: 429; body: { error: string; message: string } } | null> {
-  const studio = loadEnv().PROJECT_STUDIO === 'on';
-  const budget = await checkBudget(userId, studio ? 'project' : 'qa');
+  const flagOn = loadEnv().PROJECT_LEARNER === 'on';
+  const budget = await checkBudget(userId, flagOn ? 'project' : 'qa');
   if (!budget.exceeded) return null;
-  return studio
+  return flagOn
     ? {
         status: 429,
         body: {
@@ -622,12 +622,12 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
       }
 
       /*
-       * Writing a step ahead of the frontier is a prefetch. With PROJECT_STUDIO
+       * Writing a step ahead of the frontier is a prefetch. With PROJECT_LEARNER
        * on it waits until the learner has started the step before it, so one
        * who opens step 1 and leaves costs one step, not two. The rule is
        * core's; this only loads what it reasons over.
        */
-      if (loadEnv().PROJECT_STUDIO === 'on' && stepIndex > progress.unlockedThrough) {
+      if (loadEnv().PROJECT_LEARNER === 'on' && stepIndex > progress.unlockedThrough) {
         const plan = planExpansion(
           [{ index: stepIndex, expanded: false, expanding: false }],
           stepIndex - 1,

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * The Research Dossier (docs/project-studio.md §7).
+ * The Research Dossier (docs/project-learner.md §7).
  *
  * What a research pass read in allowlisted official documentation, kept as
  * notes, short cited snippets and links — never whole pages. Every brief and
@@ -43,7 +43,7 @@ export type ResearchDossier = z.infer<typeof ResearchDossier>;
 /**
  * A stored dossier, or null.
  *
- * Tolerant like `parseStoredBlueprint`: projects created before Project Studio
+ * Tolerant like `parseStoredBlueprint`: projects created before PROJECT_LEARNER
  * have none, and a dossier this version cannot read is treated as absent
  * rather than failing the page that shows it.
  */

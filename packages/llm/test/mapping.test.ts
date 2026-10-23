@@ -117,7 +117,7 @@ describe('openai-compatible: usage normalisation', () => {
   });
 });
 
-describe('anthropic: cache TTLs (docs/project-studio.md §4)', () => {
+describe('anthropic: cache TTLs (docs/project-learner.md §4)', () => {
   it('keeps the 1h default on system blocks and honours 5m when asked', () => {
     const blocks = buildSystemBlocks([
       { text: 'shared', cacheBoundary: true },

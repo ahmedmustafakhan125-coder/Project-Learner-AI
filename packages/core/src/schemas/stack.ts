@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { ProfileId } from '../profiles/types.js';
 
 /**
- * The Stack Brief (docs/project-studio.md §8).
+ * The Stack Brief (docs/project-learner.md §8).
  *
  * Generated after research and before the blueprint: every layer the profile
  * requires, explained — what it is, what it does here, why it was chosen,
@@ -111,7 +111,7 @@ export const StackBrief = z.object({
 export type StackBrief = z.infer<typeof StackBrief>;
 
 /**
- * A stored brief, or null for a project planned before Project Studio, which
+ * A stored brief, or null for a project planned before PROJECT_LEARNER, which
  * falls back to its "Built with" list.
  */
 export function parseStoredStackBrief(value: unknown): StackBrief | null {

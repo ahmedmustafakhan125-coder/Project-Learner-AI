@@ -91,7 +91,7 @@ export interface BudgetStatus {
 /**
  * Which allowance a call draws on.
  *
- * With PROJECT_STUDIO on, rows whose task starts `project:` count against a
+ * With PROJECT_LEARNER on, rows whose task starts `project:` count against a
  * weekly project allowance and everything else against the daily Q&A one, so
  * a learner who spends their projects still has their questions. With it off,
  * every row counts against the daily allowance, whatever the scope, as before.
@@ -107,7 +107,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 export async function checkBudget(userId: string, scope: BudgetScope = 'qa'): Promise<BudgetStatus> {
   const env = loadEnv();
-  const scoped = env.PROJECT_STUDIO === 'on';
+  const scoped = env.PROJECT_LEARNER === 'on';
   const project = scoped && scope === 'project';
   const limitUSD = project ? env.PROJECT_USD_BUDGET_PER_USER_PER_WEEK : env.DAILY_USD_BUDGET_PER_USER;
   const since = new Date(Date.now() - (project ? 7 * DAY_MS : DAY_MS)).toISOString();
