@@ -151,6 +151,8 @@ describe('PROJECT_MODELS', () => {
     expect(PROJECT_MODELS.brief.T1).toMatchObject({ reasoning: 'low', maxTokens: 4_000 });
     expect(PROJECT_MODELS.brief.T4).toMatchObject({ reasoning: 'medium', maxTokens: 8_000 });
     expect(PROJECT_MODELS.finish.T3).toMatchObject({ reasoning: 'low', maxTokens: 6_000 });
+    expect(PROJECT_MODELS.adapt.T1).toMatchObject({ reasoning: 'low', maxTokens: 8_000 });
+    expect(PROJECT_MODELS.adapt.T5).toMatchObject({ reasoning: 'medium', maxTokens: 12_000 });
     expect(PROJECT_MODELS.research.T1).toBeNull();
     expect(PROJECT_MODELS.research.T2).toMatchObject({ reasoning: 'low' });
   });

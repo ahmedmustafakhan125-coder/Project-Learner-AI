@@ -47,6 +47,8 @@ export * from './generation/runnable.js';
 export * from './generation/verifyExpansion.js';
 export * from './generation/verifyInstructions.js';
 export * from './generation/verifyBlueprint.js';
+export * from './generation/template.js';
+export * from './budget/ceiling.js';
 export * from './tutor/gate.js';
 export * from './tutor/prompts.js';
 export * from './tutor/ask.js';
