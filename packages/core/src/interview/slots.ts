@@ -1,3 +1,5 @@
+import type { ProjectTier } from '@ai-edu/llm';
+
 import type { QueryIntent } from '../schemas/common.js';
 import type { InterviewContext, Slots, SufficiencyScore } from '../schemas/interview.js';
 
@@ -27,6 +29,13 @@ export interface SlotDef {
   autoFill?: (ctx: InterviewContext) => string | null;
   /** Seeds the question generator so options feel concrete. */
   suggestedOptions?: string[];
+  /**
+   * The least tier at which this slot is asked (docs/project-learner.md §5).
+   * Slots with a tier exist only once intake has scored one: `slotsFor` leaves
+   * them out, so the interview with PROJECT_LEARNER off is unchanged, and
+   * `scopedSlots` in complexity.ts adds them by tier.
+   */
+  minTier?: ProjectTier;
 }
 
 const fromSkill = (ctx: InterviewContext): string | null => ctx.skillLevel;
@@ -99,6 +108,85 @@ export const SLOT_CATALOG: Record<QueryIntent, SlotDef[]> = {
       description: 'Anything limiting: OS, no paid services, must use a specific tool.',
       weight: 1,
       required: false,
+    },
+
+    // Tier slots (§5): asked only once intake has scored a tier this high.
+    {
+      key: 'interface',
+      label: 'Interface',
+      description: 'How people use it: command line, web page, desktop window, phone app or an API.',
+      weight: 2,
+      required: true,
+      minTier: 'T2',
+      suggestedOptions: ['Command line', 'Web page', 'Desktop window', 'Phone app', 'API only'],
+    },
+    {
+      key: 'data',
+      label: 'Data',
+      description: 'What it stores and where: nothing, files, a local database or a server database.',
+      weight: 2,
+      required: true,
+      minTier: 'T2',
+      suggestedOptions: ['Nothing', 'Files', 'Local database', 'Server database'],
+    },
+    {
+      key: 'users_auth',
+      label: 'Users and sign-in',
+      description: 'Whether it has accounts, sign-in or several users.',
+      weight: 2,
+      required: true,
+      minTier: 'T3',
+      suggestedOptions: ['Just me', 'Accounts with sign-in', 'Several roles'],
+    },
+    {
+      key: 'integrations',
+      label: 'Integrations',
+      description: 'Outside services or APIs it talks to, such as payments, email or maps.',
+      weight: 1,
+      required: false,
+      minTier: 'T3',
+    },
+    {
+      key: 'deploy_target',
+      label: 'Where it runs',
+      description: 'Where the finished project runs: their machine, a static host, a server or a store.',
+      weight: 1,
+      required: false,
+      minTier: 'T3',
+      suggestedOptions: ['My machine', 'Static host', 'A server', 'An app store'],
+    },
+    {
+      key: 'frontend_pref',
+      label: 'Front-end preference',
+      description: 'A UI framework or style they want, or none.',
+      weight: 1,
+      required: false,
+      minTier: 'T3',
+    },
+    {
+      key: 'scale_nfr',
+      label: 'Scale and limits',
+      description: 'Performance, scale or reliability targets that shape the design.',
+      weight: 1,
+      required: false,
+      minTier: 'T4',
+    },
+    {
+      key: 'architecture_pref',
+      label: 'Architecture preference',
+      description: 'A design they want to practise, such as services, an ECS or a plugin system.',
+      weight: 1,
+      required: false,
+      minTier: 'T4',
+    },
+    {
+      key: 'testing_depth',
+      label: 'Testing depth',
+      description: 'How much testing they want to learn: basic checks, thorough unit tests or more.',
+      weight: 1,
+      required: false,
+      minTier: 'T4',
+      suggestedOptions: ['Basic checks', 'Thorough unit tests', 'Unit plus integration'],
     },
   ],
 
@@ -196,12 +284,13 @@ export const SLOT_CATALOG: Record<QueryIntent, SlotDef[]> = {
   ],
 };
 
+/** The slots asked before any tier is known: the interview as it was before §5. */
 export function slotsFor(intent: QueryIntent): SlotDef[] {
-  return SLOT_CATALOG[intent];
+  return SLOT_CATALOG[intent].filter((s) => s.minTier === undefined);
 }
 
 export function slotDef(intent: QueryIntent, key: string): SlotDef | undefined {
-  return SLOT_CATALOG[intent].find((s) => s.key === key);
+  return slotsFor(intent).find((s) => s.key === key);
 }
 
 /* ------------------------------------------------------------------ *

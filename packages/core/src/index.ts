@@ -7,6 +7,7 @@ export * from './interview/compile.js';
 export * from './interview/classify.js';
 export * from './interview/questions.js';
 export * from './interview/run.js';
+export * from './interview/complexity.js';
 
 export * from './knowledge/types.js';
 export * from './knowledge/select.js';
@@ -20,6 +21,8 @@ export * from './schemas/step.js';
 export * from './schemas/research.js';
 export * from './schemas/stack.js';
 export * from './profiles/types.js';
+export * from './profiles/index.js';
+export * from './profiles/glob.js';
 
 export * from './generation/blueprint.js';
 export * from './generation/assemble.js';

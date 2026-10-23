@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import type { SlotDef } from '../interview/slots.js';
-import type { ComplexityTier, StackBrief, ToolRequirement } from '../schemas/stack.js';
+import type { ComplexityTier, StackBrief, ToolRequirement, Verification } from '../schemas/stack.js';
 
 /**
  * Project profiles (docs/project-learner.md §6).
@@ -60,6 +60,28 @@ export interface LayerDef {
   section: string;
   /** What the layer covers, for the brief prompt and the empty state. */
   description: string;
+  /**
+   * The research key that grounds this layer when the learner named nothing
+   * for it: a tech card id (`tauri`) or a topic (`osdev-core`). Layers that
+   * share a key are researched once.
+   */
+  research?: string;
+  /**
+   * The strongest check this layer's steps can get, when it is weaker than
+   * the profile's: an updater is checked statically even in a CLI profile.
+   */
+  check?: Verification;
+}
+
+/**
+ * The least tier a sub-goal needs. `keywords` match whole words in what the
+ * learner said; `signal:<name>` matches a classify signal (`signal:persistence`).
+ * A floor with no keywords is the profile's base floor and always applies.
+ */
+export interface TierFloor {
+  goal: string;
+  tier: ComplexityTier;
+  keywords: string[];
 }
 
 /**
@@ -93,13 +115,21 @@ export interface DocSourceRef {
 export interface Profile {
   id: ProfileId;
   label: string;
+  /**
+   * True for the profiles with everything filled in (§6: `desktop-app`,
+   * `systems-os`, `language-tooling`, `general`). The rest have their
+   * vocabulary and slots; their rules, toolchains and addenda come in week 2.
+   */
+  deep: boolean;
+  /** Words that point at this profile, matched by `detectProfile`. */
+  signalWords: string[];
   /** The Stack Brief's vocabulary for this profile. */
   layers: LayerDef[];
   requiredLayersByTier: Record<ComplexityTier, string[]>;
   /** Extra interview slots, same shape as today's. */
   slots: SlotDef[];
   /** The least tier a sub-goal needs: a kernel past booting is T5. */
-  tierFloors: { goal: string; tier: ComplexityTier }[];
+  tierFloors: TierFloor[];
   architectureRule: ArchitectureRule;
   harnesses: HarnessKind[];
   /** Whether the browser sandbox can run this brief's steps. */

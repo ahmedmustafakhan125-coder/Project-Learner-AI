@@ -1,0 +1,110 @@
+{
+  "$comment": "Doc-source registry (docs/project-learner.md section 7). A research call's allowlist is the union of base, its profile's domains and its candidate technologies' domains. Entries without domains add none. Draft from phase 2: review the domains and entry URLs before relying on them.",
+  "base": {
+    "domains": [
+      "developer.mozilla.org",
+      "docs.python.org",
+      "doc.rust-lang.org",
+      "en.cppreference.com",
+      "nodejs.org/docs"
+    ]
+  },
+  "profile:systems-os": {
+    "domains": ["wiki.osdev.org", "os.phil-opp.com", "www.qemu.org/docs", "pdos.csail.mit.edu"],
+    "entry": ["https://wiki.osdev.org/Main_Page", "https://os.phil-opp.com/"],
+    "licence": "link-and-paraphrase"
+  },
+  "profile:desktop-app": {
+    "domains": [
+      "v2.tauri.app",
+      "www.electronjs.org",
+      "doc.qt.io",
+      "learn.microsoft.com",
+      "docs.avaloniaui.net",
+      "developer.apple.com",
+      "docs.gtk.org"
+    ],
+    "entry": ["https://v2.tauri.app/start/", "https://www.electronjs.org/docs/latest"],
+    "licence": "link-and-paraphrase"
+  },
+  "profile:language-tooling": {
+    "domains": [
+      "craftinginterpreters.com",
+      "llvm.org",
+      "cranelift.dev",
+      "webassembly.github.io",
+      "c9x.me",
+      "docs.wasmtime.dev"
+    ],
+    "entry": ["https://craftinginterpreters.com/contents.html"],
+    "licence": "link-and-paraphrase"
+  },
+  "profile:general": {
+    "blocked": [
+      "w3schools.com",
+      "geeksforgeeks.org",
+      "tutorialspoint.com",
+      "javatpoint.com",
+      "programiz.com",
+      "medium.com",
+      "dev.to",
+      "quora.com",
+      "pinterest.com"
+    ],
+    "licence": "link-and-paraphrase"
+  },
+  "tech:tauri": {
+    "domains": ["v2.tauri.app"],
+    "entry": ["https://v2.tauri.app/start/"],
+    "licence": "link-and-paraphrase"
+  },
+  "tech:rust": {
+    "domains": ["doc.rust-lang.org", "www.rust-lang.org"],
+    "entry": ["https://doc.rust-lang.org/book/"],
+    "licence": "link-and-paraphrase"
+  },
+  "tech:c": {
+    "domains": ["en.cppreference.com", "wiki.osdev.org"],
+    "entry": ["https://en.cppreference.com/w/c/language"],
+    "licence": "link-and-paraphrase"
+  },
+  "tech:limine": {
+    "domains": ["github.com/limine-bootloader", "wiki.osdev.org"],
+    "entry": ["https://github.com/limine-bootloader/limine/blob/trunk/PROTOCOL.md"],
+    "licence": "link-and-paraphrase"
+  },
+  "tech:qemu": {
+    "domains": ["www.qemu.org/docs"],
+    "entry": ["https://www.qemu.org/docs/master/"],
+    "licence": "link-and-paraphrase"
+  },
+  "tech:x86-64-cross": {
+    "domains": ["wiki.osdev.org", "gcc.gnu.org/onlinedocs", "sourceware.org/binutils/docs"],
+    "entry": ["https://wiki.osdev.org/GCC_Cross-Compiler"],
+    "licence": "link-and-paraphrase"
+  },
+  "tech:osdev-core": {
+    "domains": ["wiki.osdev.org", "os.phil-opp.com"],
+    "entry": [
+      "https://wiki.osdev.org/Paging",
+      "https://wiki.osdev.org/Interrupt_Descriptor_Table",
+      "https://wiki.osdev.org/Serial_Ports"
+    ],
+    "licence": "link-and-paraphrase"
+  },
+  "tech:python": {
+    "domains": ["docs.python.org"],
+    "entry": ["https://docs.python.org/3/"],
+    "licence": "link-and-paraphrase"
+  },
+  "tech:sqlite": {
+    "domains": ["www.sqlite.org", "sqlite.org"],
+    "entry": ["https://www.sqlite.org/docs.html"],
+    "licence": "link-and-paraphrase"
+  },
+  "tech:lox": {
+    "domains": ["craftinginterpreters.com"],
+    "entry": ["https://craftinginterpreters.com/contents.html"],
+    "licence": "link-and-paraphrase"
+  }
+}
