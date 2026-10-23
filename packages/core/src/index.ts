@@ -17,6 +17,9 @@ export * from './agents/followUp.js';
 
 export * from './schemas/project.js';
 export * from './schemas/step.js';
+export * from './schemas/research.js';
+export * from './schemas/stack.js';
+export * from './profiles/types.js';
 
 export * from './generation/blueprint.js';
 export * from './generation/assemble.js';
