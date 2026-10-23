@@ -88,7 +88,8 @@
     "entry": [
       "https://wiki.osdev.org/Paging",
       "https://wiki.osdev.org/Interrupt_Descriptor_Table",
-      "https://wiki.osdev.org/Serial_Ports"
+      "https://wiki.osdev.org/Serial_Ports",
+      "https://wiki.osdev.org/Scheduling_Algorithms"
     ],
     "licence": "link-and-paraphrase"
   },

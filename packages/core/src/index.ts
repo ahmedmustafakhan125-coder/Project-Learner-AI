@@ -24,6 +24,13 @@ export * from './profiles/types.js';
 export * from './profiles/index.js';
 export * from './profiles/glob.js';
 
+export * from './research/sources.js';
+export * from './research/candidates.js';
+export * from './research/dossier.js';
+export * from './research/render.js';
+export * from './research/verify.js';
+export * from './research/project.js';
+
 export * from './generation/blueprint.js';
 export * from './generation/assemble.js';
 export * from './generation/finish.js';

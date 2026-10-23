@@ -272,3 +272,21 @@ describe('the serverTools capability', () => {
     await expect(adapter.complete(request({ model: 'gemini-3.6-flash' }))).rejects.toThrow(LLMConfigError);
   });
 });
+
+describe('a recorded live research call (systems-os, phase 2)', () => {
+  // Saved by `npm run test:research --workspace @ai-edu/api` with
+  // RECORD_FIXTURES=1; page text and encrypted content removed.
+  it('replays into one answer with every page the tools returned', async () => {
+    const turns = (await import('./fixtures/research-live.turns.json')).default as Record<string, unknown>[];
+    const { adapter, sent } = adapterReplaying(turns);
+    const response = await adapter.complete(request());
+
+    expect(sent).toHaveLength(turns.length);
+    expect(response.stopReason).toBe('end_turn');
+    expect(response.text).toMatch(/^[\s\S]*# osdev-core[\s\S]*$/);
+    expect(response.segments!.map((s) => s.text).join('')).toBe(response.text);
+    const fetched = response.sources!.filter((s) => s.via === 'fetch');
+    expect(fetched.length).toBe(response.usage.webFetchRequests);
+    for (const source of response.sources!) expect(source.url).toMatch(/^https:\/\/(wiki\.osdev\.org|en\.cppreference\.com|www\.en\.cppreference\.com)\//);
+  });
+});

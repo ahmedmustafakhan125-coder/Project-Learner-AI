@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 
-import { KnowledgeBundle, type KnowledgeConcept } from '@ai-edu/core';
+import { DocSourceRegistry, KnowledgeBundle, TechCard, type KnowledgeConcept } from '@ai-edu/core';
 import { parse as parseYaml } from 'yaml';
 
 /**
@@ -88,6 +88,8 @@ export function loadKnowledgeBundle(root: string): KnowledgeBundle {
 
     const { frontmatter, body } = parseFrontmatter(readFileSync(file, 'utf-8'));
     if (typeof frontmatter.type !== 'string') continue;
+    // Tech cards feed the research pass and the Stack Brief, not the fan-out.
+    if (frontmatter.type === TECH_CARD_TYPE) continue;
 
     // Bundle-relative and slash-separated, because that is the form concepts use
     // to link to each other — and the form has to match on Windows too.
@@ -117,10 +119,53 @@ export function loadKnowledgeBundle(root: string): KnowledgeBundle {
 }
 
 /* ------------------------------------------------------------------ *
+ * Tech cards and the doc-source registry (docs/project-learner.md §7)
+ * ------------------------------------------------------------------ */
+
+const TECH_CARD_TYPE = 'TechCard';
+
+/** YAML may read `2026-10-23` as a date; a card stores the ISO day. */
+function isoDay(value: unknown): unknown {
+  return value instanceof Date ? value.toISOString().slice(0, 10) : value;
+}
+
+/**
+ * Read `tech/*.md`. A card that does not parse fails loudly, naming the file:
+ * a half-read card would ground a brief in facts nobody reviewed.
+ */
+export function loadTechCards(root: string): TechCard[] {
+  const dir = join(root, 'tech');
+  if (!existsSync(dir)) return [];
+
+  const cards: TechCard[] = [];
+  for (const file of walk(dir)) {
+    const { frontmatter, body } = parseFrontmatter(readFileSync(file, 'utf-8'));
+    if (frontmatter.type !== TECH_CARD_TYPE) continue;
+    const { type: _type, ...fields } = frontmatter;
+    const parsed = TechCard.safeParse({ ...fields, pinnedOn: isoDay(fields.pinnedOn), body: body.trim() });
+    if (!parsed.success) {
+      const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+      throw new Error(`Tech card ${relative(root, file)} is invalid: ${issues}`);
+    }
+    cards.push(parsed.data);
+  }
+  return cards.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/** Read `docs/sources.json`. Missing means no allowlist at all, so research cannot run. */
+export function loadDocSources(root: string): DocSourceRegistry {
+  const path = join(root, 'docs', 'sources.json');
+  if (!existsSync(path)) return {};
+  return DocSourceRegistry.parse(JSON.parse(readFileSync(path, 'utf-8')));
+}
+
+/* ------------------------------------------------------------------ *
  * Process-wide cache
  * ------------------------------------------------------------------ */
 
 let cached: KnowledgeBundle | null = null;
+let cachedCards: TechCard[] | null = null;
+let cachedSources: DocSourceRegistry | null = null;
 
 /** Where the bundle lives, relative to the repository root. */
 export const KNOWLEDGE_ROOT = existsSync(resolve(process.cwd(), 'knowledge'))
@@ -132,7 +177,19 @@ export function knowledgeBundle(): KnowledgeBundle {
   return cached;
 }
 
+export function techCards(): TechCard[] {
+  cachedCards ??= loadTechCards(KNOWLEDGE_ROOT);
+  return cachedCards;
+}
+
+export function docSources(): DocSourceRegistry {
+  cachedSources ??= loadDocSources(KNOWLEDGE_ROOT);
+  return cachedSources;
+}
+
 /** Test-only: drop the cache so a different bundle can be loaded. */
 export function resetKnowledgeCache(): void {
   cached = null;
+  cachedCards = null;
+  cachedSources = null;
 }

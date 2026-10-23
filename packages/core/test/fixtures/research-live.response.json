@@ -1,0 +1,155 @@
+{
+  "recordedAt": "2026-10-23T08:41:12.734Z",
+  "keys": [
+    "c",
+    "osdev-core"
+  ],
+  "text": "Results are JSON strings. Parse and fetch.# c\n## Versions\n- C23 | The reference treats C23 as the most recently published C Standard, so it is the main focus. (https://en.cppreference.com/Cppreference:About)\n- C standard revisions | The reference covers C89, C95, C99, C11, C17 and C23. (https://en.cppreference.com/)\n\n# osdev-core\n## APIs\n- LIDT | The instruction loads the IDTR from a pointer to an IDT descriptor made of a 16-bit Size and an Offset. Offset is 4 bytes in 32-bit mode and 8 bytes in 64-bit mode. (https://wiki.osdev.org/Interrupt_Descriptor_Table)\n- IDT gate descriptor | A 32-bit entry is 8 bytes. It holds an ISR offset split in two parts, a code-segment selector, a gate type, a DPL and a present bit. (https://wiki.osdev.org/Interrupt_Descriptor_Table)\n- struct InterruptDescriptor32 | The page gives a C struct that starts with a `uint16_t offset_1` field and a `uint16_t selector` field. (https://wiki.osdev.org/Interrupt_Descriptor_Table)\n- Page directory and page table | On 32-bit x86, each has 1024 four-byte entries, so each is 4 KiB. A directory entry points to a page table. (https://wiki.osdev.org/Paging)\n- Round Robin scheduler | It uses one queue. When the system timer fires, it switches to the next process. Each process gets a quantum counted in timer ticks. (https://wiki.osdev.org/Scheduling_Algorithms)\n\n## Pitfalls\n- Set up a working GDT before the IDT. (https://wiki.osdev.org/Interrupt_Descriptor_Table)\n- Any IDT entry that is not present causes a General Protection Fault when it is used. (https://wiki.osdev.org/Interrupt_Descriptor_Table)\n- The IDTR Offset must be a linear address, not a physical one, because paging applies. (https://wiki.osdev.org/Interrupt_Descriptor_Table)\n- The page table address in a directory entry must be 4 KiB aligned, because the low bits are used for flags. (https://wiki.osdev.org/Paging)\n- The CPU never clears the Accessed bit, so the OS must clear it if it needs it. (https://wiki.osdev.org/Paging)\n- To make a page a user page, set the user bit in both the directory entry and the table entry. (https://wiki.osdev.org/Paging)\n- Plain Round Robin has no priorities, so many low-priority processes can starve a high-priority one. (https://wiki.osdev.org/Scheduling_Algorithms)\n- A smaller quantum means more time spent on context switches. A larger one makes the system feel laggier. (https://wiki.osdev.org/Scheduling_Algorithms)\n\n## Notes\n- The IDT has 256 vectors, 0 to 255. (https://wiki.osdev.org/Interrupt_Descriptor_Table)\n- Serial ports are much easier to write drivers for than USB, and they are commonly used for debugging in early kernel work. (https://wiki.osdev.org/Serial_Ports)\n- QEMU and Bochs can redirect serial output to stdio or to a file. (https://wiki.osdev.org/Serial_Ports)\n- On x86-64, paging fully replaces segmentation for memory protection. (https://wiki.osdev.org/Paging)\n- The page lists a 20–50 ms quantum as a common compromise. (https://wiki.osdev.org/Scheduling_Algorithms)",
+  "segments": [
+    {
+      "text": "Results are JSON strings. Parse and fetch.",
+      "citations": []
+    },
+    {
+      "text": "# c\n## Versions\n- C23 | The reference treats C23 as the most recently published C Standard, so it is the main focus. (https://en.cppreference.com/Cppreference:About)\n- C standard revisions | The reference covers C89, C95, C99, C11, C17 and C23. (https://en.cppreference.com/)\n\n# osdev-core\n## APIs\n- LIDT | The instruction loads the IDTR from a pointer to an IDT descriptor made of a 16-bit Size and an Offset. Offset is 4 bytes in 32-bit mode and 8 bytes in 64-bit mode. (https://wiki.osdev.org/Interrupt_Descriptor_Table)\n- IDT gate descriptor | A 32-bit entry is 8 bytes. It holds an ISR offset split in two parts, a code-segment selector, a gate type, a DPL and a present bit. (https://wiki.osdev.org/Interrupt_Descriptor_Table)\n- struct InterruptDescriptor32 | The page gives a C struct that starts with a `uint16_t offset_1` field and a `uint16_t selector` field. (https://wiki.osdev.org/Interrupt_Descriptor_Table)\n- Page directory and page table | On 32-bit x86, each has 1024 four-byte entries, so each is 4 KiB. A directory entry points to a page table. (https://wiki.osdev.org/Paging)\n- Round Robin scheduler | It uses one queue. When the system timer fires, it switches to the next process. Each process gets a quantum counted in timer ticks. (https://wiki.osdev.org/Scheduling_Algorithms)\n\n## Pitfalls\n- Set up a working GDT before the IDT. (https://wiki.osdev.org/Interrupt_Descriptor_Table)\n- Any IDT entry that is not present causes a General Protection Fault when it is used. (https://wiki.osdev.org/Interrupt_Descriptor_Table)\n- The IDTR Offset must be a linear address, not a physical one, because paging applies. (https://wiki.osdev.org/Interrupt_Descriptor_Table)\n- The page table address in a directory entry must be 4 KiB aligned, because the low bits are used for flags. (https://wiki.osdev.org/Paging)\n- The CPU never clears the Accessed bit, so the OS must clear it if it needs it. (https://wiki.osdev.org/Paging)\n- To make a page a user page, set the user bit in both the directory entry and the table entry. (https://wiki.osdev.org/Paging)\n- Plain Round Robin has no priorities, so many low-priority processes can starve a high-priority one. (https://wiki.osdev.org/Scheduling_Algorithms)\n- A smaller quantum means more time spent on context switches. A larger one makes the system feel laggier. (https://wiki.osdev.org/Scheduling_Algorithms)\n\n## Notes\n- The IDT has 256 vectors, 0 to 255. (https://wiki.osdev.org/Interrupt_Descriptor_Table)\n- Serial ports are much easier to write drivers for than USB, and they are commonly used for debugging in early kernel work. (https://wiki.osdev.org/Serial_Ports)\n- QEMU and Bochs can redirect serial output to stdio or to a file. (https://wiki.osdev.org/Serial_Ports)\n- On x86-64, paging fully replaces segmentation for memory protection. (https://wiki.osdev.org/Paging)\n- The page lists a 20–50 ms quantum as a common compromise. (https://wiki.osdev.org/Scheduling_Algorithms)",
+      "citations": []
+    }
+  ],
+  "sources": [
+    {
+      "url": "https://wiki.osdev.org/Interrupt_Descriptor_Table",
+      "title": "Interrupt Descriptor Table - OSDev Wiki",
+      "retrievedAt": null,
+      "via": "search"
+    },
+    {
+      "url": "https://wiki.osdev.org/Serial_ports",
+      "title": "Serial Ports - OSDev Wiki",
+      "retrievedAt": null,
+      "via": "search"
+    },
+    {
+      "url": "https://wiki.osdev.org/Interrupt",
+      "title": "Interrupts - OSDev Wiki",
+      "retrievedAt": null,
+      "via": "search"
+    },
+    {
+      "url": "https://wiki.osdev.org/Interrupts",
+      "title": "X86 Interrupts - OSDev Wiki",
+      "retrievedAt": null,
+      "via": "search"
+    },
+    {
+      "url": "https://wiki.osdev.org/Chip_Numbers,_Acronyms_and_Things",
+      "title": "Chip Numbers, Acronyms and Things - OSDev Wiki",
+      "retrievedAt": null,
+      "via": "search"
+    },
+    {
+      "url": "https://wiki.osdev.org/Interrupt_Vector_Table",
+      "title": "Interrupt Vector Table - OSDev Wiki",
+      "retrievedAt": null,
+      "via": "search"
+    },
+    {
+      "url": "https://wiki.osdev.org/Category:Interrupts",
+      "title": "Category:Interrupts - OSDev Wiki",
+      "retrievedAt": null,
+      "via": "search"
+    },
+    {
+      "url": "https://wiki.osdev.org/ISR",
+      "title": "Interrupt Service Routines - OSDev Wiki",
+      "retrievedAt": null,
+      "via": "search"
+    },
+    {
+      "url": "https://wiki.osdev.org/Ralf_Brown's_Interrupt_List",
+      "title": "Ralf Brown's Interrupt List - OSDev Wiki",
+      "retrievedAt": null,
+      "via": "search"
+    },
+    {
+      "url": "https://en.cppreference.com/",
+      "title": "cppreference.com",
+      "retrievedAt": null,
+      "via": "search"
+    },
+    {
+      "url": "https://en.cppreference.com/Cppreference:About",
+      "title": "Frequently asked questions - cppreference.com",
+      "retrievedAt": null,
+      "via": "search"
+    },
+    {
+      "url": "https://en.cppreference.com/cpp/language/language_linkage",
+      "title": "Language linkage - cppreference.com",
+      "retrievedAt": null,
+      "via": "search"
+    },
+    {
+      "url": "https://en.cppreference.com/cpp/header/meta",
+      "title": "Standard library header <meta> (C++26) - cppreference.com",
+      "retrievedAt": null,
+      "via": "search"
+    },
+    {
+      "url": "https://en.cppreference.com/cpp/numeric/random/random_device/entropy",
+      "title": "std::random_device::entropy - cppreference.com",
+      "retrievedAt": null,
+      "via": "search"
+    },
+    {
+      "url": "https://en.cppreference.com/c/compiler_support",
+      "title": "C compiler support - cppreference.com",
+      "retrievedAt": null,
+      "via": "search"
+    },
+    {
+      "url": "https://en.cppreference.com/cpp/29",
+      "title": "C++29 - cppreference.com",
+      "retrievedAt": null,
+      "via": "search"
+    },
+    {
+      "url": "https://en.cppreference.com/c/language/operator_precedence",
+      "title": "C Operator Precedence - cppreference.com",
+      "retrievedAt": null,
+      "via": "search"
+    },
+    {
+      "url": "https://wiki.osdev.org/Scheduling_Algorithms",
+      "title": "Scheduling Algorithms - OSDev Wiki",
+      "retrievedAt": "2026-10-22T22:56:54+00:00",
+      "via": "fetch"
+    },
+    {
+      "url": "https://wiki.osdev.org/Serial_Ports",
+      "title": null,
+      "retrievedAt": "2025-05-26T00:00:00+00:00",
+      "via": "fetch"
+    },
+    {
+      "url": "https://wiki.osdev.org/Paging",
+      "title": null,
+      "retrievedAt": "2025-09-21T17:39:17+00:00",
+      "via": "fetch"
+    },
+    {
+      "url": "https://wiki.osdev.org/Interrupt_Descriptor_Table",
+      "title": null,
+      "retrievedAt": "2026-08-29T00:00:00+00:00",
+      "via": "fetch"
+    }
+  ],
+  "usage": {
+    "inputTokens": 353,
+    "outputTokens": 1987,
+    "cacheReadTokens": 47271,
+    "cacheWriteTokens": 8754,
+    "cacheWrite5mTokens": 8754,
+    "webSearchRequests": 2,
+    "webFetchRequests": 4
+  }
+}
