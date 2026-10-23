@@ -6,7 +6,7 @@ import { listAvailableModels, registryReport } from '@ai-edu/llm';
 
 import { requireAuth, userOf } from './auth.js';
 import { checkBudget } from './db.js';
-import { loadEnv } from './env.js';
+import { loadEnv, projectStudioBootProblem } from './env.js';
 import { reportScreeningTo } from './gateway.js';
 import { registerRateLimit } from './rateLimit.js';
 import { agentRoutes } from './routes/agents.js';
@@ -103,6 +103,19 @@ async function main(): Promise<void> {
     );
   } else {
     console.log(`  providers: ${report.configured.join(', ')}`);
+  }
+
+  const studioProblem = projectStudioBootProblem(env);
+  if (studioProblem) throw new Error(studioProblem);
+  if (env.PROJECT_STUDIO === 'on') {
+    console.log('  project studio: on');
+    // As loud as unpriced models: these projects are not planned by Claude.
+    if (env.PROJECT_GEN_FALLBACK === 'chain') {
+      console.warn(
+        '  WARNING: PROJECT_GEN_FALLBACK=chain — without a Claude key, project generation ' +
+          'runs on the conversational chain. Development only.',
+      );
+    }
   }
 
   // Deliberately loud. Spend on these models records as null cost, so the daily
