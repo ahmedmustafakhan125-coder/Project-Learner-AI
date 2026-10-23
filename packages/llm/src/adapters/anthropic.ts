@@ -33,26 +33,38 @@ import {
 } from '../types.js';
 import type {
   CacheTtl,
+  LLMCitation,
   LLMEvent,
   LLMMessage,
   LLMProvider,
   LLMRequest,
   LLMResponse,
+  LLMSourceDocument,
   LLMStopReason,
   LLMSystemBlock,
+  LLMTextSegment,
   LLMUsage,
   OutputSchema,
   ProviderCapabilities,
   ReasoningEffort,
+  ServerToolSpec,
   StructuredResult,
   UploadedFile,
 } from '../types.js';
+import { addUsage } from '../cost.js';
 
 const FILES_BETA = 'files-api-2025-04-14';
 
 /** Streaming can afford a large ceiling; non-streaming must stay under HTTP timeouts. */
 const DEFAULT_STREAM_MAX_TOKENS = 64_000;
 const DEFAULT_SYNC_MAX_TOKENS = 16_000;
+
+/**
+ * How many times a turn paused by a long server-tool loop is sent back. The
+ * research budget is 3 searches and 4 fetches, so a few continuations finish
+ * it; a turn still paused after that is returned as it stands.
+ */
+const MAX_PAUSE_CONTINUATIONS = 3;
 
 type AnthropicEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
@@ -101,6 +113,7 @@ function mapStopReason(reason: string | null | undefined): LLMStopReason {
 export function mapAnthropicUsage(usage: Anthropic.Usage | undefined): LLMUsage {
   const fiveMinute = usage?.cache_creation?.ephemeral_5m_input_tokens;
   const searches = usage?.server_tool_use?.web_search_requests;
+  const fetches = usage?.server_tool_use?.web_fetch_requests;
   return {
     inputTokens: usage?.input_tokens ?? 0,
     outputTokens: usage?.output_tokens ?? 0,
@@ -108,6 +121,7 @@ export function mapAnthropicUsage(usage: Anthropic.Usage | undefined): LLMUsage 
     cacheWriteTokens: usage?.cache_creation_input_tokens ?? 0,
     ...(typeof fiveMinute === 'number' ? { cacheWrite5mTokens: fiveMinute } : {}),
     ...(typeof searches === 'number' && searches > 0 ? { webSearchRequests: searches } : {}),
+    ...(typeof fetches === 'number' && fetches > 0 ? { webFetchRequests: fetches } : {}),
   };
 }
 
@@ -160,6 +174,7 @@ export class AnthropicAdapter implements LLMProvider {
         req.maxTokens ?? (streaming ? DEFAULT_STREAM_MAX_TOKENS : DEFAULT_SYNC_MAX_TOKENS),
       ...(this.buildSystem(req) ? { system: this.buildSystem(req) } : {}),
       messages: this.buildMessages(req.messages),
+      ...(req.serverTools?.length ? { tools: buildServerTools(req.serverTools) } : {}),
       ...(req.stopSequences?.length ? { stop_sequences: req.stopSequences } : {}),
       // Adaptive thinking. Display is left at its default (omitted) — we do not
       // surface reasoning to learners, and summarised thinking costs tokens.
@@ -204,12 +219,26 @@ export class AnthropicAdapter implements LLMProvider {
 
   async complete(req: LLMRequest): Promise<LLMResponse> {
     try {
-      const message = await this.client.messages.create(
-        this.baseParams(req, false) as Anthropic.MessageCreateParamsNonStreaming,
-        req.signal ? { signal: req.signal } : undefined,
-      );
+      const params = this.baseParams(req, false) as Anthropic.MessageCreateParamsNonStreaming;
+      const options = req.signal ? { signal: req.signal } : undefined;
+      let message = await this.client.messages.create(params, options);
       this.assertNotRefusal(message);
-      return this.toResponse(message);
+      if (!req.serverTools?.length) return this.toResponse(message);
+
+      /*
+       * A long server-tool loop can stop with `pause_turn`. The paused turn is
+       * sent back unchanged as the assistant's message and the model carries
+       * on; the turns together are one answer, so their content and usage add.
+       */
+      const turns: Anthropic.Message[] = [message];
+      let messages = params.messages;
+      for (let i = 0; i < MAX_PAUSE_CONTINUATIONS && message.stop_reason === 'pause_turn'; i += 1) {
+        messages = [...messages, { role: 'assistant', content: message.content as never }];
+        message = await this.client.messages.create({ ...params, messages }, options);
+        this.assertNotRefusal(message);
+        turns.push(message);
+      }
+      return this.toToolResponse(turns);
     } catch (err) {
       throw this.mapError(err);
     }
@@ -315,6 +344,21 @@ export class AnthropicAdapter implements LLMProvider {
     };
   }
 
+  /** The joined turns of a server-tool call, with citations and sources as data. */
+  private toToolResponse(turns: Anthropic.Message[]): LLMResponse {
+    const blocks = turns.flatMap((t) => t.content ?? []);
+    const last = turns[turns.length - 1]!;
+    const { segments, sources } = extractCitedContent(blocks);
+    return {
+      text: segments.map((s) => s.text).join(''),
+      usage: turns.map((t) => mapUsage(t.usage)).reduce(addUsage),
+      stopReason: mapStopReason(last.stop_reason),
+      model: last.model ?? this.entry.providerModel,
+      segments,
+      sources,
+    };
+  }
+
   /** A refusal arrives as HTTP 200, so `stop_reason` must be checked explicitly. */
   private assertNotRefusal(message: Anthropic.Message): void {
     if (message.stop_reason !== 'refusal') return;
@@ -377,6 +421,92 @@ export function buildOutputFormat(schema: OutputSchema<unknown>): Record<string,
   const { $schema: _ignored, ...body } = json as Record<string, unknown>;
   const { parse: _parse, ...format } = jsonSchemaOutputFormat(body as never);
   return format;
+}
+
+/**
+ * The research pass's server tools, as Claude's tool definitions.
+ *
+ * The 20260318 versions filter results with code before they reach the
+ * context, which keeps token use down. The API takes `allowed_domains` or
+ * `blocked_domains`, never both, so a spec with both is our bug and fails
+ * before anything is sent.
+ */
+export function buildServerTools(specs: ServerToolSpec[]): Record<string, unknown>[] {
+  return specs.map((spec) => {
+    if (spec.allowedDomains?.length && spec.blockedDomains?.length) {
+      throw new LLMBadRequestError(`${spec.kind} takes allowed or blocked domains, not both.`);
+    }
+    const domains = spec.allowedDomains?.length
+      ? { allowed_domains: spec.allowedDomains }
+      : spec.blockedDomains?.length
+        ? { blocked_domains: spec.blockedDomains }
+        : {};
+    if (spec.kind === 'web_search') {
+      return { type: 'web_search_20260318', name: 'web_search', max_uses: spec.maxUses, ...domains };
+    }
+    return {
+      type: 'web_fetch_20260318',
+      name: 'web_fetch',
+      max_uses: spec.maxUses,
+      ...domains,
+      max_content_tokens: spec.maxContentTokens,
+      ...(spec.citations ? { citations: { enabled: true } } : {}),
+    };
+  });
+}
+
+interface FetchedDocument {
+  url: string;
+  title: string | null;
+}
+
+/**
+ * Text blocks with their citations, and the pages searched and fetched.
+ *
+ * A search citation carries its URL. A fetch citation points at a document by
+ * index and title, so it is resolved against the fetch results in the order
+ * they appear: by title first, then by index.
+ */
+export function extractCitedContent(blocks: Anthropic.ContentBlock[]): {
+  segments: LLMTextSegment[];
+  sources: LLMSourceDocument[];
+} {
+  const sources: LLMSourceDocument[] = [];
+  const fetched: FetchedDocument[] = [];
+
+  for (const block of blocks) {
+    if (block.type === 'web_search_tool_result' && Array.isArray(block.content)) {
+      for (const result of block.content) {
+        sources.push({ url: result.url, title: result.title ?? null, retrievedAt: null, via: 'search' });
+      }
+    } else if (block.type === 'web_fetch_tool_result' && block.content.type === 'web_fetch_result') {
+      const title = block.content.content?.title ?? null;
+      fetched.push({ url: block.content.url, title });
+      sources.push({ url: block.content.url, title, retrievedAt: block.content.retrieved_at ?? null, via: 'fetch' });
+    }
+  }
+
+  const resolveDocument = (index: number, title: string | null): FetchedDocument | undefined =>
+    (title ? fetched.find((d) => d.title === title) : undefined) ?? fetched[index];
+
+  const segments: LLMTextSegment[] = [];
+  for (const block of blocks) {
+    if (block.type !== 'text') continue;
+    const citations: LLMCitation[] = [];
+    for (const c of block.citations ?? []) {
+      if (c.type === 'web_search_result_location') {
+        citations.push({ url: c.url, title: c.title ?? null, citedText: c.cited_text });
+      } else if (c.type === 'search_result_location') {
+        citations.push({ url: c.source, title: c.title ?? null, citedText: c.cited_text });
+      } else {
+        const doc = resolveDocument(c.document_index, c.document_title ?? null);
+        if (doc) citations.push({ url: doc.url, title: c.document_title ?? doc.title, citedText: c.cited_text });
+      }
+    }
+    segments.push({ text: block.text, citations });
+  }
+
+  return { segments, sources };
 }
 
 /**

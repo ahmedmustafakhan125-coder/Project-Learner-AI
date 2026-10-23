@@ -102,6 +102,33 @@ export interface LLMSystemBlock {
  */
 export type ReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
+/**
+ * A tool the provider runs on its own servers during the call: the research
+ * pass's web search and web fetch (docs/project-learner.md §4 and §7).
+ *
+ * Claude only, behind `ProviderCapabilities.serverTools`; another adapter
+ * refuses a request that carries one. Domains are bare hosts, optionally with
+ * a path (`www.qemu.org/docs`). The API takes an allowlist or a blocked list,
+ * never both.
+ */
+export type ServerToolSpec =
+  | {
+      kind: 'web_search';
+      maxUses: number;
+      allowedDomains?: string[];
+      blockedDomains?: string[];
+    }
+  | {
+      kind: 'web_fetch';
+      maxUses: number;
+      allowedDomains?: string[];
+      blockedDomains?: string[];
+      /** Approximate ceiling on page text per fetch. */
+      maxContentTokens: number;
+      /** Ask for citation blocks pointing into the fetched page. */
+      citations: boolean;
+    };
+
 export interface LLMRequest {
   /** A registry model id (see `registry.ts`), not a vendor model string. */
   model: string;
@@ -111,6 +138,8 @@ export interface LLMRequest {
   temperature?: number;
   reasoning?: ReasoningEffort;
   stopSequences?: string[];
+  /** Server-side tools for this call; see `ServerToolSpec`. */
+  serverTools?: ServerToolSpec[];
   signal?: AbortSignal;
 }
 
@@ -140,6 +169,30 @@ export interface LLMUsage {
   reasoningTokens?: number;
   /** Server-side web searches run during the call. Billed per search. */
   webSearchRequests?: number;
+  /** Server-side web fetches. No fee beyond the tokens the pages add. */
+  webFetchRequests?: number;
+}
+
+/** Where a span of the answer came from, as the provider reported it. */
+export interface LLMCitation {
+  url: string;
+  title: string | null;
+  /** The provider's quote from the page. Callers trim it before storing. */
+  citedText: string;
+}
+
+/** One block of answer text and the citations attached to it. */
+export interface LLMTextSegment {
+  text: string;
+  citations: LLMCitation[];
+}
+
+/** A page a server tool found or read during the call. */
+export interface LLMSourceDocument {
+  url: string;
+  title: string | null;
+  retrievedAt: string | null;
+  via: 'search' | 'fetch';
 }
 
 export interface LLMResponse {
@@ -149,6 +202,13 @@ export interface LLMResponse {
   stopReason: LLMStopReason;
   /** The vendor model string that actually served the request. */
   model: string;
+  /**
+   * The answer split at citation boundaries, in order; present only when the
+   * request used server tools. Joined, the segments' text equals `text`.
+   */
+  segments?: LLMTextSegment[];
+  /** Pages searched or fetched, in order; present only with server tools. */
+  sources?: LLMSourceDocument[];
 }
 
 /**
@@ -217,6 +277,12 @@ export interface ProviderCapabilities {
   maxOutputTokens: number;
   supportsFileUpload: boolean;
   supportsImages: boolean;
+  /**
+   * True when the provider runs web search and web fetch server-side
+   * (`LLMRequest.serverTools`). A research call on a model without it fails
+   * when the stage is resolved, not mid-request.
+   */
+  serverTools: boolean;
 }
 
 /* ------------------------------------------------------------------ *

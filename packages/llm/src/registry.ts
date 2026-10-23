@@ -149,6 +149,7 @@ const CLAUDE_CAPS = (maxContext: number, maxOutputTokens: number): ProviderCapab
   maxOutputTokens,
   supportsFileUpload: true,
   supportsImages: true,
+  serverTools: true,
 });
 
 /**
@@ -168,6 +169,7 @@ const OPENAI_COMPATIBLE_CAPS = (
   maxOutputTokens: 8_192,
   supportsFileUpload: false,
   supportsImages: false,
+  serverTools: false,
   ...overrides,
 });
 
@@ -964,6 +966,12 @@ export function resolveProjectStage(
     : resolveModel(settings.task, undefined, env);
   if (!model) {
     throw new LLMConfigError('No LLM provider is configured for project generation.');
+  }
+  // Research reads documentation through server tools. On a model without
+  // them (the development fallback to Flash) it fails here, before a request,
+  // and the brief is written from tech cards and marked "limited sources".
+  if (projectStage === 'research' && !model.capabilities.serverTools) {
+    throw new LLMConfigError(`Research needs web search and web fetch, which ${model.id} does not offer.`);
   }
   return { model, reasoning: settings.reasoning, maxTokens: settings.maxTokens };
 }

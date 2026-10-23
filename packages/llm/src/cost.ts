@@ -14,12 +14,21 @@ export interface CostBreakdown {
   outputUSD: number | null;
   cacheReadUSD: number | null;
   cacheWriteUSD: number | null;
+  /** Server-side web searches. Zero when the call searched nothing. */
+  webSearchUSD: number | null;
   totalUSD: number | null;
   /** True when this model's pricing has not been verified against vendor docs. */
   unpriced: boolean;
 }
 
 const PER_MTOK = 1_000_000;
+
+/**
+ * Claude's web search tool: $10 per 1,000 searches, on top of tokens. Web
+ * fetch has no fee beyond the tokens it adds. From the web search tool page,
+ * read 2026-10-22 (docs/project-learner.md §4).
+ */
+export const WEB_SEARCH_USD_PER_SEARCH = 10 / 1_000;
 
 export function computeCost(modelId: string, usage: LLMUsage): CostBreakdown {
   const model = getModel(modelId);
@@ -31,6 +40,7 @@ export function computeCost(modelId: string, usage: LLMUsage): CostBreakdown {
       outputUSD: null,
       cacheReadUSD: null,
       cacheWriteUSD: null,
+      webSearchUSD: null,
       totalUSD: null,
       unpriced: true,
     };
@@ -54,12 +64,15 @@ export function computeCost(modelId: string, usage: LLMUsage): CostBreakdown {
     (fiveMinute / PER_MTOK) * (pricing.cacheWrite5mPerMTok ?? 0) +
     ((usage.cacheWriteTokens - fiveMinute) / PER_MTOK) * writeRate;
 
+  const webSearchUSD = (usage.webSearchRequests ?? 0) * WEB_SEARCH_USD_PER_SEARCH;
+
   return {
     inputUSD,
     outputUSD,
     cacheReadUSD,
     cacheWriteUSD,
-    totalUSD: inputUSD + outputUSD + cacheReadUSD + cacheWriteUSD,
+    webSearchUSD,
+    totalUSD: inputUSD + outputUSD + cacheReadUSD + cacheWriteUSD + webSearchUSD,
     unpriced: model?.verifiedOn === null,
   };
 }
@@ -74,7 +87,7 @@ export function emptyUsage(): LLMUsage {
 }
 
 export function addUsage(a: LLMUsage, b: LLMUsage): LLMUsage {
-  const optional = (key: 'cacheWrite5mTokens' | 'webSearchRequests') =>
+  const optional = (key: 'cacheWrite5mTokens' | 'webSearchRequests' | 'webFetchRequests') =>
     a[key] === undefined && b[key] === undefined ? {} : { [key]: (a[key] ?? 0) + (b[key] ?? 0) };
   return {
     inputTokens: a.inputTokens + b.inputTokens,
@@ -84,6 +97,7 @@ export function addUsage(a: LLMUsage, b: LLMUsage): LLMUsage {
     ...optional('cacheWrite5mTokens'),
     reasoningTokens: (a.reasoningTokens ?? 0) + (b.reasoningTokens ?? 0) || undefined,
     ...optional('webSearchRequests'),
+    ...optional('webFetchRequests'),
   };
 }
 

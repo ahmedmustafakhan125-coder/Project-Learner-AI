@@ -16,6 +16,7 @@ import type { ModelEntry, Vendor } from '../registry.js';
 import {
   LLMAuthError,
   LLMBadRequestError,
+  LLMConfigError,
   LLMContextLengthError,
   LLMError,
   LLMRateLimitError,
@@ -140,6 +141,11 @@ export class OpenAICompatibleAdapter implements LLMProvider {
   }
 
   private baseParams(req: LLMRequest) {
+    // Only Claude runs server tools. Dropping them here would answer a
+    // research call from memory, which is exactly what research exists to stop.
+    if (req.serverTools?.length) {
+      throw new LLMConfigError(`${this.modelId} cannot run server tools (web search, web fetch).`);
+    }
     return {
       model: this.entry.providerModel,
       messages: this.buildMessages(req),
