@@ -183,6 +183,24 @@ describe('verifyStackBrief: grounded, and invariant 22', () => {
     expect(verifyStackBrief(draft, tauriInput()).violations).toContainEqual(expect.objectContaining({ rule: 'grounded', severity: 'serious' }));
   });
 
+  /*
+   * "Make a website for my cooking business", stack left to the brief: the
+   * web profiles name nothing to research, so the dossier came back empty and
+   * every layer failed this rule twice, retry included, with nothing the model
+   * could have cited. An empty dossier now passes, logged; the brief is marked
+   * limited sources.
+   */
+  it('lets layers cite nothing when the dossier is empty, and logs it', () => {
+    const profile = PROFILES['web-frontend'];
+    const empty = ResearchDossier.parse({ scope: 'project', notes: '', docRefs: [], versions: [], apis: [], toolchain: [] });
+    for (const dossier of [empty, null]) {
+      const result = verifyStackBrief(goodDraft(profile, 'T2'), { profile, tier: 'T2', slots: {}, dossier, pins: PINS, cards: [] });
+      expect(result.brief).not.toBeNull();
+      expect(result.brief!.layers.every((l) => l.docRefs.length === 0)).toBe(true);
+      expect(result.violations).toContainEqual(expect.objectContaining({ rule: 'grounded', severity: 'repaired', layer: 'ui-framework' }));
+    }
+  });
+
   it('keeps a version from the pin table or the dossier, and nulls any other', () => {
     const draft = goodDraft(PROFILES['desktop-app'], 'T3', TAURI_NAMES);
     draft.layers[0] = { ...draft.layers[0]!, versionMajor: 'v2' }; // Tauri pinned 2

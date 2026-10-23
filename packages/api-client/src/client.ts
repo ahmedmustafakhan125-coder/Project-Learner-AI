@@ -11,8 +11,10 @@ import type {
   CriterionGrade,
   DocRef,
   GraphView,
+  InterviewPurpose,
   InterviewQuestion,
   MemoryItem,
+  NavSummary,
   PlannedBlueprint,
   ProfileId,
   PublicMcq,
@@ -54,6 +56,17 @@ export type { SourceFile };
 // returns them as they are, so the client re-exports rather than redeclares.
 export type { BrainNodeDetail, GraphView as BrainGraph };
 export type { GraphLink as BrainGraphLink, GraphNode as BrainGraphNode } from '@ai-edu/core';
+
+// The nav summary is assembled from the same pure functions, so the same rule applies.
+export type {
+  NavInterest,
+  NavProject,
+  NavSummary,
+  NavThread,
+  Recommendation,
+  RecommendationKind,
+  RecTarget,
+} from '@ai-edu/core';
 
 /** One thing the brain recalled for an answer; the UI shows it as a chip. */
 export type RecalledItem = MemoryItem;
@@ -489,6 +502,8 @@ export class ApiClient {
     projectId?: string | null;
     stepId?: string | null;
     attachments?: AttachmentRef[];
+    /** `project` from the project page; the server honours it only with PROJECT_LEARNER on. */
+    purpose?: InterviewPurpose;
   }): Promise<InterviewResponse> {
     return this.post<InterviewResponse>('/api/interview/start', {
       query: input.query,
@@ -496,6 +511,7 @@ export class ApiClient {
       projectId: input.projectId ?? null,
       stepId: input.stepId ?? null,
       attachments: input.attachments ?? [],
+      ...(input.purpose ? { purpose: input.purpose } : {}),
     });
   }
 
@@ -605,9 +621,22 @@ export class ApiClient {
     return this.get<Features>('/api/features');
   }
 
-  /** Starts an intake from the interview's compiled query; code picks profile and tier. */
-  async createIntake(compiled: CompiledQuery): Promise<IntakeScope & { intakeId: string }> {
+  /** Everything the signed-in top bar shows, in one request. Exists only with the flag on. */
+  async getNavSummary(): Promise<NavSummary> {
+    return this.get<NavSummary>('/api/me/nav-summary');
+  }
+
+  /**
+   * Starts an intake from the interview's compiled query; code picks profile
+   * and tier. `questions` is round 2, empty unless the project is big enough.
+   */
+  async createIntake(compiled: CompiledQuery): Promise<IntakeScope & { intakeId: string; questions: InterviewQuestion[] }> {
     return this.post('/api/projects/intake', { compiled });
+  }
+
+  /** Round 2's answers, slot key to answer; the server scores the tier again from them. */
+  async answerIntake(intakeId: string, answers: Record<string, string>): Promise<IntakeScope> {
+    return this.post(`/api/projects/intake/${intakeId}/answers`, { answers });
   }
 
   /** Change the profile, or move the tier one step from what was scored. Clears research and the brief. */

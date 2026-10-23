@@ -6,6 +6,7 @@ export * from './interview/slots.js';
 export * from './interview/compile.js';
 export * from './interview/classify.js';
 export * from './interview/questions.js';
+export * from './interview/projectQuestions.js';
 export * from './interview/run.js';
 export * from './interview/complexity.js';
 
@@ -71,3 +72,5 @@ export * from './brain/recall.js';
 export * from './brain/timeline.js';
 
 export * from './assessment/index.js';
+
+export * from './nav/index.js';

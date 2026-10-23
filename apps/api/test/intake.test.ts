@@ -343,6 +343,77 @@ describe('PATCH /api/projects/intake/:id/scope', () => {
   });
 });
 
+describe('round 2: the questions a bigger project gets', () => {
+  it('asks a desktop app at T3 its own questions, and nothing the message already said', async () => {
+    mocks.classifyQuery.mockResolvedValue({ intent: 'project_generation', extracted: { target_os: 'Windows' }, reasoning: '', signals: SIGNALS });
+    const app = await server();
+    const response = (await post(app, '/api/projects/intake', { compiled: compiled('A Tauri notes app for Windows') })).json();
+    expect(response.tier).toBe('T3');
+
+    const asked = response.questions.map((q: { slot: string }) => q.slot);
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked.length).toBeLessThanOrEqual(core.INTERVIEW_BUDGET.T3.questionsPerRound);
+    // Stated in the message (target_os) or its signals (where it runs, what it stores); the stack settles the UI.
+    for (const slot of ['target_os', 'interface', 'data', 'offline_data', 'ui_tech', 'domain', 'tech']) expect(asked).not.toContain(slot);
+
+    const [row] = mocks.tables['project_intakes']!;
+    const stored = row!['compiled_query'] as { slots: Record<string, { value: string }>; text: string };
+    expect(stored.slots['target_os']?.value).toBe('Windows');
+    expect(stored.text).toContain('Windows');
+  });
+
+  it('asks a small project nothing more', async () => {
+    mocks.classifyQuery.mockResolvedValue({ intent: 'project_generation', extracted: {}, reasoning: '', signals: { domainWords: ['website'], interfaces: [] } });
+    const app = await server();
+    const small = {
+      ...compiled('A website for my bakery'),
+      slots: { domain: { value: 'website', source: 'query' as const }, tech: { value: 'React', source: 'query' as const } },
+    };
+    const response = (await post(app, '/api/projects/intake', { compiled: small })).json();
+    expect(response.tier).toBe('T1');
+    expect(response.questions).toEqual([]);
+  });
+
+  it('takes only the answers round 2 asked, scores the tier again and renders them for the plan', async () => {
+    const app = await server();
+    const { intakeId, questions } = (await post(app, '/api/projects/intake', { compiled: compiled('A Tauri notes app') })).json();
+    expect(questions.map((q: { slot: string }) => q.slot)).toContain('integrations');
+
+    const response = await post(app, `/api/projects/intake/${intakeId}/answers`, {
+      answers: { integrations: 'Payments', target_os: 'Windows, macOS', domain: 'something else', made_up: 'x' },
+    });
+    expect(response.statusCode, response.body).toBe(200);
+
+    const [row] = mocks.tables['project_intakes']!;
+    const stored = row!['compiled_query'] as { slots: Record<string, { value: string; source: string }>; text: string };
+    expect(stored.slots['integrations']).toEqual({ value: 'Payments', source: 'answer' });
+    expect(stored.slots['target_os']?.value).toBe('Windows, macOS');
+    expect(stored.slots['domain']?.value).toBe('notes app');
+    expect(stored.slots['made_up']).toBeUndefined();
+    expect(stored.text).toContain('Payments');
+    expect(row!['signals']).toMatchObject({ payments: true });
+
+    const signals = core.answerSignals(core.ScopeSignals.parse(SIGNALS), { integrations: 'Payments' });
+    const score = core.scoreComplexity(signals, core.getProfile('desktop-app'), core.Slots.parse(stored.slots));
+    expect(response.json()).toMatchObject({ profile: 'desktop-app', tier: score.tier, reasons: score.reasons });
+    expect(row).toMatchObject({ tier: score.tier, tier_reasons: score.reasons });
+  });
+
+  it('refuses answers once research has started, and another learner’s intake', async () => {
+    const app = await server();
+    const { intakeId } = (await post(app, '/api/projects/intake', { compiled: compiled('A Tauri notes app') })).json();
+
+    mocks.user.id = 'user-2';
+    expect((await post(app, `/api/projects/intake/${intakeId}/answers`, { answers: {} })).statusCode).toBe(404);
+
+    mocks.user.id = 'user-1';
+    await post(app, `/api/projects/intake/${intakeId}/research`);
+    const late = await post(app, `/api/projects/intake/${intakeId}/answers`, { answers: { integrations: 'Email' } });
+    expect(late.statusCode).toBe(409);
+    expect((await post(app, `/api/projects/intake/${intakeId}/answers`, {})).statusCode).toBe(400);
+  });
+});
+
 describe('research, brief and approval', () => {
   it('researches once from the row and records its usage', async () => {
     const app = await server();

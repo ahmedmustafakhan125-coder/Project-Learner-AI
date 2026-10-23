@@ -13,14 +13,21 @@ import { PROFILES } from '../src/profiles/index.js';
  * changes nothing the model sees.
  */
 
+interface Schema {
+  parse: (v: unknown) => unknown;
+  safeParse: (v: unknown) => { success: boolean };
+}
+
 function recordingProvider(answer: unknown) {
   const requests: LLMRequest[] = [];
+  const schemas: Schema[] = [];
   const provider = {
     id: 'openai-compatible',
     modelId: 'gemini-3.6-flash',
     capabilities: {},
-    async structured(req: LLMRequest, schema: { parse: (v: unknown) => unknown }) {
+    async structured(req: LLMRequest, schema: Schema) {
       requests.push(req);
+      schemas.push(schema);
       return {
         data: schema.parse(answer),
         usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
@@ -30,14 +37,56 @@ function recordingProvider(answer: unknown) {
       };
     },
   } as unknown as LLMProvider;
-  return { provider, requests };
+  return { provider, requests, schemas };
 }
+
+/** `extracted` as the model writes it: a list of pairs. */
+const pairs = (values: Record<string, string>) => Object.entries(values).map(([slot, value]) => ({ slot, value }));
+
+describe('the extraction the model is asked for', () => {
+  /*
+   * It was a map (`extracted: { domain: "..." }`). The OpenAI-compatible
+   * adapter closes every object in a strict schema with
+   * `additionalProperties: false`, which left the map able to hold only `{}`:
+   * Gemini could never report a fact, so every interview asked again for what
+   * the learner had already said. A list of pairs survives the closing.
+   */
+  it('is a list of pairs, never a map with free keys', async () => {
+    const { provider, schemas } = recordingProvider({ intent: 'project_generation', extracted: pairs({ tech: 'React' }) });
+    const result = await classifyQuery({ provider, rawQuery: 'a weather dashboard in React' });
+    await classifyQuery({ provider, rawQuery: 'a weather dashboard in React', scoping: true });
+
+    expect(result.extracted).toEqual({ tech: 'React' });
+    for (const schema of schemas) {
+      expect(schema.safeParse({ intent: 'project_generation', extracted: { tech: 'React' } }).success).toBe(false);
+      expect(schema.safeParse({ intent: 'project_generation', extracted: pairs({ tech: 'React' }) }).success).toBe(true);
+    }
+  });
+
+  /*
+   * What Gemini actually sent for "a weather dashboard in React for a few
+   * hours": the facts, under names of its own. The names are now enumerated
+   * in the schema; one that still slips through is dropped without taking the
+   * rest of the answer with it.
+   */
+  it('drops a slot name of the model’s own and keeps the rest', async () => {
+    const { provider } = recordingProvider({
+      intent: 'project_generation',
+      extracted: [
+        { slot: 'technology', value: 'React' },
+        { slot: 'time_budget', value: 'a few hours' },
+      ],
+    });
+    const result = await classifyQuery({ provider, rawQuery: 'a weather dashboard in React for a few hours' });
+    expect(result.extracted).toEqual({ time_budget: 'a few hours' });
+  });
+});
 
 describe('classifyQuery without scoping', () => {
   it('sends the original system prompt and returns no signals', async () => {
     const { provider, requests } = recordingProvider({
       intent: 'project_generation',
-      extracted: { domain: 'operating system', interface: 'cli' },
+      extracted: pairs({ domain: 'operating system', interface: 'cli' }),
     });
     const result = await classifyQuery({ provider, rawQuery: 'I want to build an operating system' });
 
@@ -51,7 +100,7 @@ describe('classifyQuery without scoping', () => {
 
 describe('classifyQuery with scoping', () => {
   it('uses one static system prompt that lists the signals and every profile slot', async () => {
-    const { provider, requests } = recordingProvider({ intent: 'project_generation', extracted: {} });
+    const { provider, requests } = recordingProvider({ intent: 'project_generation', extracted: [] });
     await classifyQuery({ provider, rawQuery: 'a kernel', scoping: true });
     await classifyQuery({ provider, rawQuery: 'a notes app in Tauri', scoping: true });
 
@@ -69,7 +118,7 @@ describe('classifyQuery with scoping', () => {
   it('returns parsed signals and keeps tier and profile slots, dropping invented keys', async () => {
     const { provider } = recordingProvider({
       intent: 'project_generation',
-      extracted: { domain: 'kernel', target_arch: 'x86-64', interface: 'serial console', made_up: 'x' },
+      extracted: pairs({ domain: 'kernel', target_arch: 'x86-64', interface: 'serial console', made_up: 'x' }),
       signals: { domainWords: ['kernel'], bareMetal: true },
     });
     const result = await classifyQuery({ provider, rawQuery: 'an x86-64 kernel', scoping: true });
@@ -79,13 +128,13 @@ describe('classifyQuery with scoping', () => {
   });
 
   it('gives empty signals when the model returns none, and none at all for other intents', async () => {
-    const { provider } = recordingProvider({ intent: 'project_generation', extracted: {} });
+    const { provider } = recordingProvider({ intent: 'project_generation', extracted: [] });
     const result = await classifyQuery({ provider, rawQuery: 'build something', scoping: true });
     expect(result.signals).toEqual({ domainWords: [], interfaces: [] });
 
     const other = recordingProvider({
       intent: 'concept_question',
-      extracted: { topic: 'closures', target_arch: 'x86' },
+      extracted: pairs({ topic: 'closures', target_arch: 'x86' }),
       signals: { bareMetal: true },
     });
     const concept = await classifyQuery({ provider: other.provider, rawQuery: 'what is a closure', scoping: true });

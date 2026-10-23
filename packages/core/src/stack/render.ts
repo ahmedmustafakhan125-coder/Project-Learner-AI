@@ -32,7 +32,7 @@ export function renderStackBrief(brief: StackBrief): string {
     ...brief.layers.map(
       (l) =>
         `- ${l.layer}: ${l.name}${l.versionMajor ? ` (major ${l.versionMajor})` : ''}. ${l.roleHere} ` +
-        `Checked by: ${l.verification}. Refs: ${l.docRefs.join(', ')}.`,
+        `Checked by: ${l.verification}.${l.docRefs.length ? ` Refs: ${l.docRefs.join(', ')}.` : ''}`,
     ),
   ];
   if (brief.architecture.components.length) {

@@ -69,4 +69,12 @@ describe('request headers', () => {
     await client().deleteProject('11111111-1111-1111-1111-111111111111');
     expect(headersOf()['Authorization']).toBe('Bearer token-123');
   });
+
+  it('asks for the nav summary as a bodiless, authenticated GET', async () => {
+    await client().getNavSummary();
+    expect(calls[0]!.url).toBe('http://api.test/api/me/nav-summary');
+    expect(calls[0]!.init.method ?? 'GET').toBe('GET');
+    expect(headersOf()['Content-Type']).toBeUndefined();
+    expect(headersOf()['Authorization']).toBe('Bearer token-123');
+  });
 });

@@ -82,6 +82,7 @@ vi.mock('@ai-edu/core', async () => ({
   AttachmentRef: { safeParse: () => ({ success: true, data: {} }) },
   InterviewContext: { safeParse: () => ({ success: true, data: {} }) },
   InterviewState: { safeParse: () => ({ success: true, data: {} }) },
+  InterviewPurpose: (await import('zod')).z.enum(['ask', 'project']),
   beginInterview: async () => ({}),
   continueInterview: async () => ({}),
   extractDurableSlots: () => ({}),

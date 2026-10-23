@@ -121,7 +121,7 @@ export interface RunResearchInput {
 export interface ResearchRun {
   /** Cards, cached and new research merged: what the brief is written against. */
   dossier: ResearchDossier;
-  /** True when a candidate was left ungrounded: T1, no server tools, or a failed key. */
+  /** True when a candidate was left ungrounded (T1, no server tools, a failed key) or nothing was read at all. */
   limitedSources: boolean;
   fromCards: string[];
   fromCache: string[];
@@ -215,7 +215,9 @@ export async function runProjectResearch(input: RunResearchInput): Promise<Resea
   const uncovered = plan.uncovered.map((c) => c.key);
   return {
     dossier,
-    limitedSources: uncovered.length > 0 || failed.length > 0,
+    // A dossier with no reference is limited however it came about, including
+    // a profile whose layers name nothing to research and a stack left open.
+    limitedSources: uncovered.length > 0 || failed.length > 0 || dossier.docRefs.length === 0,
     fromCards: plan.fromCards.map((c) => c.key),
     fromCache: plan.fromCache.map((c) => c.key),
     researched: plan.toResearch.map((c) => c.key).filter((k) => !failed.includes(k)),

@@ -141,6 +141,30 @@ describe('runProjectResearch', () => {
     expect(research.dossier.docRefs.length).toBe(3);
   });
 
+  /*
+   * "Make a website for my cooking business", stack left open: the web
+   * profiles name nothing to research, so nothing was read. That is limited
+   * sources too, though no key was left uncovered.
+   */
+  it('marks sources limited when nothing at all was read', async () => {
+    const site = compiled('Make a website for my cooking business', { domain: 'cooking business', tech: 'Recommend one for me' });
+    const { provider, requests } = recordingProvider();
+    const research = await runProjectResearch({
+      compiled: site,
+      profile: PROFILES['web-frontend'],
+      tier: 'T2',
+      slots: site.slots,
+      now: NOW,
+      env: CLAUDE_ENV,
+      providerFor: () => provider,
+      cache: memoryDossierCache(),
+    });
+    expect(requests).toHaveLength(0);
+    expect(research.uncovered).toEqual([]);
+    expect(research.dossier.docRefs).toEqual([]);
+    expect(research.limitedSources).toBe(true);
+  });
+
   it('does not cache what the general profile finds, which is about one project', async () => {
     const cache = memoryDossierCache();
     const general = compiled('An audio DSP library', { domain: 'audio DSP library' });

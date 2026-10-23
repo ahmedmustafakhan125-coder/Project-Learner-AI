@@ -314,3 +314,198 @@ the route answered 502 `generation_failed`.
    compatibility layer accepts it for Argon (`low`, `medium`, `high`;
    `minimal` maps to `low`). Sending `low` for grading would cut cost, but it
    needs adapter support and a conformance run.
+
+## Side task — learner nav menus (branch `pl-nav-menus`, 2026-10-23)
+
+With `PROJECT_LEARNER=on` and a learner signed in, the bar keeps only the
+logo. Workspace, Projects and Brain are plain links down a fixed left
+sidebar, with the account at its foot: name, email, a new password set in
+place, and Sign out. On `/ask` the conversation history moves to the right
+edge. With the flag off, or signed out, the bar renders exactly as before,
+and `apps/web/test/nav.test.tsx` pins the item lists.
+
+The first version opened a panel under each section and had a **For you**
+panel of suggestions. On request, For you was deleted and the sections
+became links, and the panels went with them (`WorkspacePanel`,
+`ProjectsPanel`, `BrainPanel`, `ForYouPanel`, `NavPanelParts`,
+`NavMenuItem`, `lib/useNavSummary.ts`).
+
+**What changed**
+1. `packages/core/src/nav`: `topInterests` (concepts ranked by ACTIVATED
+   weight × a 14-day half-life) and `recommendNext` (five rules, at most 2 per
+   kind, 5 in all, ties broken by id). Weights are in `RECOMMEND_RULES`. No
+   model call, so §11 and invariant 28 are unchanged.
+2. `GET /api/me/nav-summary` (`apps/api/src/routes/me.ts`). It is registered
+   only with the flag on: 404 off, 401 unauthenticated. Each source loads
+   with `Promise.allSettled`, and a failed one comes back `null` while the
+   rest fill. `messageCounts` is now exported from `routes/threads.ts`.
+3. `api.getNavSummary()` and re-exported `Nav*` and `Recommendation` types.
+4. Web: `components/nav/*` (`LearnerNav`, `SideNav`, `UserMenu`,
+   `AccountPanel`, `MobileNav`), `lib/navLinks.ts`, and `lib/time.ts`
+   (`relativeTime` moved out of ChatHistory). `LearnerNav` sets
+   `data-sidenav` on `<html>` while it is mounted. Every rule that makes
+   room for the sidebar hangs off that attribute: the body's left padding
+   and the history on the right. So with the flag off nothing moves, and the
+   history keeps its old left rail, off-canvas at 1080px.
+5. Below 1100px the history slides in from the right behind a button.
+   Below 860px a drawer from the left replaces the sidebar. The drawer is
+   portalled to `<body>`, because the bar's backdrop filter would clip a
+   fixed child to 68px.
+6. The logo and `/` lead to `/ask` for learners. `/` redirects in the
+   browser, because the session is client-side. Home and About are not in
+   the learner nav.
+
+**Deliberate changes that apply whatever the flag**
+1. `/ask` now follows its query as it changes, not only on arrival:
+   `?thread`, `?q`, and the new `?new=1`. It then clears the query with
+   `history.replaceState`, so the same link works twice. Before, `?thread=`
+   stayed in the address bar and a reload reopened that thread; now a reload
+   shows a fresh workspace. A link that arrives while an answer is streaming
+   is ignored, as the rail is.
+2. `/brain` follows `?focus` as it changes. Both pages read the query with
+   `useSearchParams` inside a Suspense boundary. `next build` passes, and
+   every route is dynamic.
+
+**Open**
+1. Since the panels and For you were removed, nothing calls
+   `GET /api/me/nav-summary`, `api.getNavSummary()`, `topInterests` or
+   `recommendNext`. They are kept, with their tests, until someone decides
+   to delete them or find them a new home.
+2. Checked with the flag on in headless Chrome at 1920, 1280, 1024 and
+   390px. Esc closes the account menu and returns focus to its button.
+   Still owed: a browser run with the flag off. Only its CSS rule was
+   checked, by removing the attribute.
+
+## Side task — project questions (branch `pl-nav-menus`, 2026-10-23)
+
+With `PROJECT_LEARNER=on`, the questions on `/projects/new` are written by
+code, not worded by the model. The page used to borrow the workspace's
+panel. That panel's buttons promised "Specialist Answers", and the stack
+question was a bare text box ("Which languages, frameworks, or tech stack
+do you want to use?") that a beginner could not answer.
+
+**What changed**
+1. `packages/core/src/interview/projectQuestions.ts`: fixed wording and
+   chips for the four base project slots (kind of project, stack,
+   experience, time). The stack question says what a stack is and offers
+   `RECOMMEND_STACK` ("Recommend one for me") first, which
+   `namedTechnologies` reads as no preference. Its chips come from
+   `STACKS_BY_PROFILE`. They are for the profile the message names, or follow
+   the kind chip picked beside it (`follows`), or else they are languages.
+   Each kind chip scores to its own profile under `detectProfile`, and a test
+   holds that.
+2. The interview takes a `purpose`. With `project`, the request is always a
+   project, and the questions come from `projectQuestions` with no model
+   call. That is one call fewer: the form showed in 3.5 s instead of 8 s.
+   `InterviewState.purpose` round-trips through the browser.
+   `routes/interview.ts` honours `project` only with the flag on
+   (`interviewPurpose`). With the flag off, every interview runs as before.
+3. `InterviewQuestion` gains the optional `placeholder` and `follows`.
+   `QuestionSet`, the shape the model is asked for, is unchanged.
+4. Web: `components/ProjectQuestions.tsx`. It numbers the questions,
+   shows what each answer changes, and has chips plus a box for your own
+   answer. The buttons are Continue and "Skip — choose for me". A stack chip
+   that the new kind no longer offers is dropped, not sent.
+
+**Deliberate change that applies whatever the flag**
+1. Classify never extracted anything. The model filled `extracted` (a map)
+   with its own names ("technology", "project_type", "duration"), and
+   `sanitiseExtraction` dropped them. So every interview asked again for what
+   the learner had said, and the workspace did too: "How do closures work in
+   JavaScript?" was asked for its topic and its language. The model now
+   returns a list of `{ slot, value }` pairs with the slot names enumerated in
+   the schema. A name that is still not ours is dropped alone. The system
+   prompts are unchanged. Checked live, the workspace question above now goes
+   straight to answers. "A weather dashboard in React for a few hours" asks
+   nothing, and "an operating system kernel" asks only the stack (C, Rust,
+   Zig) and time.
+
+**Open**
+1. ~~The tier and profile slots are still not asked in the live interview.~~
+   Done in the next section: round 2, after intake.
+2. Intake classifies the message again (`scoping: true`) after the
+   interview did. It could reuse the interview's call.
+
+## Side task — smoother project intake (branch `pl-nav-menus`, 2026-10-23)
+
+The learner asked for four things:
+- a scope step that is less clunky;
+- each stack explained before they choose, with a recommendation;
+- more questions for bigger projects;
+- the tiers hidden.
+
+They also hit "The Stack Brief did not pass its checks" on a website with
+the stack left open. §5 and §8 of the plan are updated to match.
+
+**What changed**
+1. **The tier is never shown.** `TierChip`, `ProfileChip`, Smaller and Bigger
+   are gone, along with `TIER_LABEL`, `profileLabel` and the scope-bar CSS.
+   `PATCH /intake/:id/scope` stays, with no caller. When a profile floor is
+   above the time given, a note above the brief still says so.
+2. **One progress card** (`IntakeProgress`, `lib/intakeProgress.ts`)
+   replaces the chips and the staged text. Its steps: understanding the
+   project, then a few more questions (only when asked), then reading the
+   documentation, then choosing the stack. After the questions, the page
+   runs on by itself. A step that fails shows its error on the card with
+   Try again. The bar moves only while the app works, never while the
+   learner answers. No model call was added: research and the brief run
+   once each, as when the learner clicked "Choose the stack".
+3. **Stack cards.** Each stack in `STACKS_BY_PROFILE` (all 14 profiles) has
+   its language, difficulty (easy, medium or hard), what it is best for and
+   what you learn. Exactly one per kind carries `why` and is shown first as
+   Recommended. "Not sure — choose for me" is last and still sends
+   `RECOMMEND_STACK`. The question schema gains `ChoiceOption` (`hint`,
+   `detail`, `recommended`). The model's `QuestionSet` is unchanged.
+4. **Kind when unsure.** Round 1 also asks the kind when the message names
+   one no profile recognises (`unsureKind`). This happens in the first round
+   only, and the check ignores the stack. A live run first asked it again
+   after "React + Node.js" had been picked for a web app.
+5. **Round 2** (`scopeQuestions`) comes back from `POST /intake` as
+   `questions`, for tiers with a second round (T3 and up), within
+   `questionSlots`' budget (invariant 18). It leaves out:
+   - round-1 slots;
+   - slots the stack settles;
+   - slots stated in the message or its signals;
+   - slots that do not fit the kind (`FITS`; a kernel is never asked about
+     sign-in).
+
+   Intake now merges the tier and profile facts the scoped classify
+   extracted into the slots. It used to drop them, so profile floors
+   keyed on profile slots never fired at intake.
+6. **`POST /intake/:id/answers`** keeps only what round 2 asked, worked out
+   again from the row. `answerSignals` maps the answers to scope signals,
+   for example "Just me" sets `accounts: false`. The tier is then scored
+   again, and the compiled query is rendered with the scoped slots
+   (`compileQuery` gains `slotDefs`), so the brief and the plan read the
+   answers.
+7. **The brief failure.** Basic profiles name no research key on their
+   layers, so a stack left to the brief got an empty dossier. Every layer
+   then failed `grounded`, twice, with nothing to cite. Now an empty
+   dossier makes an uncited layer a logged repair, not a serious violation.
+   Research reports `limitedSources` when nothing was read, and
+   `LayerChoice.docRefs` may be empty.
+8. The error no longer reads "Try again. You can try again": the
+   rejection message is reworded, and the page adds its own suffix only
+   when a message lacks one.
+
+**Checked live** in Chrome against the dev servers, with research and the
+brief stubbed in the browser so that no Claude call ran:
+- The website: stack cards, no round 2, the progress card, then a failure
+  with Try again.
+- The book-club web app: round 2 asked only where it runs, because the
+  message implied the rest.
+- The Tauri notes app: round 2 asked which computers it runs on, the system
+  hooks and the installer. The answers were stored on the row and the tier
+  was re-scored.
+- At 390 px the cards stack in one column.
+
+No tier text appears anywhere. The Stack Brief and plan calls themselves
+(Claude) were not run.
+
+**Open**
+1. Basic profiles still name no research key per layer. A stack left to
+   the brief is therefore planned without documentation and marked limited
+   sources. Adding default keys (a topic per profile, cached for 30 days)
+   would ground it. That adds a research call (budgeted under R0 in §11)
+   to those flows.
+2. The recommendation is one per kind and does not change with skill level.

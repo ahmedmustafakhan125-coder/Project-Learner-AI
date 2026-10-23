@@ -1,5 +1,7 @@
 'use client';
 
+import { Suspense } from 'react';
+
 import { AuthGate } from '../../components/AuthGate';
 import { BrainView } from '../../components/brain/BrainView';
 
@@ -11,7 +13,10 @@ import { BrainView } from '../../components/brain/BrainView';
 export default function BrainPage() {
   return (
     <AuthGate>
-      <BrainView />
+      {/* BrainView reads `?focus` with useSearchParams; a prerendered route would need this boundary. */}
+      <Suspense fallback={null}>
+        <BrainView />
+      </Suspense>
     </AuthGate>
   );
 }

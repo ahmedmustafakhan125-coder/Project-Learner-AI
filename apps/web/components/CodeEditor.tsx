@@ -1,5 +1,6 @@
 'use client';
 
+import type { Monaco } from '@monaco-editor/react';
 import dynamic from 'next/dynamic';
 import { useState } from 'react';
 
@@ -15,7 +16,9 @@ import { useState } from 'react';
  */
 const CODE_THEME = 'project-learner-dark';
 
-function defineTheme(monaco: { editor: { defineTheme: (n: string, t: unknown) => void } }) {
+// Typed from the library: a hand-written shape stopped matching once
+// `monaco-editor` was deduped to the 0.52 that apps/web pins.
+function defineTheme(monaco: Monaco) {
   monaco.editor.defineTheme(CODE_THEME, {
     base: 'vs-dark',
     inherit: true,

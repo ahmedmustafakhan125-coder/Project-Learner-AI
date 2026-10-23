@@ -83,10 +83,12 @@ export async function buildServer() {
   await app.register(followUpRoutes);
   await app.register(attemptRoutes);
   await app.register(projectRoutes);
-  // Project Learner's intake exists only with the flag on; off, it is not even loaded.
+  // Project Learner's intake and nav summary exist only with the flag on; off, they are not even loaded.
   if (env.PROJECT_LEARNER === 'on') {
     const { intakeRoutes } = await import('./routes/intake.js');
     await app.register(intakeRoutes);
+    const { meRoutes } = await import('./routes/me.js');
+    await app.register(meRoutes);
   }
   await app.register(threadRoutes);
   await app.register(tutorRoutes);

@@ -5,14 +5,16 @@ import { MAX_ROUNDS } from '../schemas/interview.js';
 import type {
   CompiledQuery,
   InterviewContext,
+  InterviewPurpose,
   InterviewQuestion,
   InterviewState,
   Slots,
 } from '../schemas/interview.js';
 import { classifyQuery } from './classify.js';
 import { applyAnswers, compileQuery } from './compile.js';
+import { projectQuestions, unsureKind } from './projectQuestions.js';
 import { generateQuestions } from './questions.js';
-import { autoFillSlots, scoreSufficiency } from './slots.js';
+import { autoFillSlots, scoreSufficiency, slotsFor } from './slots.js';
 
 /**
  * The interview pipeline.
@@ -27,6 +29,10 @@ import { autoFillSlots, scoreSufficiency } from './slots.js';
  *
  * Only two steps call a model. Everything that decides behaviour is pure, so
  * the interview's logic can be tested exhaustively with no network.
+ *
+ * With purpose `project` (the project page, PROJECT_LEARNER on) the request is
+ * always a project, and the questions are written by code (`projectQuestions`),
+ * so only classify calls a model.
  */
 
 export type InterviewOutcome =
@@ -38,11 +44,13 @@ export interface BeginInterviewOptions {
   rawQuery: string;
   context: InterviewContext;
   attachments?: AttachmentRef[];
+  /** Defaults to `ask`. The caller sends `project` only with PROJECT_LEARNER on. */
+  purpose?: InterviewPurpose;
   signal?: AbortSignalLike;
 }
 
 export async function beginInterview(options: BeginInterviewOptions): Promise<InterviewOutcome> {
-  const { provider, rawQuery, context, attachments = [], signal } = options;
+  const { provider, rawQuery, context, attachments = [], purpose = 'ask', signal } = options;
 
   const classification = await classifyQuery({
     provider,
@@ -51,12 +59,22 @@ export async function beginInterview(options: BeginInterviewOptions): Promise<In
     ...(signal ? { signal } : {}),
   });
 
-  const { slots, autoFilled } = autoFillSlots(classification.intent, classification.extracted, context);
+  // Everything typed on the project page is a project. Read as anything else,
+  // the facts that hold for a project too (the tech, the skill level) are kept.
+  const project = purpose === 'project';
+  const intent = project ? 'project_generation' : classification.intent;
+  const extracted =
+    project && classification.intent !== 'project_generation'
+      ? projectFacts(classification.extracted)
+      : classification.extracted;
+
+  const { slots, autoFilled } = autoFillSlots(intent, extracted, context);
 
   return advance({
     provider,
     rawQuery,
-    intent: classification.intent,
+    purpose,
+    intent,
     slots,
     autoFilled,
     attachments,
@@ -90,6 +108,7 @@ export async function continueInterview(
     // than an answer given with incomplete context.
     return ready({
       rawQuery: state.rawQuery,
+      purpose: state.purpose,
       intent: state.intent,
       slots,
       autoFilled: state.autoFilled,
@@ -102,6 +121,7 @@ export async function continueInterview(
   return advance({
     provider,
     rawQuery: state.rawQuery,
+    purpose: state.purpose,
     intent: state.intent,
     slots,
     autoFilled: state.autoFilled,
@@ -119,6 +139,7 @@ export async function continueInterview(
 interface AdvanceArgs {
   provider: LLMProvider;
   rawQuery: string;
+  purpose: InterviewPurpose;
   intent: InterviewState['intent'];
   slots: Slots;
   autoFilled: string[];
@@ -130,20 +151,26 @@ interface AdvanceArgs {
 }
 
 async function advance(args: AdvanceArgs): Promise<InterviewOutcome> {
-  const { provider, rawQuery, intent, slots, autoFilled, attachments, round, askedSlots, signal } =
+  const { provider, rawQuery, purpose, intent, slots, autoFilled, attachments, round, askedSlots, signal } =
     args;
 
   const sufficiency = scoreSufficiency(intent, slots);
 
   const outOfRounds = round >= MAX_ROUNDS;
   const stillMissing = sufficiency.missing.filter((key) => !askedSlots.includes(key));
+  // On the project page, a kind of project named too vaguely to plan is asked
+  // too, in the first round only: nothing after this shows the learner what
+  // it was read as, and a later round must not question a kind it planned for.
+  const kindUnsure = purpose === 'project' && round === 0 && unsureKind(rawQuery, slots);
+  const toAsk = kindUnsure ? ['domain', ...stillMissing] : stillMissing;
 
   // Compile when we know enough, when we have run out of rounds, or when the
   // only gaps are ones the learner has already declined to fill. Re-asking a
   // question someone left blank is how an interview turns into a wall.
-  if (!sufficiency.needsInterview || outOfRounds || stillMissing.length === 0) {
+  if ((!sufficiency.needsInterview && !kindUnsure) || outOfRounds || toAsk.length === 0) {
     return ready({
       rawQuery,
+      purpose,
       intent,
       slots,
       autoFilled,
@@ -153,18 +180,22 @@ async function advance(args: AdvanceArgs): Promise<InterviewOutcome> {
     });
   }
 
-  const questions = await generateQuestions({
-    provider,
-    intent,
-    rawQuery,
-    missing: stillMissing,
-    ...(signal ? { signal } : {}),
-  });
+  const questions =
+    purpose === 'project'
+      ? projectQuestions({ rawQuery, slots, missing: toAsk })
+      : await generateQuestions({
+          provider,
+          intent,
+          rawQuery,
+          missing: stillMissing,
+          ...(signal ? { signal } : {}),
+        });
 
   // If question generation returns nothing usable, proceed rather than stall.
   if (questions.length === 0) {
     return ready({
       rawQuery,
+      purpose,
       intent,
       slots,
       autoFilled,
@@ -179,6 +210,7 @@ async function advance(args: AdvanceArgs): Promise<InterviewOutcome> {
     questions,
     state: {
       rawQuery,
+      purpose,
       intent,
       slots,
       autoFilled,
@@ -193,6 +225,7 @@ async function advance(args: AdvanceArgs): Promise<InterviewOutcome> {
 
 interface ReadyArgs {
   rawQuery: string;
+  purpose: InterviewPurpose;
   intent: InterviewState['intent'];
   slots: Slots;
   autoFilled: string[];
@@ -202,7 +235,7 @@ interface ReadyArgs {
 }
 
 function ready(args: ReadyArgs): InterviewOutcome {
-  const { rawQuery, intent, slots, autoFilled, attachments, round, skipped } = args;
+  const { rawQuery, purpose, intent, slots, autoFilled, attachments, round, skipped } = args;
   const sufficiency = scoreSufficiency(intent, slots);
 
   return {
@@ -210,6 +243,7 @@ function ready(args: ReadyArgs): InterviewOutcome {
     compiled: compileQuery({ intent, rawQuery, slots, attachments, skipped }),
     state: {
       rawQuery,
+      purpose,
       intent,
       slots,
       autoFilled,
@@ -220,6 +254,12 @@ function ready(args: ReadyArgs): InterviewOutcome {
       status: 'ready',
     },
   };
+}
+
+/** The extracted facts that are project slots too: a concept question's tech and skill level. */
+function projectFacts(extracted: Record<string, string>): Record<string, string> {
+  const keys = new Set(slotsFor('project_generation').map((s) => s.key));
+  return Object.fromEntries(Object.entries(extracted).filter(([key]) => keys.has(key)));
 }
 
 /** Cap on attachment text sent to the cheap classifier. */

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   AttachmentRef,
   InterviewContext,
+  InterviewPurpose,
   InterviewState,
   beginInterview,
   continueInterview,
@@ -13,6 +14,7 @@ import { createProviderForTask, meterUsage } from '@ai-edu/llm';
 import { requireAuth, userOf } from '../auth.js';
 import { gatewayErrorReply, screenOrThrow } from '../gateway.js';
 import { checkBudget, db, recordUsage } from '../db.js';
+import { loadEnv } from '../env.js';
 
 /**
  * The context interview.
@@ -23,7 +25,18 @@ import { checkBudget, db, recordUsage } from '../db.js';
  *
  * The interview runs on the cheap task-default model. It is extraction and
  * phrasing, not reasoning, and it happens on every single query.
+ *
+ * The project page sends purpose `project`: the request is a project and the
+ * questions are written by code. It is honoured only with PROJECT_LEARNER on;
+ * with the flag off every interview runs as it always has.
  */
+
+/** The purpose an interview runs with: what was asked for with the flag on, `ask` with it off. */
+export function interviewPurpose(requested: InterviewPurpose, learnerOn: boolean): InterviewPurpose {
+  return learnerOn ? requested : 'ask';
+}
+
+const learnerOn = () => loadEnv().PROJECT_LEARNER === 'on';
 
 const StartBody = z.object({
   query: z.string().min(1).max(8000),
@@ -31,6 +44,7 @@ const StartBody = z.object({
   projectId: z.string().uuid().nullable().default(null),
   stepId: z.string().uuid().nullable().default(null),
   attachments: z.array(AttachmentRef).default([]),
+  purpose: InterviewPurpose.default('ask'),
 });
 
 const ContinueBody = z.object({
@@ -48,7 +62,7 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) {
       return reply.code(400).send({ error: 'bad_request', issues: parsed.error.issues });
     }
-    const { query, projectId, stepId, attachments } = parsed.data;
+    const { query, projectId, stepId, attachments, purpose } = parsed.data;
 
     // Screened before the budget check and before a provider exists, so a
     // refused prompt costs nothing. MASK returns redacted text, and it is the
@@ -92,6 +106,7 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
         rawQuery: safeQuery,
         context,
         attachments,
+        purpose: interviewPurpose(purpose, learnerOn()),
       });
       void recordUsage({
         userId: user.id,
@@ -146,7 +161,8 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
     try {
       const outcome = await continueInterview({
         provider,
-        state,
+        // The state comes back from the browser, so the flag decides again.
+        state: { ...state, purpose: interviewPurpose(state.purpose, learnerOn()) },
         answers: safeAnswers,
         attachments,
         skip,

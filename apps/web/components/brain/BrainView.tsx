@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   HOVER_NODE_LIMIT,
@@ -57,12 +57,6 @@ function describe(err: unknown): string {
   return err instanceof Error ? err.message : 'Something went wrong.';
 }
 
-/** `?focus=<node id>` deep-links into one part of the brain — recall chips use it. */
-function focusFromUrl(): string | null {
-  if (typeof window === 'undefined') return null;
-  return new URLSearchParams(window.location.search).get('focus');
-}
-
 function asOf(iso: string): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime())
@@ -97,15 +91,18 @@ export function BrainView() {
   /** "Test me": writing a sitting takes a few seconds, and can be refused (cooldown). */
   const [testState, setTestState] = useState<{ busy: boolean; message: string | null }>({ busy: false, message: null });
 
+  // `?focus=<node id>` deep-links into one part of the brain — recall chips and
+  // the nav's Brain panel use it. Followed as it changes, because the panel
+  // links here from this very page.
+  const fromUrl = useSearchParams().get('focus');
   useEffect(() => {
-    const fromUrl = focusFromUrl();
     if (fromUrl) {
       // A deep link names one node; show all of time so it cannot be windowed out.
       setWindowDays(null);
       setFocus(fromUrl);
       setSelectedId(fromUrl);
     }
-  }, []);
+  }, [fromUrl]);
 
   useEffect(() => {
     let cancelled = false;

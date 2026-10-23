@@ -2,8 +2,10 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BrandLogo } from '@/components/BrandLogo';
+import { api } from '@/lib/api';
+import { supabase } from '@/lib/supabase';
 
 /**
  * The four platform features, each with its own character.
@@ -47,6 +49,23 @@ export default function HomePage() {
   const router = useRouter();
   const [heroInput, setHeroInput] = useState('');
   const [activeTab, setActiveTab] = useState<'simple' | 'industry' | 'practice' | 'concepts'>('simple');
+
+  // With PROJECT_LEARNER on, a signed-in learner's home is the workspace; the
+  // bar has no Home item for them. Signed out, or with the flag off, this is
+  // the landing page as before. The session lives in the browser, so the
+  // redirect does too.
+  useEffect(() => {
+    if (!supabase) return;
+    let live = true;
+    void Promise.all([supabase.auth.getSession(), api.getFeatures().catch(() => null)]).then(
+      ([{ data }, features]) => {
+        if (live && data.session && features?.projectLearner) router.replace('/ask');
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [router]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

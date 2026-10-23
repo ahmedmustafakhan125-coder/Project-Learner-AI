@@ -3,18 +3,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { CompiledQuery, InterviewQuestion, InterviewState, ProfileId, ProjectBlueprint } from '@ai-edu/core';
+import type { CompiledQuery, InterviewQuestion, InterviewState, ProjectBlueprint } from '@ai-edu/core';
 import { ApiError, type IntakeBrief, type IntakeScope, type RecalledItem } from '@ai-edu/api-client';
 
 import { AuthGate } from '../../../components/AuthGate';
 import { InterviewPanel } from '../../../components/InterviewPanel';
 import { BlueprintReview } from '../../../components/BlueprintReview';
-import { ProfileChip } from '../../../components/ProfileChip';
+import { IntakeProgress } from '../../../components/IntakeProgress';
+import { ProjectQuestions } from '../../../components/ProjectQuestions';
 import { StackBriefView } from '../../../components/StackBriefView';
-import { TierChip } from '../../../components/TierChip';
 import { RecallChips } from '../../../components/brain/RecallChips';
 import { api } from '../../../lib/api';
-import { researchStages } from '../../../lib/stackBrief';
+import { progressSteps, type StepId } from '../../../lib/intakeProgress';
 
 /**
  * Project intake.
@@ -25,11 +25,14 @@ import { researchStages } from '../../../lib/stackBrief';
  * Generating a whole project someone did not want is the expensive mistake this
  * flow is shaped to avoid — nothing is persisted until they approve.
  *
- * With Project Learner on (the server says so at /api/features), two stops
- * come between the interview and the plan: the profile and tier chips, which
- * the learner can correct before anything is spent, and the Stack Brief,
- * which they approve before the plan is written against it. Every stage reads
- * what came before from the server's intake row; this page holds only its id.
+ * With Project Learner on (the server says so at /api/features), the questions
+ * are the project ones, written by the server in code (`ProjectQuestions`).
+ * After them the page carries on by itself under one progress card: intake
+ * scores the project, a bigger one gets a few more questions, then research
+ * and the Stack Brief run, with Try again beside a step that fails. The tier
+ * is never shown; the learner's next decision is approving the brief. Every
+ * stage reads what came before from the server's intake row; this page holds
+ * only its id.
  */
 
 type Phase =
@@ -37,14 +40,24 @@ type Phase =
   | 'interviewing'
   | 'awaiting_answers'
   | 'scoping'
-  | 'scoped'
+  | 'refining'
   | 'researching'
+  | 'briefing'
+  | 'stalled'
   | 'briefed'
   | 'planning'
   | 'reviewing'
   | 'creating';
 
-/** How long each line of the staged research text stays up. */
+/** The phases the progress card shows, and the step each one is on. */
+const PROGRESS: Partial<Record<Phase, StepId>> = {
+  scoping: 'scope',
+  refining: 'questions',
+  researching: 'research',
+  briefing: 'brief',
+};
+
+/** How long each line under the running step stays up. */
 const STAGE_MS = 6_000;
 
 export default function NewProjectPage() {
@@ -79,6 +92,11 @@ function NewProject() {
   const [learner, setLearner] = useState(false);
   const [intakeId, setIntakeId] = useState<string | null>(null);
   const [scope, setScope] = useState<IntakeScope | null>(null);
+  /** Round 2: asked only when intake finds a project big enough for it. */
+  const [moreQuestions, setMoreQuestions] = useState<InterviewQuestion[]>([]);
+  const [savingAnswers, setSavingAnswers] = useState(false);
+  /** The step that failed, while the card offers Try again. */
+  const [failedAt, setFailedAt] = useState<StepId | null>(null);
   const [brief, setBrief] = useState<IntakeBrief | null>(null);
   const [planWarnings, setPlanWarnings] = useState<string[]>([]);
   const [planRegenerations, setPlanRegenerations] = useState(2);
@@ -95,9 +113,9 @@ function NewProject() {
     };
   }, []);
 
-  // The staged research text: one line at a time while research and the brief run.
+  // One line at a time under the running step, while research and the brief run.
   useEffect(() => {
-    if (phase !== 'researching') return;
+    if (phase !== 'researching' && phase !== 'briefing') return;
     setStage(0);
     const timer = setInterval(() => setStage((s) => s + 1), STAGE_MS);
     return () => clearInterval(timer);
@@ -123,53 +141,81 @@ function NewProject() {
     [teachDeployment],
   );
 
-  /** Profile and tier, scored by code, shown before anything is spent on research. */
-  const startIntake = useCallback(async (query: CompiledQuery) => {
-    setPhase('scoping');
-    setCompiled(query);
+  /**
+   * Research, then the brief. A failure before any brief stops on the card
+   * with Try again; one while regenerating goes back to the brief it had.
+   */
+  const researchAndBrief = useCallback(async (id: string, hadBrief: boolean) => {
+    setError(null);
+    setFailedAt(null);
+    setPhase('researching');
+    let step: StepId = 'research';
     try {
-      const { intakeId: id, ...scoped } = await api.createIntake(query);
-      setIntakeId(id);
-      setScope(scoped);
-      setPhase('scoped');
+      await api.researchIntake(id);
+      step = 'brief';
+      setPhase('briefing');
+      setBrief(await api.generateStackBrief(id));
+      setPhase('briefed');
     } catch (err) {
       setError(describe(err));
-      setPhase('describing');
+      if (hadBrief) {
+        setPhase('briefed');
+        return;
+      }
+      setFailedAt(step);
+      setPhase('stalled');
     }
   }, []);
+
+  /** Profile and tier, scored by code; then round 2 if the project needs it, or straight on. */
+  const startIntake = useCallback(
+    async (query: CompiledQuery) => {
+      setPhase('scoping');
+      setCompiled(query);
+      setMoreQuestions([]);
+      try {
+        const { intakeId: id, questions: more, ...scoped } = await api.createIntake(query);
+        setIntakeId(id);
+        setScope(scoped);
+        if (more.length) {
+          setMoreQuestions(more);
+          setPhase('refining');
+          return;
+        }
+        await researchAndBrief(id, false);
+      } catch (err) {
+        setError(describe(err));
+        setPhase('describing');
+      }
+    },
+    [researchAndBrief],
+  );
 
   const ready = useCallback(
     (query: CompiledQuery) => (learner ? startIntake(query) : plan(query)),
     [learner, plan, startIntake],
   );
 
-  const changeScope = useCallback(
-    async (change: { profile?: ProfileId; tierStep?: -1 | 1 }) => {
+  /** Round 2's answers, or none on Skip; the tier is scored again on the server. */
+  const refine = useCallback(
+    async (answers: Record<string, string>) => {
       if (!intakeId) return;
       setError(null);
-      try {
-        setScope(await api.updateIntakeScope(intakeId, change));
-        setBrief(null);
-      } catch (err) {
-        setError(describe(err));
+      if (Object.keys(answers).length) {
+        setSavingAnswers(true);
+        try {
+          setScope(await api.answerIntake(intakeId, answers));
+        } catch (err) {
+          setError(describe(err));
+          return;
+        } finally {
+          setSavingAnswers(false);
+        }
       }
+      await researchAndBrief(intakeId, false);
     },
-    [intakeId],
+    [intakeId, researchAndBrief],
   );
-
-  const researchAndBrief = useCallback(async () => {
-    if (!intakeId) return;
-    setError(null);
-    setPhase('researching');
-    try {
-      await api.researchIntake(intakeId);
-      setBrief(await api.generateStackBrief(intakeId));
-      setPhase('briefed');
-    } catch (err) {
-      setError(describe(err));
-      setPhase(brief ? 'briefed' : 'scoped');
-    }
-  }, [intakeId, brief]);
 
   const planIntake = useCallback(async () => {
     if (!intakeId) return;
@@ -205,7 +251,7 @@ function NewProject() {
     setPhase('interviewing');
 
     try {
-      const result = await api.startInterview({ query: goal });
+      const result = await api.startInterview({ query: goal, ...(learner ? { purpose: 'project' as const } : {}) });
       if (result.status === 'awaiting_answers') {
         setQuestions(result.questions);
         setState(result.state);
@@ -217,7 +263,7 @@ function NewProject() {
       setError(describe(err));
       setPhase('describing');
     }
-  }, [goal, ready]);
+  }, [goal, ready, learner]);
 
   const answer = useCallback(
     async (answers: Record<string, string>, skip: boolean) => {
@@ -269,8 +315,18 @@ function NewProject() {
     else if (compiled) void plan(compiled);
   }, [compiled, plan, learner, intakeId, planIntake]);
 
-  const busy = phase === 'interviewing' || phase === 'planning' || phase === 'creating' || phase === 'researching';
-  const stages = scope ? researchStages(scope.tier, scope.adapted) : [];
+  const busy = phase === 'interviewing' || phase === 'planning' || phase === 'creating' || phase === 'researching' || phase === 'briefing';
+  const current = phase === 'stalled' ? failedAt : PROGRESS[phase];
+  const steps = current
+    ? progressSteps({
+        current,
+        failed: phase === 'stalled',
+        askedMore: moreQuestions.length > 0,
+        adapted: scope?.adapted ?? false,
+        tier: scope?.tier ?? null,
+        tick: stage,
+      })
+    : [];
 
   return (
     <main className="shell">
@@ -325,47 +381,51 @@ function NewProject() {
         </div>
       )}
 
-      {error && <div className="notice error">{error}</div>}
+      {/* A failed step shows its error on the progress card, beside Try again. */}
+      {error && phase !== 'stalled' && <div className="notice error">{error}</div>}
 
-      {phase === 'awaiting_answers' && questions.length > 0 && (
+      {phase === 'awaiting_answers' && questions.length > 0 && (learner ? (
+        <ProjectQuestions
+          questions={questions}
+          busy={false}
+          onSubmit={(answers) => void answer(answers, false)}
+          onSkip={() => void answer({}, true)}
+        />
+      ) : (
         <InterviewPanel
           questions={questions}
           busy={false}
           onSubmit={(answers) => void answer(answers, false)}
           onSkip={() => void answer({}, true)}
         />
-      )}
+      ))}
 
       {phase === 'interviewing' && <p className="skeleton">Reading your goal…</p>}
-      {phase === 'scoping' && <p className="skeleton">Working out what kind of project this is…</p>}
 
-      {scope && ['scoped', 'researching', 'briefed'].includes(phase) && (
-        <section className="scope-bar" aria-label="Project scope">
-          <ProfileChip
-            profile={scope.profile}
-            confidence={scope.confidence}
-            alternatives={scope.alternatives}
-            busy={phase !== 'scoped' && phase !== 'briefed'}
-            onChange={(profile) => void changeScope({ profile }).then(() => setPhase('scoped'))}
-          />
-          <TierChip
-            tier={scope.tier}
-            reasons={scope.reasons}
-            overTime={scope.overTime}
-            busy={phase !== 'scoped' && phase !== 'briefed'}
-            onStep={(tierStep) => void changeScope({ tierStep }).then(() => setPhase('scoped'))}
-          />
-          {phase === 'scoped' && (
-            <button className="btn primary" onClick={() => void researchAndBrief()}>
-              {scope.adapted ? 'Adapt a similar project' : 'Choose the stack'}
-            </button>
-          )}
-        </section>
+      {steps.length > 0 && (
+        <IntakeProgress
+          steps={steps}
+          error={error}
+          onRetry={intakeId ? () => void researchAndBrief(intakeId, false) : undefined}
+        />
       )}
 
-      {phase === 'researching' && stages.length > 0 && (
-        <div className="notice info" aria-live="polite">
-          {stages[Math.min(stage, stages.length - 1)]}
+      {phase === 'refining' && moreQuestions.length > 0 && (
+        <ProjectQuestions
+          questions={moreQuestions}
+          busy={savingAnswers}
+          heading="A few more questions"
+          lede="This project has more moving parts, so a little more detail helps plan the right pieces. Skip any you are not sure about."
+          onSubmit={(answers) => void refine(answers)}
+          onSkip={() => void refine({})}
+        />
+      )}
+
+      {/* Nothing is cut silently (§5): a project bigger than the time given says so. */}
+      {learner && scope?.overTime && ['refining', 'researching', 'briefing', 'briefed'].includes(phase) && (
+        <div className="notice warn">
+          This kind of project needs more time than you have. The plan builds its first milestone as a project of
+          its own, and the rest follow.
         </div>
       )}
 
@@ -378,7 +438,9 @@ function NewProject() {
           regenerationsLeft={brief.regenerationsLeft}
           busy={busy}
           onApprove={() => void approveBrief()}
-          onRegenerate={() => void researchAndBrief()}
+          onRegenerate={() => {
+            if (intakeId) void researchAndBrief(intakeId, true);
+          }}
         />
       )}
 
@@ -430,7 +492,8 @@ function describe(err: unknown): string {
     if (err.code === 'project_generation_unavailable') {
       return 'Project generation is unavailable right now. Your progress is kept; try again later.';
     }
-    if (err.code === 'generation_failed' || err.code === 'stack_brief_rejected') {
+    // The server's message already says to try again; the plan's own failures do not.
+    if (err.code === 'generation_failed' && !/try again/i.test(err.message)) {
       return `${err.message} You can try again — planning is not deterministic.`;
     }
     return err.message;

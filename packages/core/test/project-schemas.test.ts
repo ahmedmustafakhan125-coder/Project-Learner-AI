@@ -133,8 +133,10 @@ describe('StackBrief', () => {
     expect(LayerChoice.safeParse({ ...LAYER, alternatives: [alt, alt, alt] }).success).toBe(false);
   });
 
-  it('wants every layer to cite a dossier reference', () => {
-    expect(LayerChoice.safeParse({ ...LAYER, docRefs: [] }).success).toBe(false);
+  // `verifyStackBrief` wants a reference whenever the dossier holds one; a
+  // brief written against an empty dossier is stored with none (limited sources).
+  it('stores a layer with no reference, for a brief whose dossier was empty', () => {
+    expect(LayerChoice.safeParse({ ...LAYER, docRefs: [] }).success).toBe(true);
   });
 
   it('reads back tolerantly for projects planned before PROJECT_LEARNER', () => {

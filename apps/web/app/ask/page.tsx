@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import type { AgentKind, CompiledQuery, InterviewQuestion, InterviewState } from '@ai-edu/core';
 import {
   ApiError,
@@ -52,7 +52,10 @@ const QUICK_SUGGESTIONS = [
 export default function AskPage() {
   return (
     <AuthGate>
-      <Ask />
+      {/* `useSearchParams` below: a prerendered route would need this boundary. */}
+      <Suspense fallback={null}>
+        <Ask />
+      </Suspense>
     </AuthGate>
   );
 }
@@ -410,17 +413,29 @@ function Ask() {
 
   // `/ask?thread=<id>` opens that conversation directly — the brain links here
   // from every session it shows. `/ask?q=<text>` fills the box without asking:
-  // an assessment's "ask the tutors about it" lands here. Read once, on arrival.
-  const openedFromUrl = useRef(false);
+  // an assessment's "ask the tutors about it" lands here. `/ask?new=1` starts a
+  // fresh conversation. Read on arrival and again whenever the query changes,
+  // because the nav panels link here from this very page.
+  const searchParams = useSearchParams();
+  const urlQuery = searchParams.toString();
+  const handledUrl = useRef<string | null>(null);
   useEffect(() => {
-    if (openedFromUrl.current) return;
-    openedFromUrl.current = true;
-    const params = new URLSearchParams(window.location.search);
+    if (handledUrl.current === urlQuery) return;
+    handledUrl.current = urlQuery;
+    if (!urlQuery) return;
+    // Consumed: cleared so the same link works a second time. Next keeps
+    // useSearchParams in step with the native history call.
+    window.history.replaceState(null, '', window.location.pathname);
+    // Switching away mid-answer would tear down the stream in flight — the
+    // rail goes read-only for the same reason — so a link then is ignored.
+    if (phase === 'interviewing' || phase === 'streaming') return;
+    const params = new URLSearchParams(urlQuery);
+    if (params.get('new') === '1') startNew();
     const threadId = params.get('thread');
     if (threadId) void openThread(threadId);
     const prefill = params.get('q');
     if (prefill) setQuery(prefill.slice(0, 2000));
-  }, [openThread]);
+  }, [urlQuery, phase, openThread, startNew]);
 
   // Once an answer has finished, see whether a concept is ready to be tested.
   useEffect(() => {

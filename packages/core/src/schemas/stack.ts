@@ -75,8 +75,8 @@ export const LayerChoice = z.object({
   requestedByLearner: z.boolean(),
   /** Each becomes a round-2 chip: "Assumed: x86-64 under QEMU. Change?" */
   assumptions: z.array(z.string()).default([]),
-  /** DocRef ids from the dossier. */
-  docRefs: z.array(z.string()).min(1),
+  /** DocRef ids from the dossier. Empty only when the dossier was: the brief is marked limited sources. */
+  docRefs: z.array(z.string()),
   verification: Verification,
   cardId: z.string().nullable(),
 });
