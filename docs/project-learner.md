@@ -12,7 +12,7 @@ Project generation moves to Claude, everyday questioning stays on Gemini, every 
 
 Six changes carry the plan:
 
-1. **Split the models by job.** Gemini Flash keeps the questions: the fan-out, the interview and follow-ups. Gemini 4 Argon runs the project tutor. Claude Opus 5.5 and Sonnet 5.5 take research, the Stack Brief, the plan, the steps and the review. Project routes ignore the UI model pick.
+1. **Split the models by job.** Gemini Flash keeps the questions: the fan-out, the interview and follow-ups. Gemini 4 Argon runs the project tutor. Claude Opus 5.5 and Sonnet 5.5 take research, the Stack Brief, the plan, the steps and the review. Project routes ignore the UI model pick. Changed 2026-10-23 by the owner: the fan-out and follow-ups lead with Gemini 4 Argon, the four-agent workspace offers only Argon, and brain tests run on Argon. The interview stays on Flash (section 4).
 2. **A profile for every kind of project.** 13 profiles, from web apps to desktop apps, games, graphics, operating systems and compilers, plus a research-driven general profile for anything else. Each profile defines its stack layers, extra questions, an architecture rule that keeps it testable, a verification harness and its documentation sources.
 3. **Scope by complexity.** Five tiers, from a one-file script (T1) to deep systems such as a kernel or an optimising compiler (T5), which become a series of up to six milestone projects.
 4. **Read the docs before writing.** A research pass searches and fetches allowlisted official documentation (OSDev wiki, LLVM, Khronos, Godot, Electron and so on) and writes a cited Research Dossier. Every brief and step is generated against it, and the learner sees each step's sources.
@@ -99,8 +99,9 @@ Routing becomes a policy per job: project jobs are pinned to Claude, conversatio
 | --- | --- | --- | --- | --- |
 | Interview: classify, extract, phrase questions | `interview` | Gemini Flash | low | Runs on every message; short structured extraction |
 | Scope signals for the tier scorer (new) | `interview` | Gemini Flash | low | Extraction only; code scores the tier |
-| Four-agent fan-out | `fanout` | Gemini Flash | as today | High volume, cached shared prefix |
-| Follow-ups, questions about the Stack Brief | `fanout` | Gemini Flash | as today | Conversational, grounded in stored artifacts |
+| Four-agent fan-out | `fanout` | `gemini-4-argon` (Flash until 2026-10-23) | as today | The owner's choice; the workspace picker offers only Argon |
+| Follow-ups, questions about the Stack Brief | `fanout` | `gemini-4-argon` (Flash until 2026-10-23) | as today | Conversational, grounded in stored artifacts |
+| Brain tests: write and grade an assessment | `assessment` (new, 2026-10-23) | `gemini-4-argon`, flag on or off | medium | Flash on json-mode returned tests too short to pass validation; Argon has a native schema. The generator's ceiling is 16,000 tokens and the grader's 6,000, because Gemini counts thinking against `maxTokens` |
 | Project tutor and its write-code gate | `tutor` (new) | `gemini-4-argon` | as today | Reads the learner's files across the project, where a stronger model earns its cost; stays on Gemini with the rest of the conversation |
 | Docs research, project level (new) | projectResearch | claude-sonnet-5-5 with web search and web fetch | low | Reads allowlisted official docs before the brief; citations come back as structured blocks. Skipped for T1 and for technologies already in the dossier cache |
 | Docs research, per step (new) | projectResearch | claude-sonnet-5-5 with web search and web fetch | low | Only for steps that use an external API; prefetched with step N+1 |
@@ -1135,7 +1136,7 @@ The original two-day plan also listed the self-test for browser-runnable steps a
 - Never fill model pricing from memory. pricing stays null until checked on the vendor's page.
 - Cost: models, effort and maxTokens for project stages come only from PROJECT_MODELS. Do not
   raise them, add a retry or add a model call without updating §11 and the invariant 28 test.
-- Questions run on Gemini Flash, the tutor on Gemini 4 Argon, project generation on Claude.
+- The interview runs on Gemini Flash; the four-agent workspace, brain tests and the tutor on Gemini 4 Argon; project generation on Claude.
 - New migrations start at 0015. Project columns say project_profile; `profiles` is the user table.
 - Everything new is behind PROJECT_LEARNER. With the flag off, the app behaves as it does today.
 - Edit only the files your phase's tasks name. Anything else goes in HANDOFF.md.

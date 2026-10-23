@@ -145,15 +145,29 @@ export function NodeDetailPanel({
 
           {detail.node.kind === 'concept' && onTestMe && (
             <div className="brain-testme">
-              <button
-                type="button"
-                className="btn primary"
-                onClick={() => onTestMe(detail.node.key)}
-                disabled={testState?.busy}
-              >
-                {testState?.busy ? 'Writing your test…' : 'Test me on this'}
-              </button>
-              {testState?.message && <p className="brain-testme-note">{testState.message}</p>}
+              {/*
+                The examiner. Decorative, since the button beside it says what
+                happens; it leans while a test is being written.
+              */}
+              <img
+                className={`brain-testme-bot ${testState?.busy ? 'working' : ''}`}
+                src="/bots/ghost.png"
+                alt=""
+                aria-hidden="true"
+                width={55}
+                height={48}
+              />
+              <div className="brain-testme-body">
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={() => onTestMe(detail.node.key)}
+                  disabled={testState?.busy}
+                >
+                  {testState?.busy ? 'Writing your test…' : 'Test me on this'}
+                </button>
+                {testState?.message && <p className="brain-testme-note">{testState.message}</p>}
+              </div>
             </div>
           )}
 

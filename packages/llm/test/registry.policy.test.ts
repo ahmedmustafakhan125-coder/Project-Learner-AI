@@ -7,6 +7,7 @@ import {
   TASK_POLICY,
   getModel,
   listAvailableModels,
+  listPickerModels,
   resolveModel,
   resolveProjectStage,
 } from '../src/registry.js';
@@ -83,15 +84,42 @@ describe('the tutor and the questions', () => {
     expect(resolveModel('tutor', 'claude-opus-5-5', on(BOTH))?.id).toBe('gemini-4-argon');
   });
 
-  it('keeps questions on Gemini Flash even when a Claude key is set', () => {
-    for (const task of ['interview', 'fanout'] as const) {
-      expect(resolveModel(task, undefined, on(BOTH))?.providerModel).toBe('gemini-3.6-flash');
-      expect(resolveModel(task, undefined, off(BOTH))?.providerModel).toBe('gemini-3.6-flash');
-    }
+  it('keeps the interview on Gemini Flash even when a Claude key is set', () => {
+    expect(resolveModel('interview', undefined, on(BOTH))?.providerModel).toBe('gemini-3.6-flash');
+    expect(resolveModel('interview', undefined, off(BOTH))?.providerModel).toBe('gemini-3.6-flash');
+  });
+
+  it('leads the four-agent workspace with Gemini 4 Argon, flag on or off', () => {
+    expect(resolveModel('fanout', undefined, on(BOTH))?.id).toBe('gemini-4-argon');
+    expect(resolveModel('fanout', undefined, off(BOTH))?.id).toBe('gemini-4-argon');
   });
 
   it('still honours the user pick for conversational tasks', () => {
     expect(resolveModel('fanout', 'claude-sonnet-5-5', on(BOTH))?.id).toBe('claude-sonnet-5-5');
+  });
+
+  it('offers only Gemini 4 Argon in the picker, whatever else is configured', () => {
+    const everything = off({ ...BOTH, OPENAI_API_KEY: 'sk-oai', DEEPSEEK_API_KEY: 'sk-ds' });
+    expect(listPickerModels(everything).map((m) => m.id)).toEqual(['gemini-4-argon']);
+    expect(listPickerModels(off({ ANTHROPIC_API_KEY: 'sk-ant' }))).toEqual([]);
+  });
+});
+
+describe('brain tests', () => {
+  it('run on Gemini 4 Argon whichever way the flag is set', () => {
+    expect(resolveModel('assessment', undefined, on(BOTH))?.id).toBe('gemini-4-argon');
+    expect(resolveModel('assessment', undefined, off(BOTH))?.id).toBe('gemini-4-argon');
+  });
+
+  it('ignore a pick with the flag on', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(resolveModel('assessment', 'claude-opus-5-5', on(BOTH))?.id).toBe('gemini-4-argon');
+    warn.mockRestore();
+  });
+
+  it('fall back off Gemini only when no Gemini key is set', () => {
+    expect(resolveModel('assessment', undefined, on({ ANTHROPIC_API_KEY: 'sk-ant' }))?.vendor).toBe('anthropic');
+    expect(resolveModel('assessment', undefined, off({ ANTHROPIC_API_KEY: 'sk-ant' }))?.vendor).toBe('anthropic');
   });
 });
 

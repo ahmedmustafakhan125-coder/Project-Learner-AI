@@ -106,7 +106,9 @@ function Ask() {
       .listModels()
       .then((list) => {
         setModels(list);
-        if (list[0]) setModel(list[0].id);
+        // The server offers Gemini 4 Argon only; prefer it should a list ever hold more.
+        const preferred = list.find((option) => option.id === 'gemini-4-argon') ?? list[0];
+        if (preferred) setModel(preferred.id);
       })
       .catch(() => setModels([]));
   }, []);
@@ -606,7 +608,14 @@ function Ask() {
               />
               <div className="row">
                 <div className="querybox-controls">
-                  {models.length > 0 && (
+                  {models.length === 1 && (
+                    // One model on offer: name it rather than show a one-item menu.
+                    <span className="model-picker">
+                      <span className="model-picker-label">AI model</span>
+                      <span className="model-picker-fixed">{models[0]!.label}</span>
+                    </span>
+                  )}
+                  {models.length > 1 && (
                     <label className="model-picker">
                       <span className="model-picker-label">AI model</span>
                       <select

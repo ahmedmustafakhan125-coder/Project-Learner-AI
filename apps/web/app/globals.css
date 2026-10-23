@@ -3496,6 +3496,17 @@ select.control option {
   color: var(--text-dim);
 }
 
+/* One model on offer: named in a chip, not a one-item menu. */
+.model-picker-fixed {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text-heading);
+}
+
 .thread-chip {
   display: inline-flex;
   align-items: center;
@@ -6249,6 +6260,32 @@ body[data-tutor-resizing='true'] {
 
 .brain-testme {
   margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* The examiner beside "Test me on this", in the bots' own style. */
+.brain-testme-bot {
+  height: 48px;
+  width: auto;
+  flex-shrink: 0;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 3px 7px rgba(2, 132, 199, 0.24));
+}
+
+/* Leans while the test is being written, like an agent while it answers. */
+.brain-testme-bot.working {
+  animation: agent-bot-work 1.9s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brain-testme-bot.working { animation: none; }
+}
+
+.brain-testme-body {
+  min-width: 0;
 }
 
 .brain-testme-note {

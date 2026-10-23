@@ -620,6 +620,18 @@ export function listAvailableModels(env: NodeJS.ProcessEnv = process.env): Model
   return listModels().filter((m) => !m.aliasOf && isConfigured(m.id, env));
 }
 
+/**
+ * The models the four-agent workspace offers: Gemini 4 Argon only, by the
+ * owner's decision on 2026-10-23. Hidden models still resolve, so a stored
+ * choice or a server-side task keeps working.
+ */
+export const PICKER_MODELS: readonly string[] = ['gemini-4-argon'];
+
+/** What `/api/models` lists: the picker's models whose vendor key is set. */
+export function listPickerModels(env: NodeJS.ProcessEnv = process.env): ModelEntry[] {
+  return listAvailableModels(env).filter((m) => PICKER_MODELS.includes(m.id));
+}
+
 /* ------------------------------------------------------------------ *
  * Per-task defaults
  * ------------------------------------------------------------------ */
@@ -631,6 +643,11 @@ export function listAvailableModels(env: NodeJS.ProcessEnv = process.env): Model
  * the user's pick. `tutor` and the four project tasks are fixed by
  * `TASK_POLICY` once PROJECT_LEARNER is on; with it off they resolve exactly as
  * `fanout` and `projectGen` did before.
+ *
+ * Changed 2026-10-23 at the owner's request: `fanout` (the four-agent
+ * workspace and its follow-ups) leads with Gemini 4 Argon, and `assessment`
+ * (brain tests) runs on it whichever way the flag is set. Flash on json-mode
+ * kept returning tests too short to pass validation.
  */
 export type TaskKind =
   | 'interview'
@@ -643,6 +660,8 @@ export type TaskKind =
   /** @deprecated Use `projectPlan`. Kept as an alias for one release. */
   | 'projectGen'
   | 'review'
+  /** Brain tests: writing and grading an assessment. */
+  | 'assessment'
   | 'utility';
 
 /** The Claude-built jobs. Pinned to Anthropic, never picked in the UI. */
@@ -654,8 +673,9 @@ export const PROJECT_TASKS = [
   'projectGen',
 ] as const satisfies readonly TaskKind[];
 
-/** The conversational chain, Flash first. */
+/** The four-agent workspace's chain: Gemini 4 Argon first, then Flash. */
 const QUESTION_CHAIN = [
+  'gemini-4-argon',
   'gemini-3.6-flash',
   'gpt-4o',
   'claude-opus-5-5',
@@ -676,6 +696,18 @@ const CHEAP_CHAIN = [
   'openrouter/auto',
   'deepseek-chat',
   'kimi-moonshot-128k',
+];
+
+/**
+ * Brain tests: Gemini 4 Argon, then only models whose output ceiling holds the
+ * generator's 16,000 tokens, thinking included.
+ */
+const ASSESSMENT_CHAIN = [
+  'gemini-4-argon',
+  'gemini-3.6-flash',
+  'claude-sonnet-5-5',
+  'gpt-4o',
+  'claude-opus-5-5',
 ];
 
 /** What project generation resolved to before the flag, and still does with it off. */
@@ -700,7 +732,7 @@ const LEGACY_PROJECT_CHAIN = [
  */
 export const TASK_DEFAULTS: Record<TaskKind, string> = {
   interview: 'gemini-3.6-flash',
-  fanout: 'gemini-3.6-flash',
+  fanout: 'gemini-4-argon',
   tutor: 'gemini-4-argon',
   projectPlan: 'claude-opus-5-5',
   projectStep: 'claude-sonnet-5-5',
@@ -708,6 +740,7 @@ export const TASK_DEFAULTS: Record<TaskKind, string> = {
   projectResearch: 'claude-sonnet-5-5',
   projectGen: 'gemini-3.6-flash',
   review: 'gemini-3.6-flash',
+  assessment: 'gemini-4-argon',
   utility: 'gemini-3.6-flash',
 };
 
@@ -735,6 +768,7 @@ export const TASK_PREFERENCE_CHAINS: Record<TaskKind, string[]> = {
     'openrouter/auto',
     'deepseek-chat',
   ],
+  assessment: ASSESSMENT_CHAIN,
   utility: CHEAP_CHAIN,
 };
 
@@ -768,6 +802,7 @@ export const TASK_POLICY: Record<TaskKind, TaskPolicy> = {
   projectResearch: CLAUDE_ONLY,
   projectGen: CLAUDE_ONLY,
   review: OPEN_POLICY,
+  assessment: { allowUserChoice: false, vendors: ['gemini'], onMissing: 'chain' },
   utility: OPEN_POLICY,
 };
 

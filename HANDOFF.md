@@ -265,3 +265,52 @@ three live projects in the local database.
    (phase 1 item 7).
 10. Apply `0015` and `0016` to the cloud project only when the flag flips
     in production (phase 7).
+
+## Outside the phases — brain tests and the workspace on Argon (branch `brain-tests-argon`, 2026-10-23)
+
+Your request: the brain's tests were not working; run them on Gemini 4
+Argon, make Argon the default in the four-agent workspace with every other
+model hidden, and put your ghost bot in the brain's test section. None of it
+is behind `PROJECT_LEARNER`.
+
+**Why the tests failed.** "Test me on this" generated on `review`, which is
+Gemini 3.6 Flash with json-mode. The local `llm_usage` has two
+`assessment:generate` calls from 15:08 with about 410 output tokens each and
+no saved sitting. Both returned JSON, but a full test is 5 MCQs plus 5
+rubric'd viva questions, and both failed `validateGeneratedAssessment`, so
+the route answered 502 `generation_failed`.
+
+**What changed**
+1. `packages/llm`: a new `assessment` TaskKind resolves to `gemini-4-argon`
+   with the flag on or off. Its chain holds only models whose output limit
+   covers 16,000 tokens, and with the flag on a pick is ignored, as for the
+   tutor. `fanout` (the fan-out and its follow-ups) now leads with Argon. With
+   the flag off the tutor follows `fanout`, so it lands on Argon too. The
+   interview stays on Flash.
+2. `PICKER_MODELS = ['gemini-4-argon']` and `listPickerModels()`:
+   `/api/models` lists only Argon. Hidden models still resolve for stored
+   choices. The ask page names the one model in a chip instead of a one-item
+   menu.
+3. The assessment generator's `maxTokens` goes from 6,000 to 16,000, and the
+   grader's from 1,500 to 6,000. Gemini's thinking page says the limit
+   "sets the maximum number of tokens a response can generate, including
+   thought tokens". Argon defaults to medium thinking.
+4. `apps/web/public/bots/ghost.png` is made from your image (plate removed,
+   eyes kept, 151×132 like the other bots). It sits beside "Test me on this"
+   and leans while the test is written.
+5. Tests: the invariant 15 file (`registry.policy.test.ts`) pins the new
+   routing and the picker; `brain-replay.test.tsx` pins the bot. §1, §4 and
+   the rules list in the plan, and CLAUDE.md, now say Argon for these jobs.
+
+**Open**
+1. Not run live: no Argon assessment has been generated yet. Argon passed
+   conformance with `native-schema` in phase 1.
+2. Cost. Argon is $4 / $20 per million tokens against Flash's $0.75 / $3.75,
+   and thinking is billed as output. A fan-out question is four Argon calls.
+   A first sitting is one generation and ten grading calls (each viva answer
+   is graded twice). The $2 daily allowance will run out several times
+   sooner.
+3. The OpenAI-compatible adapter never sends `reasoning_effort`. Gemini's
+   compatibility layer accepts it for Argon (`low`, `medium`, `high`;
+   `minimal` maps to `low`). Sending `low` for grading would cut cost, but it
+   needs adapter support and a conformance run.

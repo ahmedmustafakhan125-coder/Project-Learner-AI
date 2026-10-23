@@ -4,12 +4,13 @@
  * The replay itself is `projectAt` in packages/core and is tested there; these
  * pin what the learner is offered: a closed timeline that costs nothing until
  * asked for, an open one that says what day it is showing, and — with nothing
- * selected — the mistakes that keep coming back.
+ * selected — the mistakes that keep coming back. On a concept, the test
+ * section carries its examiner bot.
  */
 
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { ActivityDay, RecurringMistake } from '@ai-edu/core';
+import type { ActivityDay, BrainNodeDetail, RecurringMistake } from '@ai-edu/core';
 
 import { NodeDetailPanel } from '../components/brain/NodeDetailPanel';
 import { TimelineScrubber } from '../components/brain/TimelineScrubber';
@@ -76,5 +77,61 @@ describe('NodeDetailPanel with nothing selected', () => {
     );
     expect(html).not.toContain('Mistakes that keep coming back');
     expect(html).toContain('Click any dot');
+  });
+});
+
+describe('NodeDetailPanel on a concept', () => {
+  const concept: BrainNodeDetail = {
+    node: {
+      id: 'concept:closures',
+      kind: 'concept',
+      key: 'closures',
+      label: 'Closures',
+      score: 0.6,
+      confidence: 0.5,
+      metadata: {},
+      firstSeenAt: '2026-10-01T00:00:00Z',
+      lastSeenAt: '2026-10-03T00:00:00Z',
+    },
+    path: [],
+    sessions: [],
+    concepts: [],
+    insights: [],
+    mistakes: [],
+    assessments: [],
+  };
+
+  it('puts the examiner bot beside "Test me on this"', () => {
+    const html = renderToStaticMarkup(
+      <NodeDetailPanel detail={concept} loading={false} error={null} mistakes={[]} onTestMe={noop} onSelect={noop} onFocus={noop} onClose={noop} />,
+    );
+    expect(html).toContain('src="/bots/ghost.png"');
+    expect(html).toContain('Test me on this');
+    expect(html).not.toContain('brain-testme-bot working');
+  });
+
+  it('leans the bot while the test is being written', () => {
+    const html = renderToStaticMarkup(
+      <NodeDetailPanel
+        detail={concept}
+        loading={false}
+        error={null}
+        mistakes={[]}
+        onTestMe={noop}
+        testState={{ busy: true, message: null }}
+        onSelect={noop}
+        onFocus={noop}
+        onClose={noop}
+      />,
+    );
+    expect(html).toContain('brain-testme-bot working');
+    expect(html).toContain('Writing your test…');
+  });
+
+  it('shows no test section, and so no bot, while replaying the past', () => {
+    const html = renderToStaticMarkup(
+      <NodeDetailPanel detail={concept} loading={false} error={null} mistakes={[]} onSelect={noop} onFocus={noop} onClose={noop} />,
+    );
+    expect(html).not.toContain('/bots/ghost.png');
   });
 });
