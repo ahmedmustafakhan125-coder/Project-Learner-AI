@@ -30,6 +30,7 @@ describe('intake methods', () => {
   it.each([
     ['getFeatures', () => client.getFeatures(), 'GET', '/api/features'],
     ['createIntake', () => client.createIntake({ intent: 'project_generation', originalQuery: 'q', text: 'q', slots: {}, attachments: [], partial: false }), 'POST', '/api/projects/intake'],
+    ['answerIntake', () => client.answerIntake(ID, { data: 'Files' }), 'POST', `/api/projects/intake/${ID}/answers`],
     ['updateIntakeScope', () => client.updateIntakeScope(ID, { tierStep: 1 }), 'PATCH', `/api/projects/intake/${ID}/scope`],
     ['researchIntake', () => client.researchIntake(ID), 'POST', `/api/projects/intake/${ID}/research`],
     ['generateStackBrief', () => client.generateStackBrief(ID), 'POST', `/api/projects/intake/${ID}/stack-brief`],
@@ -46,5 +47,10 @@ describe('intake methods', () => {
     await client.createProjectFromIntake(ID);
     expect(calls[0]!.url).toBe('http://api.test/api/projects');
     expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ intakeId: ID });
+  });
+
+  it('sends round 2 as answers keyed by slot', async () => {
+    await client.answerIntake(ID, { data: 'Files', users_auth: 'Just me' });
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ answers: { data: 'Files', users_auth: 'Just me' } });
   });
 });

@@ -513,6 +513,430 @@ body > * {
 }
 
 /* ------------------------------------------------------------------ */
+/* Learner frame — logo bar and left sidebar (PROJECT_LEARNER only)    */
+/* ------------------------------------------------------------------ */
+
+/*
+ * With the flag on, the bar keeps only the logo and the sections run down a
+ * fixed sidebar on the left, with the account at its foot. LearnerNav sets
+ * `data-sidenav` on <html> while it is mounted, and every rule that moves a
+ * page to make room for the sidebar hangs off that attribute — so with the
+ * flag off, nothing moves.
+ */
+:root {
+  --sidenav-width: 240px;
+}
+
+.nav-learner.lumina-nav-container {
+  max-width: none;
+  display: flex;
+  gap: 12px;
+}
+
+:root[data-sidenav] body {
+  padding-left: var(--sidenav-width);
+}
+
+/* Below the bar, never behind it: the bar is translucent. */
+.side-nav {
+  position: fixed;
+  top: var(--nav-height);
+  bottom: 0;
+  left: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: var(--sidenav-width);
+  padding: 18px 12px 14px;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-right: 1px solid var(--border);
+}
+
+.side-nav-links {
+  flex: 1;
+}
+
+.side-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.side-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--on-surface-variant);
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+.side-nav-link:hover {
+  color: var(--text-heading);
+  background: var(--surface-2);
+}
+
+.side-nav-link:focus-visible,
+.nav-user-toggle:focus-visible,
+.nav-burger:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.side-nav-link.active {
+  color: var(--primary);
+  font-weight: 700;
+  background: var(--agent-conceptual-bg);
+  border-color: var(--border-strong);
+}
+
+.side-nav-icon {
+  flex: none;
+}
+
+.side-nav-foot {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* The account at the foot of the sidebar. Its menu opens upward. */
+.nav-user {
+  position: relative;
+}
+
+.nav-user-toggle {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-heading);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.nav-user-toggle:hover,
+.nav-user.open .nav-user-toggle {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+
+.nav-user-avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--primary-gradient);
+  color: var(--on-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.nav-user-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Points up while closed — that is where the menu opens — and down to close. */
+.nav-chevron {
+  flex: none;
+  color: var(--text-dim);
+  transform: rotate(180deg);
+  transition: transform 150ms ease;
+}
+
+.nav-user.open .nav-chevron {
+  transform: none;
+}
+
+.nav-panel {
+  position: absolute;
+  z-index: 110;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: 0 18px 48px -12px rgba(2, 132, 199, 0.28), 0 2px 6px rgba(15, 23, 42, 0.06);
+  text-align: left;
+  animation: nav-panel-in 120ms ease-out;
+}
+
+.nav-panel[hidden] {
+  display: none;
+}
+
+/* A little wider than the sidebar, so the password form has room. */
+.nav-panel-user {
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: 264px;
+}
+
+@keyframes nav-panel-in {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+.nav-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+
+.nav-user-signout {
+  align-self: flex-start;
+}
+
+/* Account: who is signed in, a new password in place, Sign out. */
+.nav-account {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nav-account-id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.nav-account-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-heading);
+}
+
+.nav-account-email {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.nav-account-row {
+  appearance: none;
+  align-self: flex-start;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.nav-account-row:hover {
+  color: var(--primary-bright);
+}
+
+.nav-account-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nav-account-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.nav-account-form input {
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--text-heading);
+  background: var(--surface);
+}
+
+.nav-account-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nav-account-save {
+  appearance: none;
+  padding: 7px 14px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--primary);
+  color: var(--on-primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.nav-account-save:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.nav-account-note {
+  margin: 0;
+  font-size: 12.5px;
+}
+
+.nav-account-note.ok {
+  color: var(--success);
+}
+
+.nav-account-note.error {
+  color: var(--danger);
+}
+
+.nav-burger {
+  appearance: none;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--text-heading);
+  cursor: pointer;
+}
+
+/* Portalled to <body>, so it sits above the bar rather than inside it. */
+.nav-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(15, 23, 42, 0.32);
+}
+
+/* From the left, where the sidebar it stands in for would be. */
+.nav-drawer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(320px, 86vw);
+  background: var(--surface);
+  box-shadow: 12px 0 40px rgba(15, 23, 42, 0.18);
+  animation: nav-drawer-in 160ms ease-out;
+}
+
+@keyframes nav-drawer-in {
+  from {
+    translate: -24px 0;
+    opacity: 0;
+  }
+  to {
+    translate: 0 0;
+    opacity: 1;
+  }
+}
+
+.nav-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 8px 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.nav-drawer-title {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  color: var(--text-heading);
+}
+
+.nav-drawer-close {
+  appearance: none;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.nav-drawer-close:hover {
+  background: var(--surface-2);
+}
+
+.nav-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.nav-drawer-foot {
+  padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 859px) {
+  :root[data-sidenav] body {
+    padding-left: 0;
+  }
+
+  .side-nav {
+    display: none;
+  }
+
+  .nav-burger {
+    display: inline-flex;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-panel,
+  .nav-drawer {
+    animation: none;
+  }
+
+  .side-nav-link,
+  .nav-user-toggle,
+  .nav-chevron {
+    transition: none;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Layout Shell                                                       */
 /* ------------------------------------------------------------------ */
 
@@ -3083,7 +3507,9 @@ select.control option {
  * WORKSPACE
  *
  * The /ask page: a fixed conversation rail on the left edge and the
- * query + answers column to its right. Everything below was either
+ * query + answers column to its right (with PROJECT_LEARNER on, the
+ * sections sidebar takes the left edge and the rail moves to the right;
+ * see "Rail: narrow viewports"). Everything below was either
  * missing entirely (classes the components already rendered but no
  * stylesheet ever defined) or carried obsidian-theme colours that do
  * not survive on a white card.
@@ -3435,18 +3861,20 @@ select.control option {
   cursor: pointer;
 }
 
+/* Without the learner sidebar (PROJECT_LEARNER off), the rail is on the left
+   and goes off-canvas at 1080px, as it always has. */
 @media (max-width: 1080px) {
-  .workspace {
+  :root:not([data-sidenav]) .workspace {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .rail-toggle {
+  :root:not([data-sidenav]) .rail-toggle {
     display: inline-flex;
   }
 
   /* Off-canvas rather than squeezed: below this width a 288px column leaves
      the answers narrower than the code inside them. */
-  .history-rail {
+  :root:not([data-sidenav]) .history-rail {
     position: fixed;
     top: var(--nav-height);
     left: 0;
@@ -3458,11 +3886,70 @@ select.control option {
     transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .workspace.rail-open .history-rail {
+  :root:not([data-sidenav]) .workspace.rail-open .history-rail {
     transform: translateX(0);
   }
 
-  .workspace.rail-open .rail-scrim {
+  :root:not([data-sidenav]) .workspace.rail-open .rail-scrim {
+    display: block;
+  }
+}
+
+/* With the learner sidebar on the left edge, the history takes the right
+   one. Grid placement, not source order, so the rail still comes first for
+   a screen reader and a keyboard, as it does with the flag off. */
+:root[data-sidenav] .workspace {
+  grid-template-columns: minmax(0, 1fr) var(--rail-width);
+}
+
+:root[data-sidenav] .workspace-main {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+:root[data-sidenav] .history-rail {
+  grid-column: 2;
+  grid-row: 1;
+  border-right: none;
+  border-left: 1px solid var(--border);
+}
+
+@media (max-width: 1279px) {
+  :root[data-sidenav] {
+    --rail-width: 248px;
+  }
+}
+
+/* Two columns beside the answers would squeeze them, so below 1100px the
+   history slides in from the right behind a button. */
+@media (max-width: 1099px) {
+  :root[data-sidenav] .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  :root[data-sidenav] .rail-toggle {
+    display: flex;
+    width: fit-content;
+    margin-left: auto;
+  }
+
+  :root[data-sidenav] .history-rail {
+    position: fixed;
+    top: var(--nav-height);
+    right: 0;
+    z-index: 95;
+    width: min(320px, 86vw);
+    background: var(--surface);
+    box-shadow: var(--shadow-lifted);
+    transform: translateX(102%);
+    transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  :root[data-sidenav] .workspace.rail-open .history-rail {
+    transform: translateX(0);
+  }
+
+  :root[data-sidenav] .workspace.rail-open .rail-scrim {
     display: block;
   }
 }
@@ -3678,6 +4165,14 @@ select.control option {
   background: #ffffff;
 }
 
+.exercise-note {
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: var(--warn-ink);
+  border-top: 1px solid var(--agent-interactive-border);
+}
+
 /* ------------------------------------------------------------------ */
 /* Interview panel — every one of these was rendered but never styled  */
 /* ------------------------------------------------------------------ */
@@ -3729,6 +4224,224 @@ select.control option {
   margin-top: 22px;
   padding-top: 18px;
   border-top: 1px solid var(--border);
+}
+
+/* The project page's questions (PROJECT_LEARNER): numbered, written by code. */
+.pq-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pq-question {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.pq-num {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--agent-conceptual-bg);
+  color: var(--primary);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.pq-body {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Room for "Or name your own, e.g. Vue and Firebase". */
+.pq-question .chip-input {
+  flex: 1 1 260px;
+}
+
+.pq-text {
+  margin-top: 10px;
+}
+
+.pq-count {
+  margin-left: auto;
+  font-size: 12.5px;
+}
+
+/*
+ * Options that explain themselves are cards: every stack says what it is
+ * written in, how hard it is, what it is best at and what you will learn, and
+ * the recommended one says why. Keyed by what is offered, so a new set fades
+ * in when the kind of project changes.
+ */
+.pq-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+  animation: pq-fade-in 220ms ease both;
+}
+
+.pq-card {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease, transform 150ms ease;
+}
+
+.pq-card:hover:not(:disabled) {
+  border-color: var(--primary);
+  transform: translateY(-1px);
+}
+
+.pq-card:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.pq-card[aria-pressed='true'] {
+  border-color: var(--primary);
+  background: var(--agent-conceptual-bg);
+  box-shadow: 0 0 0 1px var(--primary), 0 6px 18px -8px rgba(2, 132, 199, 0.35);
+}
+
+.pq-card:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.pq-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.pq-card-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-heading);
+}
+
+.pq-badge {
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--primary-gradient);
+  color: var(--on-primary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.pq-tick {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  color: transparent;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.pq-card[aria-pressed='true'] .pq-tick {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.pq-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  color: var(--text-dim);
+  font-size: 12.5px;
+}
+
+.pq-lang {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pq-level {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pq-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.pq-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--surface-3);
+}
+
+.pq-level.is-easy .pq-dots i.on { background: var(--success); }
+.pq-level.is-medium .pq-dots i.on { background: var(--warning); }
+.pq-level.is-hard .pq-dots i.on { background: var(--danger); }
+
+.pq-line b,
+.pq-why b {
+  margin-right: 4px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pq-hint {
+  color: var(--text-dim);
+  font-size: 12.5px;
+}
+
+.pq-why {
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-strong);
+  font-size: 12.5px;
+}
+
+/* "Or name your own", under the cards. */
+.pq-other {
+  margin-top: 10px;
+}
+
+@keyframes pq-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pq-cards { animation: none; }
+  .pq-card { transition: none; }
 }
 
 /* ------------------------------------------------------------------ */
@@ -6403,36 +7116,189 @@ body[data-tutor-resizing='true'] {
 }
 
 /* ------------------------------------------------------------------ */
-/* Project Learner: scope chips and the Stack Brief                   */
+/* Project Learner: the progress card and the Stack Brief             */
 /* ------------------------------------------------------------------ */
 
-.scope-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 12px;
+/* One card from scoping to the brief; the tier is never shown. */
+.plan-progress {
+  position: relative;
+  overflow: hidden;
   margin-top: 22px;
+  padding: 20px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow);
+  animation: pq-fade-in 220ms ease both;
 }
 
-.scope-chip {
+.plan-progress-bar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 3px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.plan-progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -35%;
+  width: 35%;
+  border-radius: 3px;
+  background: var(--primary-gradient);
+  animation: plan-progress-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes plan-progress-slide {
+  from { left: -35%; }
+  to { left: 100%; }
+}
+
+.plan-steps {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plan-step {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+/* The line joining one step to the next. */
+.plan-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 26px;
+  bottom: -10px;
+  left: 11px;
+  width: 2px;
+  background: var(--border);
+}
+
+.plan-step.is-done:not(:last-child)::after {
+  background: var(--primary);
+}
+
+.plan-step-mark {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--on-primary);
+  font-size: 12px;
+  font-weight: 700;
+  transition: background-color 200ms ease, border-color 200ms ease;
+}
+
+.plan-step.is-done .plan-step-mark {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.plan-step.is-active .plan-step-mark {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px var(--primary-glow);
+}
+
+.plan-step.is-active .plan-step-mark::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary);
+  animation: plan-pulse 1.2s ease-in-out infinite;
+}
+
+.plan-step.is-failed .plan-step-mark {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+
+@keyframes plan-pulse {
+  0%, 100% { opacity: 0.55; transform: scale(0.75); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+.plan-step-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 2px;
+}
+
+.plan-step-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-heading);
+}
+
+.plan-step.is-todo .plan-step-label {
+  font-weight: 500;
+  color: var(--text-faint);
+}
+
+.plan-step-detail {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  animation: pq-fade-in 220ms ease both;
+}
+
+.plan-progress-error {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-xl);
+  background: var(--danger-soft);
+  color: var(--danger-ink);
 }
 
-.tier-chip summary {
-  list-style: none;
-  display: inline-block;
+.plan-progress-error p {
+  flex: 1 1 260px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
 }
 
-.tier-chip summary::-webkit-details-marker {
-  display: none;
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-.tier-chip ul {
-  margin: 8px 0 0;
-  font-size: 12.5px;
+@media (prefers-reduced-motion: reduce) {
+  .plan-progress,
+  .plan-step-detail,
+  .plan-progress-bar::after,
+  .plan-step.is-active .plan-step-mark::after {
+    animation: none;
+  }
 }
 
 .stack-brief {

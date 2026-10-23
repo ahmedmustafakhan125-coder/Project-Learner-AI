@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { resetEnvCache } from '../src/env.js';
+import { interviewPurpose } from '../src/routes/interview.js';
 import { buildServer } from '../src/server.js';
 
 /**
@@ -47,6 +48,28 @@ describe('PROJECT_LEARNER gates the intake routes', () => {
       headers: { origin: 'http://localhost:3000', 'access-control-request-method': 'PATCH' },
     });
     expect(preflight.headers['access-control-allow-methods']).toContain('PATCH');
+    await app.close();
+  });
+});
+
+describe('PROJECT_LEARNER gates the project questions', () => {
+  it('runs a project interview only with the flag on', () => {
+    expect(interviewPurpose('project', true)).toBe('project');
+    expect(interviewPurpose('project', false)).toBe('ask');
+    expect(interviewPurpose('ask', true)).toBe('ask');
+  });
+});
+
+describe('PROJECT_LEARNER gates the nav summary', () => {
+  it('has no nav summary with the flag off', async () => {
+    const app = await serverWith('off');
+    expect((await app.inject({ method: 'GET', url: '/api/me/nav-summary' })).statusCode).toBe(404);
+    await app.close();
+  });
+
+  it('registers it, behind auth, with the flag on', async () => {
+    const app = await serverWith('on');
+    expect((await app.inject({ method: 'GET', url: '/api/me/nav-summary' })).statusCode).toBe(401);
     await app.close();
   });
 });

@@ -2,6 +2,7 @@ import type { QueryIntent } from '../schemas/common.js';
 import type { AttachmentRef } from '../schemas/common.js';
 import type { CompiledQuery, Slots } from '../schemas/interview.js';
 import { scoreSufficiency, slotDef, slotsFor } from './slots.js';
+import type { SlotDef } from './slots.js';
 
 /**
  * Turn the interview's resolved state into the single artifact that reaches the
@@ -19,10 +20,16 @@ export interface CompileInput {
   attachments?: AttachmentRef[];
   /** True when the learner pressed Skip rather than answering. */
   skipped?: boolean;
+  /**
+   * The slots to render, in order. Defaults to the intent's base slots; intake
+   * passes the project's scoped slots (`scopedSlots`), so the tier and profile
+   * answers reach the brief and the plan.
+   */
+  slotDefs?: SlotDef[];
 }
 
 export function compileQuery(input: CompileInput): CompiledQuery {
-  const { intent, rawQuery, slots, attachments = [], skipped = false } = input;
+  const { intent, rawQuery, slots, attachments = [], skipped = false, slotDefs = slotsFor(intent) } = input;
 
   const lines: string[] = [];
   lines.push('<learner_question>');
@@ -32,7 +39,7 @@ export function compileQuery(input: CompileInput): CompiledQuery {
   // Catalogue order, not object-key order — object key order depends on
   // insertion sequence and would make the rendered bytes vary between requests
   // that resolved the same slots in a different order.
-  const rendered = slotsFor(intent)
+  const rendered = slotDefs
     .map((def) => {
       const slot = slots[def.key];
       if (!slot?.value?.trim()) return null;

@@ -188,7 +188,7 @@ Two pure functions in `packages/core/src/interview/` turn signals into decisions
 - **Profile floors.** Each profile sets a minimum tier per sub-goal: an OS kernel is at least T4, and T5 once it goes past booting and printing; a tree-walking interpreter is T2, a bytecode VM T4, native code generation T5; a CPU renderer is T2, a Vulkan renderer T4.
 - **Time caps.** A few hours caps at T1, about 10 hours at T2, about 25 at T3, about 60 at T4. When a profile floor is above the learner's time, the plan says so plainly and offers the first milestone as a project on its own. Nothing is cut silently.
 
-The learner sees a profile chip and a tier chip, each with its reasons, and can change the profile or move the tier one step.
+The learner never sees the tier. It sets the questions, the plan's size and the research, and the page shows none of it: the profile and tier chips, with their Smaller and Bigger buttons, were removed on 2026-10-23 because learners found them confusing. Size follows from what the learner says, above all the time they have. A profile floor above that time is still said plainly, as a note above the brief. `PATCH /api/projects/intake/:id/scope` stays, with no caller.
 
 ### What each tier must know
 
@@ -204,13 +204,27 @@ The T5 prerequisite check is not a quiz. It is the profile's prerequisite list s
 
 ### Ask, then explain, then ask again
 
-Round 1 is phrased by Gemini: code picks the slots, the model only words them. For T1 and T2 that is the whole interview.
+Round 1 is written by code on the project page (`projectQuestions` in `packages/core/src/interview/projectQuestions.ts`): fixed wording and options per slot, so the form is the same on every visit and needs no model call. Gemini only classifies the message. The workspace's questions are still worded by Gemini.
 
-From T3 up, round 2 happens inside the Stack Brief. Every layer that rests on an assumption carries a chip such as "Assumed: x86-64 under QEMU. Change?". An abstract question becomes a concrete choice next to its consequences, and answering it triggers a layer swap, never a fresh interview.
+- **The stack question** says what a stack is and shows each option as a card: the language it is written in, its difficulty (Beginner-friendly, Moderate or Challenging), what it is best for, and what the learner will learn. One option per kind of project is recommended, with its reason, and it comes first. "Not sure — choose for me" comes last and sends "Recommend one for me", so the brief chooses. The cards follow the kind of project picked beside them. They carry no versions (invariant 22).
+- **The kind question** is asked when the kind is missing. It is also asked when the message names a kind no profile recognises with confidence (`unsureKind`, below `PROFILE_CONFIDENCE_FLOOR`). With no profile chip to correct, this is the learner's only chance to say what kind of software it is. That check runs in the first round only, and it reads the learner's description, never the stack. A live run showed why: a web app offered web-app stacks, the learner picked "React + Node.js", and React's lean towards a front end made the kind read as unsure, so the page asked the kind after the stack.
+
+Round 2 is written by code too (`scopeQuestions`). Intake returns it with the scope, so it comes after the tier is known and before research. Only a tier with a second round (T3 and up, per `INTERVIEW_BUDGET`) gets one. It holds at most that tier's questions per round, chosen by `questionSlots` (invariant 18), and it leaves out:
+
+- every round-1 slot;
+- slots the stack answer already settles (`kernel_language`, `impl_language`, `ui_tech`, `frontend_pref`);
+- slots the message stated, in its words or its signals;
+- tier slots that make no sense for the kind of software. A kernel is never asked about sign-in, and a phone app is never asked where people use it.
+
+`POST /api/projects/intake/:id/answers` takes round 2's answers. It keeps only the slots round 2 asked, worked out again from the row. `answerSignals` turns the answers into scope signals, and an answer replaces what the message implied. The tier is then scored again. Intake renders the tier and profile slots into the compiled query (`compileQuery` with `slotDefs`), so the brief and the plan read them. For T1 and T2, round 1 is the whole interview.
+
+The round-2 assumption chips inside the Stack Brief stay week 2 work. Every layer that rests on an assumption carries a chip such as "Assumed: x86-64 under QEMU. Change?". An abstract question becomes a concrete choice next to its consequences, and answering it triggers a layer swap, never a fresh interview.
+
+After the questions, the page runs on by itself under one progress card: understanding the project, the extra questions when there are any, reading the documentation, then choosing the stack. A step that fails shows its error on the card, with Try again beside it. The learner's next decision is approving the brief.
 
 ### In the 12 hours
 
-`detectProfile`, `scoreComplexity`, `INTERVIEW_BUDGET`, the classify `signals` and the profile and tier chips ship. Round-2 assumption chips (they need layer swaps) and the T5 prerequisite checklist are week 2; until then a T5 request plans milestone 1 only and says plainly that later milestones follow. The new slots extend `SLOT_CATALOG` in `packages/core/src/interview/slots.ts`, and `SUFFICIENCY_THRESHOLD` becomes the T1 row of `INTERVIEW_BUDGET`.
+`detectProfile`, `scoreComplexity`, `INTERVIEW_BUDGET`, the classify `signals` and the profile and tier chips ship (the chips were removed on 2026-10-23; see above). Round-2 assumption chips (they need layer swaps) and the T5 prerequisite checklist are week 2; until then a T5 request plans milestone 1 only and says plainly that later milestones follow. The new slots extend `SLOT_CATALOG` in `packages/core/src/interview/slots.ts`, and `SUFFICIENCY_THRESHOLD` becomes the T1 row of `INTERVIEW_BUDGET`.
 
 ## 6. Project profiles
 
@@ -475,7 +489,7 @@ The one change from plan v1.0 that matters most: `layer` is now a string checked
 - **The learner's requests are honoured.** Every technology they named appears with `requestedByLearner: true`; a poor fit is kept and explained in `friction`.
 - **No padding.** No duplicate layer, no alternative repeating the choice, at least two pros and one con per choice.
 - **A closed architecture.** Components reference listed layers, and flows start and end on known components.
-- **Grounded.** Every layer cites at least one dossier reference, and every `versionMajor` matches the dossier or the pin table; anything else is nulled and logged.
+- **Grounded.** Every layer cites at least one dossier reference, and every `versionMajor` matches the dossier or the pin table; anything else is nulled and logged. The one exception is an empty dossier, with nothing to cite. That happens at T1 with no tech card, and for a stack left to the brief on a profile whose layers name no research key (every basic profile). Then uncited layers are logged, not serious, and research reports `limitedSources`. Before this exception, "Make a website for my cooking business" with "Recommend one for me" failed every layer twice, retry included, and always failed.
 - **Milestones fit the tier.** T4 has at most 3 milestones and T5 at most 6, each with an outcome that runs.
 - A serious violation triggers one retry with the violations appended.
 
@@ -810,8 +824,9 @@ Apply `0015` and `0016` locally with `npm run db:reset`, or `.tools/supabase.exe
 In the 12 hours (`apps/api/src/routes/intake.ts`, registered only when `PROJECT_LEARNER=on`):
 
 ```
-POST  /api/projects/intake                          { compiled } -> { intakeId, profile, confidence, alternatives, tier, reasons, overTime, adapted }
-PATCH /api/projects/intake/:id/scope                { profile?, tierStep?: -1 | 1 } -> { profile, tier, reasons, ... }
+POST  /api/projects/intake                          { compiled } -> { intakeId, profile, confidence, alternatives, tier, reasons, overTime, adapted, questions }
+POST  /api/projects/intake/:id/answers              { answers } -> { profile, tier, reasons, ... }   (round 2; the tier is scored again)
+PATCH /api/projects/intake/:id/scope                { profile?, tierStep?: -1 | 1 } -> { profile, tier, reasons, ... }   (no caller since the chips went)
 POST  /api/projects/intake/:id/research             -> { dossier, limitedSources, fromCards, fromCache, researched, fromTemplate }
 POST  /api/projects/intake/:id/stack-brief          -> { brief, sources, reused, regenerationsLeft }   (regenerate = call again)
 POST  /api/projects/intake/:id/stack-brief/approve  -> { ok }
@@ -1066,7 +1081,7 @@ Tasks, in priority order:
 1. `apps/api/src/routes/intake.ts` (section 12 routes, registered only with the flag on) and the `api-client` methods. `POST /api/projects { intakeId }` reads everything from the intake row; `generation_model` comes from the server.
 2. Blueprint against the brief: the approved brief and dossier in the cached prefix, `techStack` from `techStackFromBrief`, `verifyBlueprint` with the deep profiles' architecture rules, stub `docRefs` chosen from the project dossier.
 3. `projectCostCeiling` in `packages/core/src/budget/` and its test (invariant 28).
-4. Lean UI in `apps/web/app/projects/new/page.tsx` behind the flag: profile and tier chips, staged research progress text, `StackBriefView` with `LayerCard`, `SourcesList` and `VerificationBadge`, regenerate (twice) and Approve.
+4. Lean UI in `apps/web/app/projects/new/page.tsx` behind the flag: profile and tier chips, staged research progress text, `StackBriefView` with `LayerCard`, `SourcesList` and `VerificationBadge`, regenerate (twice) and Approve. (On 2026-10-23 the chips and the staged text gave way to one progress card, `IntakeProgress`; see §5.)
 
 Done when: web tests pass; invariants 17, 27 and 28 have tests; 3 live runs from intake to step 1 (kernel, Lox, Tauri) with each run's cost read from `llm_usage` and close to section 11's estimate.
 
@@ -1121,6 +1136,14 @@ The original two-day plan also listed the self-test for browser-runnable steps a
 - **Read:** sections 6, 14 and 16.
 - **Tasks:** 1. Deep data for the ten remaining profiles. 2. The 28-request golden set and the model comparison, and tuning `PROJECT_MODELS` effort per stage and tier against them. 3. Invariants 15 to 28 merged into the README. 4. The production flip: apply the new migrations to the cloud project with the vendored CLI (`DEPLOY.md`), set `ANTHROPIC_API_KEY`, `PROJECT_LEARNER=on` and `PROJECT_USD_BUDGET_PER_USER_PER_WEEK` on the Render service, run the manual QA against production.
 - **Done when:** the release gates in section 14 pass; production creates a project for each golden request at its expected cost.
+
+### Side task — Learner nav menus
+
+- **When and model:** any window after phase 3. Branch `pl-nav-menus`.
+- **What:** with the flag on and a learner signed in, the bar keeps only the logo. Workspace, Projects and Brain are plain links down a fixed left sidebar. The account sits at the sidebar's foot: name, email, a new password set in place, and Sign out. On `/ask` the history moves to the right edge. The logo and `/` lead to `/ask`. Flag off, the bar is today's. The first version had a panel under each section and a **For you** panel of recommendations. For you was deleted on request and the sections became links, so the summary route and the rules below have no caller in the web app (HANDOFF.md, Open).
+- **No model call.** Recommendations and interests are deterministic rules over the stored brain, projects and threads, so section 11 and invariant 28 do not change.
+- **Files:** `packages/core/src/nav/*` (types, `topInterests`, `recommend`) and the core index; `apps/api/src/routes/me.ts` (`GET /api/me/nav-summary`, registered only with the flag on), `apps/api/src/routes/threads.ts` (export `messageCounts`), `apps/api/src/server.ts`; `packages/api-client/src/client.ts` (`getNavSummary`); `apps/web/components/NavHeader.tsx`, `apps/web/components/nav/*`, `apps/web/components/ChatHistory.tsx`, `apps/web/components/brain/BrainView.tsx`, `apps/web/lib/{time,navLinks}.ts`, `apps/web/app/page.tsx`, `apps/web/app/ask/page.tsx`, `apps/web/app/brain/page.tsx`, `apps/web/app/globals.css`; tests beside each (`packages/core/test/nav-*.test.ts`, `apps/api/test/nav-summary.test.ts`, `apps/api/test/intake-flag.test.ts`, `packages/api-client/test/request-headers.test.ts`, `apps/web/test/nav.test.tsx`).
+- **Done when:** the summary route is 404 with the flag off and 401 unauthenticated with it on; each section fails on its own (`null`) without blanking the others; the rules are pinned by fixtures; the flag-off nav items equal today's.
 
 ### CLAUDE.md rules for every phase
 

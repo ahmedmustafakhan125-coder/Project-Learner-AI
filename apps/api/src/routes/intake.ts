@@ -5,8 +5,11 @@ import {
   CompiledQuery,
   ProfileId,
   ScopeSignals,
+  answerSignals,
+  applyAnswers,
   buildPinTable,
   classifyQuery,
+  compileQuery,
   detectProfile,
   fingerprintRequest,
   generateBrief,
@@ -16,10 +19,13 @@ import {
   parseStoredDossier,
   parseStoredStackBrief,
   pickTemplate,
+  scopeQuestions,
+  scopedSlots,
   scoreComplexity,
+  slotsFor,
   verifyStackBrief,
 } from '@ai-edu/core';
-import type { DocRef, PlannedBlueprint, Profile, ResearchDossier, StackBrief } from '@ai-edu/core';
+import type { DocRef, PlannedBlueprint, Profile, ResearchDossier, Slots, StackBrief } from '@ai-edu/core';
 import {
   PROJECT_TIERS,
   ProjectGenerationUnavailableError,
@@ -44,7 +50,8 @@ import { runProjectResearch } from '../research.js';
  * Project intake (docs/project-learner.md §12), registered only with
  * PROJECT_LEARNER on.
  *
- *   POST  /api/projects/intake                          scope: profile and tier, by code
+ *   POST  /api/projects/intake                          scope: profile and tier, by code, and round-2 questions
+ *   POST  /api/projects/intake/:id/answers              round 2's answers; the tier is scored again
  *   PATCH /api/projects/intake/:id/scope                change the profile, move the tier a step
  *   POST  /api/projects/intake/:id/research             the project dossier
  *   POST  /api/projects/intake/:id/stack-brief          the Stack Brief (again to regenerate)
@@ -75,6 +82,7 @@ const ScopeBody = z
     tierStep: z.union([z.literal(-1), z.literal(1)]).optional(),
   })
   .refine((b) => b.profile !== undefined || b.tierStep !== undefined, { message: 'Nothing to change.' });
+const AnswersBody = z.object({ answers: z.record(z.string(), z.string().max(500)) });
 const BlueprintBody = z.object({ teachDeployment: z.boolean().default(false) });
 const Uuid = z.string().uuid();
 
@@ -212,6 +220,29 @@ async function screened(request: FastifyRequest, reply: FastifyReply, compiled: 
   }
 }
 
+const ROUND_ONE_SLOTS = new Set(slotsFor('project_generation').map((s) => s.key));
+
+/** Tier and profile facts the message states, added to the slots without replacing any the interview settled. */
+function withStated(slots: Slots, stated: Record<string, string>): Slots {
+  const merged: Slots = { ...slots };
+  for (const [key, value] of Object.entries(stated)) {
+    if (!ROUND_ONE_SLOTS.has(key) && !merged[key]?.value?.trim()) merged[key] = { value, source: 'query' };
+  }
+  return merged;
+}
+
+/** The compiled query with the tier and profile slots rendered too, so the brief and the plan read them. */
+function recompile(compiled: CompiledQuery, slots: Slots, tier: ProjectTier, profile: Profile): CompiledQuery {
+  return compileQuery({
+    intent: compiled.intent,
+    rawQuery: compiled.originalQuery,
+    slots,
+    attachments: compiled.attachments,
+    skipped: compiled.partial,
+    slotDefs: scopedSlots(tier, profile),
+  });
+}
+
 function scope(intake: Pick<Intake, 'signals' | 'compiled'>, profile: Profile, tierStep: -1 | 1 | undefined) {
   const score = scoreComplexity(intake.signals, profile, intake.compiled.slots);
   if (!tierStep) return { tier: score.tier, reasons: score.reasons, overTime: score.overTime };
@@ -246,6 +277,7 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
 
     // The classify call reports what the learner said; code decides the profile and tier (§5).
     let signals: ScopeSignals = ScopeSignals.parse({});
+    let stated: Record<string, string> = {};
     let provider = null;
     try {
       provider = createProviderForTask('interview');
@@ -258,6 +290,7 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
       try {
         const classification = await classifyQuery({ provider: metered.provider, rawQuery: compiled.text, scoping: true });
         signals = classification.signals ?? signals;
+        if (classification.intent === 'project_generation') stated = classification.extracted;
       } catch (err) {
         // Scoring from the slots alone is a weaker tier, not a failed project.
         request.log.warn({ err }, 'intake scoping without signals: classify failed');
@@ -274,16 +307,20 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    const detection = detectProfile(signals, compiled.slots);
+    // Facts the message states for the tier and profile slots join them, so
+    // round 2 never asks what the learner already said.
+    const slots = withStated(compiled.slots, stated);
+    const detection = detectProfile(signals, slots);
     const profile = getProfile(detection.profile);
-    const { tier, reasons, overTime } = scope({ signals, compiled }, profile, undefined);
-    const templateId = await findTemplate(compiled, profile, tier);
+    const { tier, reasons, overTime } = scope({ signals, compiled: { ...compiled, slots } }, profile, undefined);
+    const scoped = recompile(compiled, slots, tier, profile);
+    const templateId = await findTemplate(scoped, profile, tier);
 
     const { data, error } = await db()
       .from('project_intakes')
       .insert({
         user_id: user.id,
-        compiled_query: compiled,
+        compiled_query: scoped,
         signals,
         project_profile: profile.id,
         profile_confidence: detection.confidence,
@@ -301,6 +338,52 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
       profile: profile.id,
       confidence: detection.confidence,
       alternatives: detection.alternatives,
+      tier,
+      reasons,
+      overTime,
+      adapted: templateId !== null,
+      // Round 2, for a project big enough to have one (§5); written by code, no call.
+      questions: scopeQuestions({ tier, profile, slots, signals }),
+    });
+  });
+
+  app.post<{ Params: { id: string } }>('/api/projects/intake/:id/answers', { preHandler: requireAuth }, async (request, reply) => {
+    const user = userOf(request);
+    const parsed = AnswersBody.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'bad_request', issues: parsed.error.issues });
+
+    const intake = await loadIntake(request.params.id, user.id);
+    if (!intake) return notFound(reply);
+    if (intake.row.status !== 'scoped') return wrongStage(reply, 'Answer these before research starts.');
+
+    // Only what round 2 asked is taken, worked out again from the row rather
+    // than trusted from the body.
+    const { compiled } = intake;
+    const asked = new Set(
+      scopeQuestions({ tier: intake.row.tier, profile: intake.profile, slots: compiled.slots, signals: intake.signals }).map((q) => q.slot),
+    );
+    const answers = Object.fromEntries(Object.entries(parsed.data.answers).filter(([slot]) => asked.has(slot)));
+    const slots = applyAnswers(compiled.slots, answers);
+
+    // The answers are facts the tier is scored from, like the message's own signals.
+    const signals = answerSignals(intake.signals, answers);
+    const { tier, reasons, overTime } = scoreComplexity(signals, intake.profile, slots);
+    const scoped = recompile(compiled, slots, tier, intake.profile);
+    const templateId = await findTemplate(scoped, intake.profile, tier);
+
+    const ok = await updateIntake(intake, user.id, {
+      compiled_query: scoped,
+      signals,
+      tier,
+      tier_reasons: reasons,
+      template_project_id: templateId,
+    });
+    if (!ok) return reply.code(500).send({ error: 'persist_failed', message: 'Could not save the answers.' });
+    const detection = detectProfile(signals, slots);
+    return reply.send({
+      profile: intake.profile.id,
+      confidence: intake.profile.id === detection.profile ? detection.confidence : 1,
+      alternatives: [detection.profile, ...detection.alternatives].filter((id) => id !== intake.profile.id).slice(0, 3),
       tier,
       reasons,
       overTime,
@@ -501,7 +584,10 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
         if (err instanceof BriefRejectedError) {
           record(err.usage);
           request.log.warn({ violations: err.violations }, 'stack brief rejected');
-          return reply.code(502).send({ error: 'stack_brief_rejected', message: 'The Stack Brief did not pass its checks. Try again.' });
+          return reply.code(502).send({
+            error: 'stack_brief_rejected',
+            message: 'The Stack Brief did not pass its checks. Each attempt is planned afresh, so trying again often works.',
+          });
         }
         request.log.error({ err }, 'stack brief failed');
         return reply.code(502).send({ error: 'generation_failed', message: 'Could not write the Stack Brief. Try again.' });

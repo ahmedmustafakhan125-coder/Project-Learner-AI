@@ -168,7 +168,14 @@ export function verifyStackBrief(draft: BriefDraft, input: VerifyBriefInput): Br
         repaired('grounded', `cited the ${card.id} tech card`, id);
       }
     }
-    if (docRefs.length === 0) serious('grounded', `${id} cites no reference from the dossier`, id);
+    if (docRefs.length === 0) {
+      // An empty dossier grounds nothing: there was no documentation to read
+      // (T1 with no card, a stack left to the brief on a profile with no
+      // research defaults). The brief goes out marked "limited sources"
+      // instead of failing every layer, retry included.
+      if (refIds.size === 0) repaired('grounded', `${id} cites nothing: the dossier is empty`, id);
+      else serious('grounded', `${id} cites no reference from the dossier`, id);
+    }
 
     // Versions come only from the dossier or the pin table (invariant 22).
     let versionMajor = layer.versionMajor?.trim() || null;

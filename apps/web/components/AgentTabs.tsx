@@ -6,6 +6,7 @@ import type { FollowUpTurn } from '@ai-edu/api-client';
 import { renderMarkdown } from '@/lib/markdown';
 
 import { AgentChat } from './AgentChat';
+import { PracticePreview } from './PracticePreview';
 
 export interface AgentPane {
   status: 'pending' | 'streaming' | 'complete' | 'error' | 'cancelled';
@@ -475,19 +476,5 @@ function Exercise({ markdown }: { markdown: string }) {
 
   if (!html) return null;
 
-  return (
-    <div className="exercise">
-      <div className="exercise-head">
-        <span className="exercise-dot" aria-hidden="true" />
-        Isolated sandbox preview
-      </div>
-      <iframe
-        title="Practice exercise"
-        sandbox="allow-scripts"
-        srcDoc={html}
-        referrerPolicy="no-referrer"
-        className="exercise-frame"
-      />
-    </div>
-  );
+  return <PracticePreview html={html} />;
 }

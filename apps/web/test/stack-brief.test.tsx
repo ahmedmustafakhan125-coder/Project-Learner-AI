@@ -12,12 +12,12 @@ import { describe, expect, it } from 'vitest';
 import { ResearchDossier, StackBrief } from '@ai-edu/core';
 import type { DocRef } from '@ai-edu/core';
 
+import { IntakeProgress } from '../components/IntakeProgress';
 import { LayerCard } from '../components/LayerCard';
-import { ProfileChip } from '../components/ProfileChip';
 import { SourcesList } from '../components/SourcesList';
 import { StackBriefView } from '../components/StackBriefView';
-import { TierChip } from '../components/TierChip';
-import { groupLayers, researchStages, safeHref } from '../lib/stackBrief';
+import { progressSteps, researchLines } from '../lib/intakeProgress';
+import { groupLayers, safeHref } from '../lib/stackBrief';
 import kernel from '../../../packages/core/test/fixtures/briefs/kernel.json';
 import tauri from '../../../packages/core/test/fixtures/briefs/tauri.json';
 
@@ -109,30 +109,57 @@ describe('links', () => {
   });
 });
 
-describe('scope chips', () => {
-  it('shows the tier with every reason, and stops at T1 and T5', () => {
-    const html = renderToStaticMarkup(
-      <TierChip tier="T5" reasons={['bare metal +4', 'Profile floor: a kernel is at least T5']} overTime busy={false} onStep={() => {}} />,
-    );
-    expect(html).toContain('T5 · Deep systems');
-    expect(html).toContain('bare metal +4');
-    expect(html).toMatch(/disabled="" aria-label="Bigger project"/);
-    expect(html).toContain('Milestone 1 is planned as a project on its own');
+/*
+ * The profile and tier chips are gone: the learner never sees the tier. One
+ * progress card runs from scoping to the brief, and a failed step offers Try
+ * again where it failed.
+ */
+describe('the progress card', () => {
+  const base = { failed: false, askedMore: false, adapted: false, tier: 'T3' as const, tick: 0 };
+
+  it('marks what is done, what runs and what waits, and never names the tier', () => {
+    const steps = progressSteps({ ...base, current: 'research', askedMore: true });
+    expect(steps.map((s) => [s.id, s.status])).toEqual([
+      ['scope', 'done'],
+      ['questions', 'done'],
+      ['research', 'active'],
+      ['brief', 'todo'],
+    ]);
+    const html = renderToStaticMarkup(<IntakeProgress steps={steps} />);
+    expect(html).toContain('Reading the documentation');
+    expect(html).toContain('Reading the tech cards');
+    expect(html).not.toMatch(/\bT[1-5]\b|Standard|Full app|Deep systems/);
   });
 
-  it('says when it is not sure of the profile', () => {
-    const html = renderToStaticMarkup(
-      <ProfileChip profile="desktop-app" confidence={0.4} alternatives={['general']} busy={false} onChange={() => {}} />,
-    );
-    expect(html).toContain('Desktop');
-    expect(html).toContain('not sure');
+  it('shows the questions step only when a second round was asked', () => {
+    expect(progressSteps({ ...base, current: 'scope' }).map((s) => s.id)).toEqual(['scope', 'research', 'brief']);
   });
-});
 
-describe('researchStages', () => {
+  it('moves the bar only while the app works, not while the learner answers', () => {
+    const answering = renderToStaticMarkup(<IntakeProgress steps={progressSteps({ ...base, current: 'questions', askedMore: true })} />);
+    const reading = renderToStaticMarkup(<IntakeProgress steps={progressSteps({ ...base, current: 'research', askedMore: true })} />);
+    expect(answering).not.toContain('plan-progress-bar');
+    expect(reading).toContain('plan-progress-bar');
+  });
+
+  it('puts the error and Try again beside the step that failed', () => {
+    const steps = progressSteps({ ...base, current: 'brief', failed: true });
+    expect(steps.at(-1)).toMatchObject({ id: 'brief', status: 'failed' });
+    const html = renderToStaticMarkup(<IntakeProgress steps={steps} error="The Stack Brief did not pass its checks." onRetry={() => {}} />);
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('Try again');
+    expect(html).not.toContain('plan-progress-bar');
+  });
+
   it('reads documentation only from T2, and says when a similar project is reused', () => {
-    expect(researchStages('T1', false).join(' ')).not.toMatch(/documentation/);
-    expect(researchStages('T3', false).join(' ')).toMatch(/official documentation/);
-    expect(researchStages('T3', true)[0]).toMatch(/similar project/);
+    expect(researchLines('T1', false).join(' ')).not.toMatch(/documentation/);
+    expect(researchLines('T3', false).join(' ')).toMatch(/official documentation/);
+    expect(researchLines('T3', true)[0]).toMatch(/similar project/);
+    expect(progressSteps({ ...base, current: 'research', adapted: true })[1]?.label).toMatch(/similar project/);
+  });
+
+  it('holds the last line while a step runs long', () => {
+    const steps = progressSteps({ ...base, current: 'brief', tick: 99 });
+    expect(steps.at(-1)?.detail).toBe('Checking every layer against its sources…');
   });
 });

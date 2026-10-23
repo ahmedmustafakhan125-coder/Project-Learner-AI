@@ -249,7 +249,8 @@ export async function threadRoutes(app: FastifyInstance): Promise<void> {
  * Helpers
  * ------------------------------------------------------------------ */
 
-async function messageCounts(threadIds: string[]): Promise<Map<string, number>> {
+/** Questions asked per thread. Also read by the nav summary (routes/me.ts). */
+export async function messageCounts(threadIds: string[]): Promise<Map<string, number>> {
   const counts = new Map<string, number>();
   if (threadIds.length === 0) return counts;
 
