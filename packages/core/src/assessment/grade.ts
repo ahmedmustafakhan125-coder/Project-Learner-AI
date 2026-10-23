@@ -88,7 +88,9 @@ export function buildGraderRequest(modelId: string, context: GraderContext): LLM
     system: [{ text: GRADER_PROMPT, cacheBoundary: true }],
     // One turn, no history: the grader knows nothing it was not given here.
     messages: [{ role: 'user', content: text }],
-    maxTokens: 1_500,
+    // Room for Gemini 4 Argon's default thinking, which counts against this
+    // ceiling; at 1,500 it could leave no room for the verdict itself.
+    maxTokens: 6_000,
     temperature: 0,
     reasoning: 'medium',
   };

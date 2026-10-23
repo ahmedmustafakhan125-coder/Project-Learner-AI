@@ -2,7 +2,7 @@ import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import Fastify from 'fastify';
 import { prepare as prepareScreening } from '@ai-edu/gateway';
-import { listAvailableModels, registryReport } from '@ai-edu/llm';
+import { listPickerModels, registryReport } from '@ai-edu/llm';
 
 import { requireAuth, userOf } from './auth.js';
 import { checkBudget } from './db.js';
@@ -56,9 +56,9 @@ export async function buildServer() {
 
   app.get('/health', async () => ({ ok: true }));
 
-  /** Which models this deployment can actually offer, for the picker. */
+  /** Which models the four-agent workspace offers: Gemini 4 Argon only (`PICKER_MODELS`). */
   app.get('/api/models', { preHandler: requireAuth }, async () => ({
-    models: listAvailableModels().map((model) => ({
+    models: listPickerModels().map((model) => ({
       id: model.id,
       label: model.label,
       vendor: model.vendor,

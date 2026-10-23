@@ -12,7 +12,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 // ---- Workspace package mocks ----------------------------------------------
 
 vi.mock('@ai-edu/llm', () => ({
-  listAvailableModels: () => [],
+  listPickerModels: () => [],
   registryReport: () => ({ configured: [], unverifiedPricing: [] }),
   computeCost: () => ({ totalUSD: 0, unpriced: false }),
   createProviderForTask: () => ({}),

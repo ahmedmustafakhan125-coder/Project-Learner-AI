@@ -295,7 +295,7 @@ export async function startAssessment(userId: string, conceptKey: string): Promi
   }
   let provider: LLMProvider;
   try {
-    provider = createProviderForTask('review');
+    provider = createProviderForTask('assessment');
   } catch (err) {
     return { kind: 'no_provider', message: err instanceof Error ? err.message : 'No provider configured.' };
   }
@@ -477,7 +477,7 @@ export async function submitViva(
   if (budget.exceeded) return { kind: 'budget', message: `Daily allowance of $${budget.limitUSD.toFixed(2)} reached.` };
   let provider: LLMProvider;
   try {
-    provider = createProviderForTask('review');
+    provider = createProviderForTask('assessment');
   } catch (err) {
     return { kind: 'no_provider', message: err instanceof Error ? err.message : 'No provider configured.' };
   }

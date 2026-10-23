@@ -42,7 +42,7 @@ const AGREEMENT_REQUIRED = 0.8;
 
 let provider: LLMProvider | null = null;
 try {
-  provider = createProviderForTask('review');
+  provider = createProviderForTask('assessment');
 } catch {
   provider = null;
 }

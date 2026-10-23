@@ -66,7 +66,10 @@ export function buildGeneratorRequest(input: GeneratorInput): LLMRequest {
     model: input.modelId,
     system: [{ text: GENERATOR_PROMPT, cacheBoundary: true }],
     messages: [{ role: 'user', content: lines.join('\n') }],
-    maxTokens: 6_000,
+    // Gemini counts thinking tokens against this ceiling, and Gemini 4 Argon
+    // thinks at medium by default, so 6,000 risked leaving too little room for
+    // ten questions. Only tokens actually produced are billed.
+    maxTokens: 16_000,
     reasoning: 'medium',
   };
 }
