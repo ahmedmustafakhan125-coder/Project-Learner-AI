@@ -64,3 +64,98 @@ All six "done when" checks hold except where noted:
    §12 says. Update §12.
 10. `docs/project-learner.md` and `HANDOFF.md` were committed on this branch,
     not on `main` as phase 0 asked.
+
+## Phase 2 — done (branch `pl-2-research-brief`, 2026-10-23)
+
+The four tasks are committed one per task. Every phase 2 "done when" check
+holds:
+
+- `npm run typecheck` passes (12 of 12 tasks). `npm test` passes 1,524
+  tests (1,081 after phase 1): llm 135, core 1,012, api 194. ESLint is clean
+  on `packages` and `apps`. `npm run lint` still runs no task (phase 1 note).
+- Invariant 18: `packages/core/test/complexity.test.ts`. Invariant 21:
+  `prompt-stability.test.ts` (research, brief and scoped classify prompts),
+  plus `classify-signals.test.ts`. Invariant 22: `stack-brief.test.ts`.
+  Invariants 23 and 25: `research.test.ts`.
+- Live `systems-os` research returned 6 allowlisted references (c: 2,
+  osdev-core: 4). The second run hit `research_dossiers` and made no search.
+  About $0.07 a run.
+- 3 live briefs pass `verifyStackBrief` on the first attempt with nothing
+  repaired: kernel T5 $0.068, Lox T2 $0.029, Tauri T3 $0.045.
+- Live spend for the whole phase: about $0.60 (4 research runs, 6 briefs).
+- With the flag off the app runs as before: web 200, API health 200.
+
+The live suites are opt-in, and they load the repository env file the way
+the API does:
+`npm run test:research --workspace @ai-edu/api -- research.live` and `-- brief.live`.
+Set `RECORD_FIXTURES=1` to re-record the fixtures.
+
+### For you to review (drafted in phase 2; there were no phase 0 drafts)
+
+1. `knowledge/tech/*.md`: 8 cards, all `status: draft`. Pins: Tauri 2,
+   Rust 1, Python 3, SQLite 3. QEMU, Limine, the cross toolchain and Lox
+   have no pin (`null`), because I could not verify them. Check the install
+   lines and the Limine docs URL.
+2. `knowledge/docs/sources.json`: domains, entry URLs and the `general`
+   blocked list.
+3. `packages/core/test/fixtures/scoping-goldens.ts`: 31 requests with their
+   expected profile and tier. The cut points and floors are tuned to them.
+4. The profile layer lists, slots and floors in `packages/core/src/profiles/`.
+5. The recorded briefs in `packages/core/test/fixtures/briefs/` and the
+   dossier in `packages/core/test/fixtures/research-live.response.json`. Note
+   prompt fixes here.
+
+### Found on the way
+
+1. **The 20260318 tools return no citation blocks.** The model reads pages
+   through code execution (dynamic filtering) and writes each page's URL at
+   the end of the bullet. `parseDossier` turns an inline URL into a reference
+   only when a server tool returned that page, and removes it otherwise.
+   These references have an empty `citedText`, because no quote comes back,
+   and fetched documents have no title, so the title is built from the URL.
+   If the UI needs snippets, try `web_fetch_20250910` with citations. §7 says
+   fetch citations are on; update it.
+2. The model did not search until the prompt said "one web search per key
+   first". It used 2 of 3 searches and 4 of 4 fetches.
+3. A text block that starts with `#` right after a sentence lost its
+   heading. `parseDossier` now starts it on a new line. A regression test
+   covers this.
+4. The first Lox brief hit the T2 brief `maxTokens` of 4,000 (truncated
+   structured output). I did not raise `PROJECT_MODELS`. Instead, the brief
+   prompt now asks for a tight brief, and language-tooling T2 requires 4
+   layers (§5: 2 to 4). The kernel brief fell from 6,759 to 4,894 output
+   tokens.
+5. Whether structured output combines with server tools is still untested
+   (§7). Research uses `complete()` plus `parseDossier`.
+
+### Open for phase 3 and later
+
+1. **Questions for profile slots.** `questionSlots` (complexity.ts) picks
+   the slots, but `generateQuestions` resolves keys through `slotDef`, which
+   knows only `SLOT_CATALOG`, so profile slots would be dropped. Let it take
+   `SlotDef[]` (questions.ts). `compileQuery` renders only the base slots
+   (compile.ts), so tier and profile answers are missing from
+   `compiled.text`. They are still in `compiled.slots`.
+2. **The ten basic profiles have no research keys and no cards.** At T1 their
+   dossier is empty, so every brief fails `grounded` (`LayerChoice.docRefs`
+   needs at least one ref). At T2 and up, only the technologies the learner
+   named get researched. Before phase 3 serves them, add cards or `research`
+   keys, or decide how the route handles `BriefRejectedError`.
+3. **Usage recording (invariant 16).** `runProjectResearch` returns `usage`
+   and `model` for `recordUsage` under `project:research`. `BriefRejectedError`
+   carries the usage it spent; record that too. `LLMUsage.webFetchRequests`
+   has no column. Fetches have no fee, so nothing needs one.
+4. **Invariant 28 inputs.** `BRIEF_MAX_ATTEMPTS` is 2. Research runs once,
+   but the adapter sends up to 3 `pause_turn` continuations of that one turn
+   (`MAX_PAUSE_CONTINUATIONS`), each a billed request. Count them in
+   `projectCostCeiling`.
+5. **Invariant 21, second half.** The test that the brief, blueprint and
+   dossier prefix is byte-identical across every step expansion belongs with
+   the blueprint and expand changes in phase 3.
+6. **Wiring the classify call.** It takes `scoping: true` only from callers
+   that pass it. The intake route should pass it with the flag on, then
+   call `detectProfile` and `scoreComplexity`.
+7. The local `research_dossiers` holds `c` and `osdev-core` until
+   2026-11-22. Delete those rows to force live research.
+8. `apps/web/next-env.d.ts` was modified before this phase. I left it
+   uncommitted.
