@@ -83,7 +83,7 @@ beforeAll(async () => {
   // Alice creates something worth stealing.
   const { data, error } = await alice
     .from('projects')
-    .insert({ user_id: aliceId, title: `rls-probe-${stamp}`, status: 'draft' })
+    .insert({ user_id: aliceId, title: `rls-probe-${stamp}`, status: 'draft', skill_level: 'beginner' })
     .select('id')
     .single();
 
