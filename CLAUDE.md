@@ -11,7 +11,8 @@
 - Never fill model pricing from memory. pricing stays null until checked on the vendor's page.
 - Cost: models, effort and maxTokens for project stages come only from PROJECT_MODELS. Do not
   raise them, add a retry or add a model call without updating §11 and the invariant 28 test.
-- Questions run on Gemini Flash, the tutor on Gemini 4 Argon, project generation on Claude.
+- The interview runs on Gemini Flash; the four-agent workspace, brain tests and the tutor on Gemini 4 Argon;
+  project generation on Claude. The workspace picker offers only Argon (PICKER_MODELS).
 - New migrations start at 0015. Project columns say project_profile; `profiles` is the user table.
 - Everything new is behind PROJECT_LEARNER. With the flag off, the app behaves as it does today.
 - Edit only the files your phase's tasks name. Anything else goes in HANDOFF.md.
