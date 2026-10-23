@@ -49,7 +49,7 @@ export async function buildServer() {
       cb(null, origin === env.WEB_ORIGIN);
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Cache-Control'],
   });
   await registerRateLimit(app);
@@ -73,6 +73,9 @@ export async function buildServer() {
     checkBudget(userOf(request).id),
   );
 
+  /** What this deployment has switched on, so the web follows the server's flag rather than a copy of it. */
+  app.get('/api/features', async () => ({ projectLearner: env.PROJECT_LEARNER === 'on' }));
+
   await app.register(multipart);
   await app.register(attachmentRoutes);
   await app.register(interviewRoutes);
@@ -80,6 +83,11 @@ export async function buildServer() {
   await app.register(followUpRoutes);
   await app.register(attemptRoutes);
   await app.register(projectRoutes);
+  // Project Learner's intake exists only with the flag on; off, it is not even loaded.
+  if (env.PROJECT_LEARNER === 'on') {
+    const { intakeRoutes } = await import('./routes/intake.js');
+    await app.register(intakeRoutes);
+  }
   await app.register(threadRoutes);
   await app.register(tutorRoutes);
   await app.register(brainRoutes);
