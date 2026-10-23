@@ -17,7 +17,8 @@
  */
 
 import Anthropic, { toFile } from '@anthropic-ai/sdk';
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
+import { jsonSchemaOutputFormat } from '@anthropic-ai/sdk/helpers/json-schema';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 
 import type { ModelEntry } from '../registry.js';
 import {
@@ -206,48 +207,54 @@ export class AnthropicAdapter implements LLMProvider {
 
   /**
    * Native schema enforcement. No repair loop is needed here because the API
-   * constrains generation server-side; `parsed_output` is only null when the
-   * response was truncated, which we surface as a real error rather than
+   * constrains generation server-side. The answer is still validated with the
+   * caller's schema: that applies its defaults and transforms, and a truncated
+   * response (cut off by max_tokens) surfaces as a real error rather than
    * letting `undefined` leak downstream.
    */
   async structured<Out>(req: LLMRequest, schema: OutputSchema<Out>): Promise<StructuredResult<Out>> {
     const params = this.baseParams(req, false);
     const outputConfig = {
       ...((params as Record<string, unknown>)['output_config'] as Record<string, unknown>),
-      format: zodOutputFormat(schema as never),
+      format: buildOutputFormat(schema),
     };
 
+    let message: Anthropic.Message;
     try {
-      const response = await this.client.messages.parse(
+      message = await this.client.messages.create(
         { ...params, output_config: outputConfig } as never,
         req.signal ? { signal: req.signal } : undefined,
       );
-
-      this.assertNotRefusal(response as unknown as Anthropic.Message);
-
-      const parsed = (response as { parsed_output?: Out | null }).parsed_output;
-      if (parsed === null || parsed === undefined) {
-        throw new LLMStructuredOutputError(
-          'Model returned no parseable structured output (likely truncated by max_tokens).',
-          {
-            provider: this.id,
-            model: this.modelId,
-            raw: extractText(response as unknown as Anthropic.Message),
-            issues: ['parsed_output was null'],
-          },
-        );
-      }
-
-      return {
-        data: parsed,
-        usage: mapUsage((response as unknown as Anthropic.Message).usage),
-        model: this.entry.providerModel,
-        strategy: 'native-schema',
-        repaired: false,
-      };
+      this.assertNotRefusal(message);
     } catch (err) {
       throw this.mapError(err);
     }
+
+    const raw = extractText(message);
+    const fail = (issues: string[]) =>
+      new LLMStructuredOutputError(
+        'Model returned no valid structured output (likely truncated by max_tokens).',
+        { provider: this.id, model: this.modelId, raw, issues },
+      );
+
+    let json: unknown;
+    try {
+      json = JSON.parse(raw);
+    } catch (err) {
+      throw fail([err instanceof Error ? err.message : 'not JSON']);
+    }
+    const validated = schema.safeParse(json);
+    if (!validated.success) {
+      throw fail(validated.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`));
+    }
+
+    return {
+      data: validated.data,
+      usage: mapUsage(message.usage),
+      model: this.entry.providerModel,
+      strategy: 'native-schema',
+      repaired: false,
+    };
   }
 
   /* ---------------- extras ---------------- */
@@ -343,6 +350,22 @@ export class AnthropicAdapter implements LLMProvider {
 /* ------------------------------------------------------------------ *
  * Pure request mapping (exported for unit tests)
  * ------------------------------------------------------------------ */
+
+/**
+ * `output_config.format` for a schema.
+ *
+ * Not the SDK's `zodOutputFormat`: that takes zod v4 schemas only and throws
+ * on the v3 schemas this codebase uses, before any request is sent. The JSON
+ * schema goes through the SDK's own transform, which drops the keywords
+ * structured outputs reject. Its `parse` is removed because `messages.create`
+ * would send it as a field; the caller's schema validates the answer instead.
+ */
+export function buildOutputFormat(schema: OutputSchema<unknown>): Record<string, unknown> {
+  const json = zodToJsonSchema(schema as never, { $refStrategy: 'none', target: 'jsonSchema7' });
+  const { $schema: _ignored, ...body } = json as Record<string, unknown>;
+  const { parse: _parse, ...format } = jsonSchemaOutputFormat(body as never);
+  return format;
+}
 
 /**
  * The cache boundary becomes a `cache_control` marker with a 1h TTL.
