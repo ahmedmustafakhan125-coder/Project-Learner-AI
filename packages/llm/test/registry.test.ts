@@ -18,8 +18,8 @@ const NOTHING = {} as NodeJS.ProcessEnv;
 
 describe('registry lookup', () => {
   it('resolves a model to its vendor', () => {
-    expect(getModel('claude-opus-5')?.providerModel).toBe('claude-opus-5');
-    expect(getVendor('claude-opus-5')?.adapter).toBe('anthropic');
+    expect(getModel('claude-opus-5-5')?.providerModel).toBe('claude-opus-5-5');
+    expect(getVendor('claude-opus-5-5')?.adapter).toBe('anthropic');
     expect(getVendor('deepseek-chat')?.adapter).toBe('openai-compatible');
   });
 
@@ -40,29 +40,29 @@ describe('registry lookup', () => {
 
 describe('key-presence gating', () => {
   it('treats a model as configured only when its vendor key is set', () => {
-    expect(isConfigured('claude-opus-5', ANTHROPIC_ONLY)).toBe(true);
+    expect(isConfigured('claude-opus-5-5', ANTHROPIC_ONLY)).toBe(true);
     expect(isConfigured('deepseek-chat', ANTHROPIC_ONLY)).toBe(false);
-    expect(isConfigured('claude-opus-5', NOTHING)).toBe(false);
+    expect(isConfigured('claude-opus-5-5', NOTHING)).toBe(false);
   });
 
   it('treats a blank key as absent', () => {
-    expect(isConfigured('claude-opus-5', { ANTHROPIC_API_KEY: '   ' })).toBe(false);
+    expect(isConfigured('claude-opus-5-5', { ANTHROPIC_API_KEY: '   ' })).toBe(false);
   });
 
   it('only lists models the user could actually pick', () => {
     const available = listAvailableModels(ANTHROPIC_ONLY).map((m) => m.id);
-    expect(available).toContain('claude-opus-5');
+    expect(available).toContain('claude-opus-5-5');
     expect(available).not.toContain('deepseek-chat');
   });
 });
 
 describe('resolveModel', () => {
   it("honours the user's pick when it is configured", () => {
-    expect(resolveModel('fanout', 'claude-haiku-4-5', ANTHROPIC_ONLY)?.id).toBe('claude-haiku-4-5');
+    expect(resolveModel('fanout', 'claude-haiku-5-5', ANTHROPIC_ONLY)?.id).toBe('claude-haiku-5-5');
   });
 
   it('ignores a pick whose key is missing and uses the task default', () => {
-    expect(resolveModel('fanout', 'deepseek-chat', ANTHROPIC_ONLY)?.id).toBe('claude-opus-5');
+    expect(resolveModel('fanout', 'deepseek-chat', ANTHROPIC_ONLY)?.id).toBe('claude-opus-5-5');
   });
 
   it('falls back to any configured model when the task default is unavailable', () => {
@@ -119,7 +119,7 @@ describe('pricing integrity', () => {
 
 describe('createProvider', () => {
   it('builds the Anthropic adapter for a Claude model', () => {
-    const provider = createProvider('claude-opus-5', { env: ANTHROPIC_ONLY });
+    const provider = createProvider('claude-opus-5-5', { env: ANTHROPIC_ONLY });
     expect(provider.id).toBe('anthropic');
     expect(provider.capabilities.explicitCaching).toBe(true);
   });
@@ -131,8 +131,8 @@ describe('createProvider', () => {
   });
 
   it('fails with a clear message when the key is missing', () => {
-    expect(() => createProvider('claude-opus-5', { env: NOTHING })).toThrow(LLMConfigError);
-    expect(() => createProvider('claude-opus-5', { env: NOTHING })).toThrow(/ANTHROPIC_API_KEY/);
+    expect(() => createProvider('claude-opus-5-5', { env: NOTHING })).toThrow(LLMConfigError);
+    expect(() => createProvider('claude-opus-5-5', { env: NOTHING })).toThrow(/ANTHROPIC_API_KEY/);
   });
 
   it('fails on an unknown model rather than guessing', () => {

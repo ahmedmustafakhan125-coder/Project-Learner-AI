@@ -20,9 +20,18 @@ import {
   type ProjectArtifact,
   type SourceFile,
 } from '@ai-edu/core';
-import { createProviderForTask } from '@ai-edu/llm';
+import {
+  DEFAULT_PROJECT_TIER,
+  ProjectGenerationUnavailableError,
+  createProviderForStage,
+  createProviderForTask,
+  type LLMProvider,
+  type ProjectStage,
+  type ReasoningEffort,
+} from '@ai-edu/llm';
 
 import { requireAuth, userOf } from '../auth.js';
+import { loadEnv } from '../env.js';
 import { gatewayErrorReply, screenOrThrow } from '../gateway.js';
 import { forgetSource, memoryQueryFor, recallMemory } from '../brain.js';
 import { checkBudget, db, recordUsage } from '../db.js';
@@ -74,6 +83,52 @@ const CreateBody = z.object({
   model: z.string().optional(),
 });
 
+/** A provider for one project stage, and the settings to call it with. */
+interface StageCall {
+  provider: LLMProvider;
+  /** Absent with the flag off, so core keeps today's effort and ceilings. */
+  reasoning?: ReasoningEffort;
+  maxTokens?: number;
+}
+
+type StageResult =
+  | { ok: true; call: StageCall }
+  | { ok: false; status: 503; body: { error: string; message: string } };
+
+/**
+ * Which model writes this stage.
+ *
+ * With PROJECT_STUDIO on, the model, effort and output ceiling come from
+ * `PROJECT_MODELS` and the UI pick is ignored: plan quality must not depend on
+ * a dropdown. No tier is scored before intake exists, so these routes plan at
+ * `DEFAULT_PROJECT_TIER`. With no Claude key that is a 503, never a quiet
+ * fallback. With the flag off, the old resolution, user pick included.
+ */
+function stageProvider(stage: ProjectStage, userChoice?: string): StageResult {
+  try {
+    if (loadEnv().PROJECT_STUDIO !== 'on') {
+      return { ok: true, call: { provider: createProviderForTask('projectGen', userChoice) } };
+    }
+    return { ok: true, call: createProviderForStage(stage, DEFAULT_PROJECT_TIER) };
+  } catch (err) {
+    if (err instanceof ProjectGenerationUnavailableError) {
+      return {
+        ok: false,
+        status: 503,
+        body: {
+          error: 'project_generation_unavailable',
+          message: 'Project generation is unavailable right now. Please try again later.',
+        },
+      };
+    }
+    return {
+      ok: false,
+      status: 503,
+      body: { error: 'no_provider', message: err instanceof Error ? err.message : 'unavailable' },
+    };
+  }
+}
+
 export async function projectRoutes(app: FastifyInstance): Promise<void> {
   /* ---------------- Phase A: blueprint ---------------- */
 
@@ -112,14 +167,9 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    let provider;
-    try {
-      provider = createProviderForTask('projectGen', parsed.data.model);
-    } catch (err) {
-      return reply
-        .code(503)
-        .send({ error: 'no_provider', message: err instanceof Error ? err.message : 'unavailable' });
-    }
+    const stage = stageProvider('blueprint', parsed.data.model);
+    if (!stage.ok) return reply.code(stage.status).send(stage.body);
+    const { provider } = stage.call;
 
     // What the learner already holds and keeps getting wrong, so the plan is
     // pitched at them rather than at a generic learner of their stated level.
@@ -525,14 +575,9 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      let provider;
-      try {
-        provider = createProviderForTask('projectGen');
-      } catch (err) {
-        return reply
-          .code(503)
-          .send({ error: 'no_provider', message: err instanceof Error ? err.message : 'unavailable' });
-      }
+      const stage = stageProvider('step');
+      if (!stage.ok) return reply.code(stage.status).send(stage.body);
+      const { provider } = stage.call;
 
       // Tolerant on purpose: projects planned before file plans existed parse
       // with an empty plan and keep working, rather than 500-ing every learner
@@ -825,14 +870,9 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      let provider;
-      try {
-        provider = createProviderForTask('projectGen');
-      } catch (err) {
-        return reply
-          .code(503)
-          .send({ error: 'no_provider', message: err instanceof Error ? err.message : 'unavailable' });
-      }
+      const stage = stageProvider('finish');
+      if (!stage.ok) return reply.code(stage.status).send(stage.body);
+      const { provider } = stage.call;
 
       const started = Date.now();
       let written;

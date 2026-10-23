@@ -15,7 +15,10 @@ import type { LLMEvent } from '../src/types.js';
  * skipped so CI stays green without secrets.
  */
 
-const available = listAvailableModels();
+// CONFORMANCE_MODELS=id,id narrows a run to the entries being changed, so
+// checking one new model does not bill a call to every configured one.
+const only = process.env['CONFORMANCE_MODELS']?.split(',').map((id) => id.trim()).filter(Boolean);
+const available = listAvailableModels().filter((m) => !only?.length || only.includes(m.id));
 
 if (available.length === 0) {
   describe('provider conformance', () => {
