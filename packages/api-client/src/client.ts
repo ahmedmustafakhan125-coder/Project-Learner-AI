@@ -7,16 +7,23 @@ import type {
   BrainNodeDetail,
   Checkpoint,
   CompiledQuery,
+  ComplexityTier,
   CriterionGrade,
+  DocRef,
   GraphView,
   InterviewQuestion,
   MemoryItem,
+  PlannedBlueprint,
+  ProfileId,
   PublicMcq,
   InterviewState,
   ProjectArtifact,
   ProjectBlueprint,
+  ResearchDossier,
   SkillLevel,
   SourceFile,
+  StackBrief,
+  TechChoice,
   VivaQuestion,
 } from '@ai-edu/core';
 
@@ -401,6 +408,67 @@ export interface HintResponse {
 }
 
 /* ------------------------------------------------------------------ *
+ * Project Learner intake (PROJECT_LEARNER)
+ * ------------------------------------------------------------------ */
+
+/** What the server has switched on. The web follows this, not a build-time copy. */
+export interface Features {
+  projectLearner: boolean;
+}
+
+/** Profile and tier, chosen by code, with every reason shown on the chips. */
+export interface IntakeScope {
+  profile: ProfileId;
+  confidence: number;
+  /** Runners-up worth offering on the profile chip. */
+  alternatives: ProfileId[];
+  tier: ComplexityTier;
+  reasons: string[];
+  /** The profile needs more time than the learner has; milestone 1 is offered on its own. */
+  overTime: boolean;
+  /** A very similar stored project will be adapted instead of planned from nothing. */
+  adapted: boolean;
+}
+
+export interface IntakeResearch {
+  dossier: ResearchDossier;
+  limitedSources: boolean;
+  fromCards: string[];
+  fromCache: string[];
+  researched: string[];
+  failed: string[];
+  uncovered: string[];
+  fromTemplate: boolean;
+}
+
+export interface IntakeBrief {
+  brief: StackBrief;
+  /** The dossier references the brief cites. */
+  sources: DocRef[];
+  limitedSources: boolean;
+  /** Copied from a very similar project, with no call. */
+  reused: boolean;
+  regenerationsLeft: number;
+}
+
+export interface IntakeBlueprint {
+  blueprint: PlannedBlueprint;
+  model: string;
+  /** What the plan still breaks, shown with it. */
+  warnings: string[];
+  adapted: boolean;
+  regenerationsLeft: number;
+  recalled: RecalledItem[];
+}
+
+export interface ProjectStack {
+  /** Null for a project planned before the flag: show `builtWith`. */
+  brief: StackBrief | null;
+  sources: DocRef[];
+  builtWith: TechChoice[];
+}
+
+/* ------------------------------------------------------------------ *
  * Client
  * ------------------------------------------------------------------ */
 
@@ -529,6 +597,52 @@ export class ApiClient {
       areaOfInterest: input.areaOfInterest ?? null,
       ...(input.model ? { model: input.model } : {}),
     });
+  }
+
+  /* ---- project intake (PROJECT_LEARNER) ---- */
+
+  async getFeatures(): Promise<Features> {
+    return this.get<Features>('/api/features');
+  }
+
+  /** Starts an intake from the interview's compiled query; code picks profile and tier. */
+  async createIntake(compiled: CompiledQuery): Promise<IntakeScope & { intakeId: string }> {
+    return this.post('/api/projects/intake', { compiled });
+  }
+
+  /** Change the profile, or move the tier one step from what was scored. Clears research and the brief. */
+  async updateIntakeScope(
+    intakeId: string,
+    change: { profile?: ProfileId; tierStep?: -1 | 1 },
+  ): Promise<IntakeScope> {
+    return this.request(`/api/projects/intake/${intakeId}/scope`, { method: 'PATCH', body: JSON.stringify(change) });
+  }
+
+  async researchIntake(intakeId: string): Promise<IntakeResearch> {
+    return this.post(`/api/projects/intake/${intakeId}/research`, {});
+  }
+
+  /** The Stack Brief; call again to regenerate it (twice per intake). */
+  async generateStackBrief(intakeId: string): Promise<IntakeBrief> {
+    return this.post(`/api/projects/intake/${intakeId}/stack-brief`, {});
+  }
+
+  async approveStackBrief(intakeId: string): Promise<{ ok: boolean }> {
+    return this.post(`/api/projects/intake/${intakeId}/stack-brief/approve`, {});
+  }
+
+  /** The plan against the approved brief, not persisted; call again to regenerate it (twice). */
+  async generateIntakeBlueprint(intakeId: string, input: { teachDeployment?: boolean } = {}): Promise<IntakeBlueprint> {
+    return this.post(`/api/projects/intake/${intakeId}/blueprint`, { teachDeployment: input.teachDeployment ?? false });
+  }
+
+  /** Builds the project from the approved intake; nothing else is sent. */
+  async createProjectFromIntake(intakeId: string): Promise<{ id: string; reusedFirstStep: boolean }> {
+    return this.post('/api/projects', { intakeId });
+  }
+
+  async getProjectStack(projectId: string): Promise<ProjectStack> {
+    return this.get<ProjectStack>(`/api/projects/${projectId}/stack`);
   }
 
   async listProjects(): Promise<ProjectSummary[]> {

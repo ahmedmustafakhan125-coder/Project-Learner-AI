@@ -137,6 +137,31 @@ export const ProjectBlueprint = z.object({
 });
 export type ProjectBlueprint = z.infer<typeof ProjectBlueprint>;
 
+/* ------------------------------------------------------------------ *
+ * Planned against a Stack Brief (PROJECT_LEARNER)
+ * ------------------------------------------------------------------ */
+
+/** A step stub planned against a brief: also the dossier references it rests on. */
+export const PlannedStepStub = StepStub.extend({
+  /** DocRef ids from the project dossier, such as "d2". Checked in code. */
+  docRefs: z.array(z.string()),
+});
+export type PlannedStepStub = z.infer<typeof PlannedStepStub>;
+
+/**
+ * What the planner returns when it plans against an approved Stack Brief.
+ *
+ * No `techStack`: that is derived from the brief by code (invariant 17), so
+ * asking the model for one would only buy a second, driftable copy.
+ */
+export const BlueprintDraft = ProjectBlueprint.omit({ techStack: true }).extend({
+  steps: z.array(PlannedStepStub).min(MIN_STEPS).max(MAX_STEPS),
+});
+export type BlueprintDraft = z.infer<typeof BlueprintDraft>;
+
+/** A blueprint planned against a brief, with its stack filled in from it. */
+export type PlannedBlueprint = Omit<ProjectBlueprint, 'steps'> & { steps: PlannedStepStub[] };
+
 /**
  * A blueprint as it might be sitting in the database.
  *

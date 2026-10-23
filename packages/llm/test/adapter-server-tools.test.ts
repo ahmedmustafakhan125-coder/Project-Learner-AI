@@ -180,6 +180,24 @@ describe('pause_turn', () => {
     expect(sent.length).toBeLessThanOrEqual(4);
     expect(response.stopReason).toBe('other');
   });
+
+  /*
+   * maxTokens bounds the whole answer, so a stage's ceiling in PROJECT_MODELS
+   * means what it says however many times the turn pauses (invariant 28).
+   */
+  it('spends one maxTokens budget across the paused turns', async () => {
+    const { adapter, sent } = adapterReplaying([PAUSED, FINISHED]);
+    await adapter.complete(request({ maxTokens: 4_000 }));
+    expect(sent[0]!['max_tokens']).toBe(4_000);
+    expect(sent[1]!['max_tokens']).toBe(4_000 - 40);
+  });
+
+  it('does not continue a turn that spent its maxTokens', async () => {
+    const spent = { ...PAUSED, usage: usage(900, 4_000, 1, 0) };
+    const { adapter, sent } = adapterReplaying([spent, FINISHED]);
+    await adapter.complete(request({ maxTokens: 4_000 }));
+    expect(sent).toHaveLength(1);
+  });
 });
 
 describe('citations', () => {

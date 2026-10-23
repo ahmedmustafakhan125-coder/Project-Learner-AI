@@ -26,9 +26,11 @@ export interface BlueprintReviewProps {
   busy: boolean;
   onAccept: () => void;
   onRegenerate: () => void;
+  /** False once the plan's regenerations are spent (PROJECT_LEARNER allows two). */
+  canRegenerate?: boolean;
 }
 
-export function BlueprintReview({ blueprint, busy, onAccept, onRegenerate }: BlueprintReviewProps) {
+export function BlueprintReview({ blueprint, busy, onAccept, onRegenerate, canRegenerate = true }: BlueprintReviewProps) {
   const totalMinutes = blueprint.steps.reduce((sum, step) => sum + step.estMinutes, 0);
 
   return (
@@ -144,8 +146,8 @@ export function BlueprintReview({ blueprint, busy, onAccept, onRegenerate }: Blu
         <button className="btn primary" onClick={onAccept} disabled={busy}>
           {busy ? 'Creating…' : 'Start this project'}
         </button>
-        <button className="btn" onClick={onRegenerate} disabled={busy}>
-          Plan a different one
+        <button className="btn" onClick={onRegenerate} disabled={busy || !canRegenerate}>
+          {canRegenerate ? 'Plan a different one' : 'No more plans this time'}
         </button>
       </div>
       <p className="muted" style={{ marginTop: 10 }}>

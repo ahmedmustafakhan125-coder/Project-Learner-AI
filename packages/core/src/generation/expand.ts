@@ -2,7 +2,11 @@ import { addUsage, emptyUsage } from '@ai-edu/llm';
 import type { LLMProvider, ReasoningEffort } from '@ai-edu/llm';
 
 import type { AbortSignalLike } from '../platform.js';
+import { renderDossier } from '../research/render.js';
 import type { ProjectBlueprint } from '../schemas/project.js';
+import type { ResearchDossier } from '../schemas/research.js';
+import type { StackBrief } from '../schemas/stack.js';
+import { renderStackBrief } from '../stack/render.js';
 import { ExpandedStep, type SourceFile } from '../schemas/step.js';
 import { renderProjectState } from './assemble.js';
 import type { Generated } from './blueprint.js';
@@ -205,6 +209,12 @@ export interface ExpandStepOptions {
   /** Adjusts this step based on how the learner has been doing. */
   directive?: PacingDirective | null;
   /**
+   * The project's approved Stack Brief and dossier, for a project planned
+   * with PROJECT_LEARNER on. They join the cached prefix ahead of the
+   * blueprint, identical for every step of the project (invariant 21).
+   */
+  stack?: { brief: StackBrief; dossier: ResearchDossier | null } | null;
+  /**
    * Effort and output ceiling per call, from `PROJECT_MODELS` with the flag
    * on. Absent, a step keeps the settings it had before the flag.
    */
@@ -230,6 +240,9 @@ export interface ExpandStepOptions {
   onInstructionIssues?: (issues: InstructionIssue[], willRetry: boolean) => void;
 }
 
+/** The first expansion and its one retry (§9 retry ceiling; read by `projectCostCeiling`). */
+export const EXPAND_MAX_ATTEMPTS = 2;
+
 export async function expandStep(options: ExpandStepOptions): Promise<Generated<ExpandedStep>> {
   const {
     provider,
@@ -237,6 +250,7 @@ export async function expandStep(options: ExpandStepOptions): Promise<Generated<
     stepIndex,
     priorFiles = [],
     directive,
+    stack = null,
     reasoning = 'high',
     maxTokens = 16_000,
     signal,
@@ -264,7 +278,7 @@ export async function expandStep(options: ExpandStepOptions): Promise<Generated<
         // 1h write (2x input) would usually expire unread.
         {
           type: 'text' as const,
-          text: renderBlueprint(blueprint),
+          text: renderProjectPrefix(blueprint, stack),
           cacheBoundary: true,
           cacheTtl: '5m' as const,
         },
@@ -389,6 +403,19 @@ export async function expandStep(options: ExpandStepOptions): Promise<Generated<
 /* ------------------------------------------------------------------ *
  * Rendering
  * ------------------------------------------------------------------ */
+
+/**
+ * The cached prefix of every expansion: the brief and dossier when the
+ * project has them, then the blueprint. Without a brief it is the blueprint
+ * alone, byte for byte what it was before PROJECT_LEARNER.
+ */
+export function renderProjectPrefix(
+  blueprint: ProjectBlueprint,
+  stack: { brief: StackBrief; dossier: ResearchDossier | null } | null = null,
+): string {
+  if (!stack) return renderBlueprint(blueprint);
+  return [renderStackBrief(stack.brief), renderDossier(stack.dossier), renderBlueprint(blueprint)].join('\n\n');
+}
 
 /** Deterministic: the same blueprint must always render the same bytes. */
 export function renderBlueprint(blueprint: ProjectBlueprint): string {

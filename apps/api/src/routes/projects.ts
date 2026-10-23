@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import {
   Checkpoint,
@@ -9,24 +9,35 @@ import {
   finishProject,
   generateBlueprint,
   groundCheckpoint,
+  canReuseFirstStep,
+  getProfile,
+  layerVerification,
   parseStoredBlueprint,
+  parseStoredDossier,
+  parseStoredStackBrief,
   planExpansion,
+  techStackFromBrief,
   hasSeriousViolation,
   readPaceState,
   scorePacing,
   verifyExpansion,
   verifyProjectComplete,
   type AttemptSummary,
+  type PlannedBlueprint,
   type ProjectArtifact,
+  type ResearchDossier,
   type SourceFile,
+  type StackBrief,
 } from '@ai-edu/core';
 import {
   DEFAULT_PROJECT_TIER,
   ProjectGenerationUnavailableError,
   createProviderForStage,
   createProviderForTask,
+  PROJECT_TIERS,
   type LLMProvider,
   type ProjectStage,
+  type ProjectTier,
   type ReasoningEffort,
 } from '@ai-edu/llm';
 
@@ -39,6 +50,7 @@ import { assembleFinished, priorFilesFor } from '../projectFiles.js';
 import { canExpand, loadProgress } from '../progress.js';
 import { rateLimitConfig } from '../rateLimit.js';
 import { archiveName, createZip } from '../zip.js';
+import { loadIntake } from '../intake.js';
 
 /**
  * Project generation.
@@ -83,6 +95,32 @@ const CreateBody = z.object({
   model: z.string().optional(),
 });
 
+/**
+ * With PROJECT_LEARNER on, a project is built from its intake row and
+ * nothing else: brief, dossier, plan and the model that wrote it are read
+ * back from the database, never taken from the browser.
+ */
+const IntakeCreateBody = z.object({ intakeId: z.string().uuid() });
+
+/** The project's tier and its approved stack, read only with the flag on: older databases lack the columns. */
+interface LearnerContext {
+  tier: ProjectTier;
+  stack: { brief: StackBrief; dossier: ResearchDossier | null } | null;
+}
+
+function learnerContext(project: Record<string, unknown>): LearnerContext {
+  const tier = PROJECT_TIERS.find((t) => t === project['complexity_tier']) ?? DEFAULT_PROJECT_TIER;
+  const brief = parseStoredStackBrief(project['stack_brief']);
+  return { tier, stack: brief ? { brief, dossier: parseStoredDossier(project['dossier']) } : null };
+}
+
+const LEARNER_COLUMNS = ', complexity_tier, stack_brief, dossier';
+
+const learnerOn = () => loadEnv().PROJECT_LEARNER === 'on';
+
+/** The columns, plus the learner ones with the flag on; typed as the base list, which is all the client can parse. */
+const withLearner = <C extends string>(columns: C): C => (learnerOn() ? `${columns}${LEARNER_COLUMNS}` : columns) as C;
+
 /** A provider for one project stage, and the settings to call it with. */
 interface StageCall {
   provider: LLMProvider;
@@ -104,12 +142,12 @@ type StageResult =
  * `DEFAULT_PROJECT_TIER`. With no Claude key that is a 503, never a quiet
  * fallback. With the flag off, the old resolution, user pick included.
  */
-function stageProvider(stage: ProjectStage, userChoice?: string): StageResult {
+function stageProvider(stage: ProjectStage, userChoice?: string, tier: ProjectTier = DEFAULT_PROJECT_TIER): StageResult {
   try {
     if (loadEnv().PROJECT_LEARNER !== 'on') {
       return { ok: true, call: { provider: createProviderForTask('projectGen', userChoice) } };
     }
-    return { ok: true, call: createProviderForStage(stage, DEFAULT_PROJECT_TIER) };
+    return { ok: true, call: createProviderForStage(stage, tier) };
   } catch (err) {
     if (err instanceof ProjectGenerationUnavailableError) {
       return {
@@ -164,6 +202,109 @@ async function budgetRefusal(
           message: `Daily allowance of $${budget.limitUSD.toFixed(2)} reached.`,
         },
       };
+}
+
+/**
+ * `POST /api/projects { intakeId }`: the approved intake becomes a project.
+ *
+ * Everything comes from the row: the plan, the brief it was written against,
+ * the dossier and which model wrote each stage (`generation_model` is the
+ * blueprint's, from the server). `techStack` is derived from the brief
+ * (invariant 17). When the plan was adapted from a very similar project and
+ * its first two steps and file plan are unchanged, that project's written
+ * step 1 is served as this one's: it starts from nothing, so it carries no
+ * other learner's code, and it costs no call.
+ */
+async function createFromIntake(userId: string, intakeId: string, reply: FastifyReply) {
+  const intake = await loadIntake(intakeId, userId);
+  if (!intake) return reply.code(404).send({ error: 'not_found', message: 'No such intake, or it expired.' });
+  const brief = parseStoredStackBrief(intake.row.brief);
+  const blueprint = intake.row.blueprint as PlannedBlueprint | null;
+  if (intake.row.status !== 'approved' || !brief || !blueprint || !parseStoredBlueprint(blueprint)) {
+    return reply.code(409).send({ error: 'intake_out_of_order', message: 'Approve the stack and generate a plan first.' });
+  }
+
+  const { compiled } = intake;
+  const profile = getProfile(intake.profile.id);
+  const verification = layerVerification(profile, '', profile.browserRunnable(brief));
+  const skill = SkillLevel.safeParse(compiled.slots['skill_level']?.value);
+  const techStack = techStackFromBrief(brief);
+
+  const { data: project, error } = await db()
+    .from('projects')
+    .insert({
+      user_id: userId,
+      title: blueprint.title,
+      summary: blueprint.summary,
+      area_of_interest: compiled.slots['domain']?.value ?? null,
+      tech_stack: techStack,
+      skill_level: skill.success ? skill.data : 'beginner',
+      learning_goals: blueprint.learningObjectives,
+      prerequisites: blueprint.prerequisites,
+      estimated_hours: blueprint.estimatedHours,
+      status: 'active',
+      // Stored as planned: it is the cached prefix for every step expansion.
+      blueprint: { ...blueprint, techStack },
+      generation_model: intake.row.generation_models['blueprint'] ?? null,
+      project_profile: profile.id,
+      complexity_tier: intake.row.tier,
+      stack_brief: brief,
+      dossier: intake.row.dossier ?? null,
+      generation_models: intake.row.generation_models,
+      intake_id: intake.row.id,
+    })
+    .select('id')
+    .single();
+  if (error || !project) return reply.code(500).send({ error: 'persist_failed', message: error?.message });
+
+  const firstStep = await templateFirstStep(intake.row.template_project_id, blueprint);
+  const { error: stepsError } = await db()
+    .from('project_steps')
+    .insert(
+      blueprint.steps.map((step, index) => ({
+        project_id: project.id,
+        user_id: userId,
+        step_index: index,
+        title: step.title,
+        objective: step.objective,
+        concepts: step.concepts,
+        est_minutes: step.estMinutes,
+        doc_refs: step.docRefs ?? [],
+        verification,
+        ...(index === 0 && firstStep ? firstStep : {}),
+      })),
+    );
+  if (stepsError) {
+    await db().from('projects').delete().eq('id', project.id);
+    return reply.code(500).send({ error: 'persist_failed', message: stepsError.message });
+  }
+
+  await db().from('enrollments').insert({ user_id: userId, project_id: project.id, current_step_index: 0 });
+  return reply.code(201).send({ id: project.id, reusedFirstStep: firstStep !== null });
+}
+
+/** The template project's written step 1, when the adapted plan left it and its neighbours unchanged. */
+async function templateFirstStep(templateId: string | null, blueprint: PlannedBlueprint) {
+  if (!templateId) return null;
+  const { data: template } = await db().from('projects').select('blueprint').eq('id', templateId).maybeSingle();
+  const planned = parseStoredBlueprint(template?.blueprint);
+  if (!planned || !canReuseFirstStep(blueprint, planned)) return null;
+  const { data: step } = await db()
+    .from('project_steps')
+    .select('instructions_md, explanation_md, alternatives, starter_files, solution_files, checkpoint, expanded_at')
+    .eq('project_id', templateId)
+    .eq('step_index', 0)
+    .maybeSingle();
+  if (!step?.expanded_at) return null;
+  return {
+    instructions_md: step.instructions_md,
+    explanation_md: step.explanation_md,
+    alternatives: step.alternatives,
+    starter_files: step.starter_files,
+    solution_files: step.solution_files,
+    checkpoint: step.checkpoint,
+    expanded_at: new Date().toISOString(),
+  };
 }
 
 /**
@@ -263,6 +404,14 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/api/projects', { preHandler: requireAuth }, async (request, reply) => {
     const user = userOf(request);
+
+    if (loadEnv().PROJECT_LEARNER === 'on') {
+      const fromIntake = IntakeCreateBody.safeParse(request.body);
+      if (!fromIntake.success) {
+        return reply.code(400).send({ error: 'intake_required', issues: fromIntake.error.issues });
+      }
+      return createFromIntake(user.id, fromIntake.data.intakeId, reply);
+    }
 
     const parsed = CreateBody.safeParse(request.body);
     if (!parsed.success) {
@@ -494,7 +643,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
 
       const { data: project } = await db()
         .from('projects')
-        .select('id, blueprint')
+        .select(withLearner('id, blueprint'))
         .eq('id', request.params.id)
         .eq('user_id', user.id)
         .maybeSingle();
@@ -645,7 +794,8 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
       const refusal = await budgetRefusal(user.id);
       if (refusal) return reply.code(refusal.status).send(refusal.body);
 
-      const stage = stageProvider('step');
+      const learner = learnerOn() ? learnerContext(project as unknown as Record<string, unknown>) : null;
+      const stage = stageProvider('step', undefined, learner?.tier);
       if (!stage.ok) return reply.code(stage.status).send(stage.body);
       const { provider } = stage.call;
 
@@ -720,6 +870,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
           stepIndex,
           priorFiles,
           directive,
+          stack: learner?.stack ?? null,
           ...stageSettings(stage.call),
           /*
            * A step that broke its file manifest is repaired either way, so
@@ -878,7 +1029,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
 
       const { data: project } = await db()
         .from('projects')
-        .select('id, title, blueprint, artifact, artifact_generated_at')
+        .select(withLearner('id, title, blueprint, artifact, artifact_generated_at'))
         .eq('id', request.params.id)
         .eq('user_id', user.id)
         .maybeSingle();
@@ -936,7 +1087,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
       const refusal = await budgetRefusal(user.id);
       if (refusal) return reply.code(refusal.status).send(refusal.body);
 
-      const stage = stageProvider('finish');
+      const stage = stageProvider('finish', undefined, learnerOn() ? learnerContext(project as unknown as Record<string, unknown>).tier : undefined);
       if (!stage.ok) return reply.code(stage.status).send(stage.body);
       const { provider } = stage.call;
 

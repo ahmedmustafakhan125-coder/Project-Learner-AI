@@ -9,7 +9,29 @@ import { createClient } from '@supabase/supabase-js';
  * Security, so the key alone grants access to nothing. The service-role key
  * bypasses RLS and must never appear in this bundle.
  */
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+/**
+ * The project URL the client wants, from whatever was configured.
+ *
+ * `supabase status` prints the REST URL (`…/rest/v1`) right beside the API
+ * URL, and pasting it here broke sign-in and sign-up with "Invalid path
+ * specified in request URL": the client appends `/auth/v1/…` to whatever it
+ * is given. A service suffix and trailing slashes are dropped, so only the
+ * project URL reaches the client.
+ *
+ * Production hit the same error with the dashboard's "RESTful endpoint"
+ * (`https://<ref>.supabase.co/rest/v1/`). The GraphQL URL fails the same way
+ * (Kong sends it to PostgREST too), so a service path is dropped together
+ * with anything after it.
+ */
+export function supabaseBaseUrl(raw: string | undefined): string | undefined {
+  const trimmed = raw?.trim();
+  if (!trimmed) return undefined;
+  return trimmed
+    .replace(/\/+$/, '')
+    .replace(/\/(rest|auth|storage|realtime|functions|graphql)\/v1(\/.*)?$/i, '');
+}
+
+const url = supabaseBaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 export const supabaseConfigured = Boolean(url && anonKey);

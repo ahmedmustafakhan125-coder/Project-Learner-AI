@@ -133,6 +133,9 @@ const ScopedClassificationResult = ClassificationResult.extend({
 /** What classify returns; `signals` only when it was asked to scope. */
 export type ScopedClassification = ClassificationResult & { signals?: ScopeSignals };
 
+/** Output ceiling of the classify call; intake makes one, so `projectCostCeiling` counts it. */
+export const CLASSIFY_MAX_TOKENS = 1024;
+
 export interface ClassifyOptions {
   provider: LLMProvider;
   rawQuery: string;
@@ -155,7 +158,7 @@ export async function classifyQuery(options: ClassifyOptions): Promise<ScopedCla
 
   const request = {
     model: provider.modelId,
-    maxTokens: 1024,
+    maxTokens: CLASSIFY_MAX_TOKENS,
     reasoning: 'low' as const,
     system: [{ text: scoping ? SCOPED_CLASSIFY_SYSTEM : SYSTEM, cacheBoundary: true }],
     messages: [{ role: 'user' as const, content }],

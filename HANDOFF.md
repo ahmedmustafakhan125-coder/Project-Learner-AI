@@ -159,3 +159,109 @@ Set `RECORD_FIXTURES=1` to re-record the fixtures.
    2026-11-22. Delete those rows to force live research.
 8. `apps/web/next-env.d.ts` was modified before this phase. I left it
    uncommitted.
+
+## Phase 3 — done (branch `pl-3-intake-ui`, 2026-10-23)
+
+The four tasks are committed one per task. Two additions came from you
+mid-phase: the template path (adapt a very similar stored project) and
+updating the plan. Every phase 3 "done when" check holds:
+
+- `npm run typecheck` passes (12 of 12). `npm test` passes 1,622 tests
+  (1,524 after phase 2): llm 137, core 1,051, api 219, api-client 26,
+  web 132, gateway 48, runners 9. `npx eslint packages apps` is clean.
+  `npm run lint` still runs no task (phase 1 note).
+- Invariant 17: `packages/core/test/verify-blueprint.test.ts` and
+  `apps/api/test/intake.test.ts`. Invariant 27: `verify-blueprint.test.ts`,
+  with a passing and a failing plan for `desktop-app`, `systems-os`,
+  `language-tooling` and `general`. Invariant 28:
+  `packages/core/test/cost-ceiling.test.ts` (T1 $0.574, T3 $1.452 worst
+  case). Invariant 21, prefix half: `prompt-stability.test.ts`.
+- Three live runs from the real interview to step 1, read from
+  `llm_usage`: kernel `systems-os` T5 $0.41, Lox `language-tooling` T2
+  $0.30, Tauri `desktop-app` T3 $0.30. The full table is in §11.
+- Migration `0016_intake_plan.sql` is applied to the local database with
+  `supabase migration up --local`. It is not applied to the cloud project.
+- With the flag off the intake routes are not even loaded, and
+  `/api/features` says `projectLearner: false` (`intake-flag.test.ts`).
+
+Live spend for the phase: $1.19 recorded, plus about $0.24 that was never
+recorded (item 1 below). That includes two aborted runs whose test driver
+answered the interview badly.
+
+### What changed outside the four tasks
+
+1. **Template reuse** (your request). `generation/template.ts` matches on
+   the same profile, the same tier, exactly the same named technologies and
+   a word overlap of at least 0.7. The dossier and brief are copied with no
+   call, the plan is adapted on the new `adapt` stage of `PROJECT_MODELS`
+   (Sonnet), and step 1 is copied when step 1, step 2 and the file plan are
+   unchanged. Not yet seen live: the three goldens differ from one another.
+2. **The Anthropic adapter** (`packages/llm`): paused research turns now
+   share one `maxTokens` budget. Without that, invariant 28 could not hold.
+3. **Two ceilings raised**, each with §11 and the test updated: brief T1
+   and T2 from 4,000 to 6,000 (a live Lox brief was truncated again), and
+   step T2 from 8,000 to 12,000 (the Lox step 1 has twelve files and was
+   truncated three times running).
+4. `apps/web/app/globals.css` gained a block for the new components.
+   `BlueprintReview` takes `canRegenerate`. `classify.ts` exports
+   `CLASSIFY_MAX_TOKENS`, and `expand.ts` exports `EXPAND_MAX_ATTEMPTS`.
+5. `server.ts` allows `PATCH` in CORS and serves `GET /api/features`.
+6. **Sign-up bug** (your report): "Invalid path specified in request URL"
+   is what Supabase answers when the client's URL ends in `/rest/v1`, the
+   REST URL `supabase status` prints beside the API URL. Reproduced against
+   local Supabase. `apps/web/lib/supabase.ts` now strips a service suffix
+   and trailing slashes (`supabaseBaseUrl`, tested), and `.env.example`
+   says which URL to use. Still set `NEXT_PUBLIC_SUPABASE_URL` in
+   `apps/web/.env.local` to the plain API URL, `http://127.0.0.1:54321`.
+   Production failed the same way: Vercel was built with the dashboard's
+   RESTful endpoint (`https://<ref>.supabase.co/rest/v1/`), seen in the
+   live bundle. The function now also strips `/graphql/v1`, which fails
+   the same way, and anything after a service path. Set the Vercel
+   variable to the project URL as well.
+
+### How to see it in the browser
+
+Your dev servers on :3000 and :3001 were already running, so I did not
+stop them. I ran the new API on :3002 with `PROJECT_LEARNER=on` set in the
+process environment; the env file was not touched. A second `next dev`
+refused to start while yours holds the `.next` lock. To use the new flow,
+set `PROJECT_LEARNER=on` in the repository env file and restart
+`npm run dev`. The web reads the flag from `/api/features`, so the web
+side needs no change. A test learner, `phase3-live@learner.test`, owns the
+three live projects in the local database.
+
+### Open for phase 4 and later
+
+1. **A truncated structured call records no usage** (invariant 16 gap).
+   `LLMStructuredOutputError` carries no `usage`, so a call cut off at
+   `maxTokens` bills its full output and leaves no `llm_usage` row. Give
+   the error the response's usage and record it in the routes.
+2. **The ten basic profiles cannot get a brief without a named, carded
+   technology.** Their dossier is empty, so `verifyStackBrief` rejects
+   every layer as `grounded` and the route answers 502. This was seen live:
+   "an operating system" answered as "Web app" became `web-fullstack`.
+   Draft `sources.json` entries and cards, or `research` keys, for those
+   profiles (phase 0-style data work), or decide to ground on profile entry
+   pages.
+3. **The interview is not scoped.** `/api/interview/*` still classifies
+   without `scoping: true`, so tier and profile slots are never asked and
+   the intake's own classify call does the scoping afterwards (phase 2
+   items 1 and 6 still stand).
+4. The Lox step 1 came back with `runtime: none` and no tests:
+   `groundCheckpoint` stripped them, probably because the corpus runner
+   uses a subprocess. The solution self-test (phase 4) is where this shows.
+5. Tauri step 1's first attempt left 11 of its 13 files out (repaired by
+   its one retry). The blueprint put 13 files in step 1, and Lox 12. A
+   `verifyBlueprint` warning on a very large first step may be worth adding.
+6. Not built from `verifyBlueprint`'s list (§9): milestone count, every
+   layer used by a planned file, the dependency manifest, `docTopics` and
+   `needsDocs`. `forbiddenImports` belongs to `verifyDependencies`.
+7. Reused briefs may carry phrasing pitched at the first learner's memory.
+   Only model output is copied, but if that matters, adapt the brief too
+   or reuse only briefs written without memory.
+8. Approved intakes never expire (`purge_expired_intakes` keeps them).
+   Expire approved rows that never became a project.
+9. The step page still requests step N+1 eagerly and ignores the 403
+   (phase 1 item 7).
+10. Apply `0015` and `0016` to the cloud project only when the flag flips
+    in production (phase 7).

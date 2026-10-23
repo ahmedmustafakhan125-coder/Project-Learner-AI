@@ -229,12 +229,18 @@ export class AnthropicAdapter implements LLMProvider {
        * A long server-tool loop can stop with `pause_turn`. The paused turn is
        * sent back unchanged as the assistant's message and the model carries
        * on; the turns together are one answer, so their content and usage add.
+       *
+       * They also share one output budget: each continuation may write only
+       * what the turns before it left of `max_tokens`, so a stage's ceiling
+       * in PROJECT_MODELS holds however often the turn pauses (invariant 28).
        */
       const turns: Anthropic.Message[] = [message];
       let messages = params.messages;
-      for (let i = 0; i < MAX_PAUSE_CONTINUATIONS && message.stop_reason === 'pause_turn'; i += 1) {
+      let remaining = params.max_tokens - message.usage.output_tokens;
+      for (let i = 0; i < MAX_PAUSE_CONTINUATIONS && message.stop_reason === 'pause_turn' && remaining > 0; i += 1) {
         messages = [...messages, { role: 'assistant', content: message.content as never }];
-        message = await this.client.messages.create({ ...params, messages }, options);
+        message = await this.client.messages.create({ ...params, max_tokens: remaining, messages }, options);
+        remaining -= message.usage.output_tokens;
         this.assertNotRefusal(message);
         turns.push(message);
       }

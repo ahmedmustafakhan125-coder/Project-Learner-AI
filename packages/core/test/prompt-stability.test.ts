@@ -364,3 +364,64 @@ describe('invariant 21: research and Stack Brief system prompts', async () => {
     });
   });
 });
+
+describe('invariant 21: the brief-plus-dossier-plus-blueprint prefix of one project', async () => {
+  const { expandStep, renderBlueprint, renderProjectPrefix } = await import('../src/generation/expand.js');
+  const { ResearchDossier } = await import('../src/schemas/research.js');
+  const { StackBrief } = await import('../src/schemas/stack.js');
+  const tauri = (await import('./fixtures/briefs/tauri.json')).default as { brief: unknown; dossier: unknown };
+  const stack = { brief: StackBrief.parse(tauri.brief), dossier: ResearchDossier.parse(tauri.dossier) };
+
+  const blueprint = {
+    title: 'Notes',
+    summary: 'A notes app.',
+    learningObjectives: ['IPC'],
+    techStack: [{ name: 'Tauri 2', role: 'shell', why: 'small' }],
+    prerequisites: [],
+    estimatedHours: 3,
+    finalFileTree: [
+      { path: 'src-tauri/src/core/notes.rs', purpose: 'logic' },
+      { path: 'src-tauri/src/commands.rs', purpose: 'IPC' },
+      { path: 'src/main.ts', purpose: 'UI' },
+    ],
+    deployment: { target: 'local' as const, rationale: 'a desktop app', artifacts: [], taught: false },
+    steps: [
+      { title: 'Core', objective: 'a', concepts: [], estMinutes: 60, creates: ['src-tauri/src/core/notes.rs'], edits: [] },
+      { title: 'IPC', objective: 'b', concepts: [], estMinutes: 60, creates: ['src-tauri/src/commands.rs'], edits: [] },
+      { title: 'UI', objective: 'c', concepts: [], estMinutes: 60, creates: ['src/main.ts'], edits: ['src-tauri/src/commands.rs'] },
+    ],
+  };
+
+  async function firstPart(stepIndex: number, withStack: boolean): Promise<{ text: string; cacheBoundary?: boolean }> {
+    const requests: LLMRequest[] = [];
+    const provider = {
+      ...fakeProvider(),
+      async structured(req: LLMRequest) {
+        requests.push(req);
+        throw new Error('captured');
+      },
+    } as unknown as LLMProvider;
+    await expandStep({
+      provider,
+      blueprint,
+      stepIndex,
+      priorFiles: stepIndex ? [{ path: 'src-tauri/src/core/notes.rs', contents: `// step ${stepIndex}` }] : [],
+      stack: withStack ? stack : null,
+    }).catch(() => undefined);
+    return (requests[0]!.messages[0]!.content as { text: string; cacheBoundary?: boolean }[])[0]!;
+  }
+
+  it('is byte-identical, and cached, across every expansion', async () => {
+    const parts = await Promise.all(blueprint.steps.map((_s, i) => firstPart(i, true)));
+    expect(new Set(parts.map((p) => p.text)).size).toBe(1);
+    expect(parts[0]!.cacheBoundary).toBe(true);
+    expect(parts[0]!.text).toContain('<stack_brief>');
+    expect(parts[0]!.text).toContain('<docs_dossier>');
+    expect(parts[0]!.text).toContain(renderBlueprint(blueprint));
+  });
+
+  it('is the blueprint alone, as before, for a project without a brief', async () => {
+    expect((await firstPart(1, false)).text).toBe(renderBlueprint(blueprint));
+    expect(renderProjectPrefix(blueprint, null)).toBe(renderBlueprint(blueprint));
+  });
+});

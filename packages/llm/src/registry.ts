@@ -875,7 +875,12 @@ export type ProjectTier = (typeof PROJECT_TIERS)[number];
  */
 export const DEFAULT_PROJECT_TIER: ProjectTier = 'T3';
 
-export type ProjectStage = 'research' | 'brief' | 'blueprint' | 'step' | 'finish';
+/**
+ * `adapt` rewrites a very similar project's approved plan for a new learner
+ * instead of planning from nothing: no research, no brief call, and Sonnet in
+ * place of the Opus blueprint (docs/project-learner.md §11).
+ */
+export type ProjectStage = 'research' | 'brief' | 'blueprint' | 'adapt' | 'step' | 'finish';
 
 export interface ProjectStageSettings {
   task: TaskKind;
@@ -909,8 +914,9 @@ export const PROJECT_MODELS: Record<ProjectStage, Record<ProjectTier, ProjectSta
     T5: stage('projectResearch', 'claude-sonnet-5-5', 'low', 4_000),
   },
   brief: {
-    T1: stage('projectPlan', 'claude-sonnet-5-5', 'low', 4_000),
-    T2: stage('projectPlan', 'claude-sonnet-5-5', 'low', 4_000),
+    // 4,000 truncated a live Lox brief twice (phases 2 and 3), adaptive thinking included.
+    T1: stage('projectPlan', 'claude-sonnet-5-5', 'low', 6_000),
+    T2: stage('projectPlan', 'claude-sonnet-5-5', 'low', 6_000),
     T3: stage('projectPlan', 'claude-sonnet-5-5', 'medium', 8_000),
     T4: stage('projectPlan', 'claude-sonnet-5-5', 'medium', 8_000),
     T5: stage('projectPlan', 'claude-sonnet-5-5', 'medium', 8_000),
@@ -922,9 +928,18 @@ export const PROJECT_MODELS: Record<ProjectStage, Record<ProjectTier, ProjectSta
     T4: stage('projectPlan', 'claude-opus-5-5', 'high', 12_000),
     T5: stage('projectPlan', 'claude-opus-5-5', 'high', 12_000),
   },
+  // A whole blueprint comes back, so the output ceiling is the blueprint's.
+  adapt: {
+    T1: stage('projectPlan', 'claude-sonnet-5-5', 'low', 8_000),
+    T2: stage('projectPlan', 'claude-sonnet-5-5', 'low', 8_000),
+    T3: stage('projectPlan', 'claude-sonnet-5-5', 'medium', 12_000),
+    T4: stage('projectPlan', 'claude-sonnet-5-5', 'medium', 12_000),
+    T5: stage('projectPlan', 'claude-sonnet-5-5', 'medium', 12_000),
+  },
   step: {
     T1: stage('projectStep', 'claude-sonnet-5-5', 'low', 8_000),
-    T2: stage('projectStep', 'claude-sonnet-5-5', 'low', 8_000),
+    // 8,000 truncated a live Lox step 1 (twelve files, starter and solution each) three times running.
+    T2: stage('projectStep', 'claude-sonnet-5-5', 'low', 12_000),
     T3: stage('projectStep', 'claude-sonnet-5-5', 'medium', 16_000),
     T4: stage('projectStep', 'claude-sonnet-5-5', 'medium', 16_000),
     T5: stage('projectStep', 'claude-sonnet-5-5', 'medium', 16_000),

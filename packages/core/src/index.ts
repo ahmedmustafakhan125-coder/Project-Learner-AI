@@ -36,6 +36,7 @@ export * from './stack/pins.js';
 export * from './stack/verify.js';
 export * from './stack/techStack.js';
 export * from './stack/brief.js';
+export * from './stack/render.js';
 
 export * from './generation/blueprint.js';
 export * from './generation/assemble.js';
@@ -45,6 +46,9 @@ export * from './generation/prefetch.js';
 export * from './generation/runnable.js';
 export * from './generation/verifyExpansion.js';
 export * from './generation/verifyInstructions.js';
+export * from './generation/verifyBlueprint.js';
+export * from './generation/template.js';
+export * from './budget/ceiling.js';
 export * from './tutor/gate.js';
 export * from './tutor/prompts.js';
 export * from './tutor/ask.js';
