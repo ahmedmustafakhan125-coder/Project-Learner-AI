@@ -129,6 +129,64 @@ function stageProvider(stage: ProjectStage, userChoice?: string): StageResult {
   }
 }
 
+/** Effort and ceiling to pass on, only when the stage set them. */
+function stageSettings(call: StageCall): { reasoning?: ReasoningEffort; maxTokens?: number } {
+  return {
+    ...(call.reasoning ? { reasoning: call.reasoning } : {}),
+    ...(call.maxTokens ? { maxTokens: call.maxTokens } : {}),
+  };
+}
+
+/**
+ * The refusal for an exhausted allowance, or null to go ahead.
+ *
+ * With PROJECT_STUDIO on, project calls draw on the weekly project allowance
+ * and say so; Q&A keeps its own. With it off, the daily allowance, as before.
+ */
+async function budgetRefusal(
+  userId: string,
+): Promise<{ status: 429; body: { error: string; message: string } } | null> {
+  const studio = loadEnv().PROJECT_STUDIO === 'on';
+  const budget = await checkBudget(userId, studio ? 'project' : 'qa');
+  if (!budget.exceeded) return null;
+  return studio
+    ? {
+        status: 429,
+        body: {
+          error: 'project_budget_exceeded',
+          message: `Weekly project allowance of $${budget.limitUSD.toFixed(2)} reached. Questions still work.`,
+        },
+      }
+    : {
+        status: 429,
+        body: {
+          error: 'budget_exceeded',
+          message: `Daily allowance of $${budget.limitUSD.toFixed(2)} reached.`,
+        },
+      };
+}
+
+/**
+ * Whether the learner has started a step: saved a draft or submitted an
+ * attempt. Step N+1 is written ahead only once this is true of step N.
+ */
+async function hasStarted(projectId: string, userId: string, stepIndex: number): Promise<boolean> {
+  const { data: step } = await db()
+    .from('project_steps')
+    .select('id')
+    .eq('project_id', projectId)
+    .eq('step_index', stepIndex)
+    .maybeSingle();
+  if (!step) return false;
+
+  const [{ data: progress }, { data: attempts }] = await Promise.all([
+    db().from('step_progress').select('files').eq('step_id', step.id).eq('user_id', userId).maybeSingle(),
+    db().from('step_attempts').select('id').eq('step_id', step.id).eq('user_id', userId).limit(1),
+  ]);
+  const drafted = Array.isArray(progress?.files) && progress.files.length > 0;
+  return drafted || (attempts ?? []).length > 0;
+}
+
 export async function projectRoutes(app: FastifyInstance): Promise<void> {
   /* ---------------- Phase A: blueprint ---------------- */
 
@@ -159,13 +217,8 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(refusal.status).send(refusal.body);
     }
 
-    const budget = await checkBudget(user.id);
-    if (budget.exceeded) {
-      return reply.code(429).send({
-        error: 'budget_exceeded',
-        message: `Daily allowance of $${budget.limitUSD.toFixed(2)} reached.`,
-      });
-    }
+    const refusal = await budgetRefusal(user.id);
+    if (refusal) return reply.code(refusal.status).send(refusal.body);
 
     const stage = stageProvider('blueprint', parsed.data.model);
     if (!stage.ok) return reply.code(stage.status).send(stage.body);
@@ -177,11 +230,12 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
 
     const started = Date.now();
     try {
-      const blueprint = await generateBlueprint({
+      const { data: blueprint, usage } = await generateBlueprint({
         provider,
         compiled: safeCompiled,
         teachDeployment: parsed.data.teachDeployment,
         memory: memory?.text ?? null,
+        ...stageSettings(stage.call),
       });
 
       void recordUsage({
@@ -189,7 +243,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         task: 'project:blueprint',
         provider: provider.id,
         model: provider.modelId,
-        usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        usage,
         latencyMs: Date.now() - started,
       });
 
@@ -567,13 +621,29 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      const budget = await checkBudget(user.id);
-      if (budget.exceeded) {
-        return reply.code(429).send({
-          error: 'budget_exceeded',
-          message: `Daily allowance of $${budget.limitUSD.toFixed(2)} reached.`,
-        });
+      /*
+       * Writing a step ahead of the frontier is a prefetch. With PROJECT_STUDIO
+       * on it waits until the learner has started the step before it, so one
+       * who opens step 1 and leaves costs one step, not two. The rule is
+       * core's; this only loads what it reasons over.
+       */
+      if (loadEnv().PROJECT_STUDIO === 'on' && stepIndex > progress.unlockedThrough) {
+        const plan = planExpansion(
+          [{ index: stepIndex, expanded: false, expanding: false }],
+          stepIndex - 1,
+          { currentStarted: await hasStarted(project.id, user.id, stepIndex - 1) },
+        );
+        if (!plan.background.includes(stepIndex)) {
+          return reply.code(403).send({
+            error: 'step_locked',
+            message: 'This step is written once you start the one before it.',
+            unlockedThrough: progress.unlockedThrough,
+          });
+        }
       }
+
+      const refusal = await budgetRefusal(user.id);
+      if (refusal) return reply.code(refusal.status).send(refusal.body);
 
       const stage = stageProvider('step');
       if (!stage.ok) return reply.code(stage.status).send(stage.body);
@@ -644,12 +714,13 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
 
       const started = Date.now();
       try {
-        const expansion = await expandStep({
+        const { data: expansion, usage } = await expandStep({
           provider,
           blueprint,
           stepIndex,
           priorFiles,
           directive,
+          ...stageSettings(stage.call),
           /*
            * A step that broke its file manifest is repaired either way, so
            * nothing here reaches the learner. It is logged because a silent
@@ -712,10 +783,10 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
 
         void recordUsage({
           userId: user.id,
-          task: `project:expand:${stepIndex}`,
+          task: 'project:step',
           provider: provider.id,
           model: provider.modelId,
-          usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          usage,
           latencyMs: Date.now() - started,
         });
 
@@ -862,13 +933,8 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         return reply.send({ artifact: cached, cached: true, completeness });
       }
 
-      const budget = await checkBudget(user.id);
-      if (budget.exceeded) {
-        return reply.code(429).send({
-          error: 'budget_exceeded',
-          message: `Daily allowance of $${budget.limitUSD.toFixed(2)} reached.`,
-        });
-      }
+      const refusal = await budgetRefusal(user.id);
+      if (refusal) return reply.code(refusal.status).send(refusal.body);
 
       const stage = stageProvider('finish');
       if (!stage.ok) return reply.code(stage.status).send(stage.body);
@@ -876,12 +942,14 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
 
       const started = Date.now();
       let written;
+      let usage;
       try {
-        written = await finishProject({
+        ({ data: written, usage } = await finishProject({
           provider,
           blueprint,
           files: assembled.files,
-        });
+          ...stageSettings(stage.call),
+        }));
       } catch (err) {
         request.log.error({ err }, 'finish generation failed');
         return reply.code(502).send({
@@ -895,7 +963,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         task: 'project:finish',
         provider: provider.id,
         model: provider.modelId,
-        usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        usage,
         latencyMs: Date.now() - started,
       });
 

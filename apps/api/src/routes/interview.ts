@@ -8,7 +8,7 @@ import {
   continueInterview,
   extractDurableSlots,
 } from '@ai-edu/core';
-import { createProviderForTask } from '@ai-edu/llm';
+import { createProviderForTask, meterUsage } from '@ai-edu/llm';
 
 import { requireAuth, userOf } from '../auth.js';
 import { gatewayErrorReply, screenOrThrow } from '../gateway.js';
@@ -84,15 +84,21 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
     const started = Date.now();
 
     try {
-      const outcome = await beginInterview({ provider, rawQuery: safeQuery, context, attachments });
+      // The interview makes several calls and reports none of them, so the
+      // provider is metered and the row records their sum.
+      const metered = meterUsage(provider);
+      const outcome = await beginInterview({
+        provider: metered.provider,
+        rawQuery: safeQuery,
+        context,
+        attachments,
+      });
       void recordUsage({
         userId: user.id,
         task: 'interview:start',
         provider: provider.id,
         model: provider.modelId,
-        // The provider layer reports usage per call; the interview aggregates
-        // several, so this row is indicative rather than exact.
-        usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        usage: metered.usage(),
         latencyMs: Date.now() - started,
       });
       return reply.send(serialise(outcome));

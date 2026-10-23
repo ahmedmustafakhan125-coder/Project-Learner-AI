@@ -62,6 +62,9 @@ export async function recordUsage(args: RecordUsageArgs): Promise<void> {
     cost_usd: cost.totalUSD,
     unpriced: cost.unpriced,
     latency_ms: args.latencyMs ?? null,
+    // Only when there were searches: the column arrives with migration 0015,
+    // and a row naming it on a database without it would be lost entirely.
+    ...(args.usage.webSearchRequests ? { web_searches: args.usage.webSearchRequests } : {}),
   });
 
   if (error) {
@@ -86,24 +89,44 @@ export interface BudgetStatus {
 }
 
 /**
+ * Which allowance a call draws on.
+ *
+ * With PROJECT_STUDIO on, rows whose task starts `project:` count against a
+ * weekly project allowance and everything else against the daily Q&A one, so
+ * a learner who spends their projects still has their questions. With it off,
+ * every row counts against the daily allowance, whatever the scope, as before.
+ */
+export type BudgetScope = 'qa' | 'project';
+
+const PROJECT_TASKS = 'project:%';
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
  * Checked BEFORE a provider call, not after. Checking afterwards would let a
  * single expensive request blow through the ceiling with nothing to stop it.
  */
-export async function checkBudget(userId: string): Promise<BudgetStatus> {
+export async function checkBudget(userId: string, scope: BudgetScope = 'qa'): Promise<BudgetStatus> {
   const env = loadEnv();
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const scoped = env.PROJECT_STUDIO === 'on';
+  const project = scoped && scope === 'project';
+  const limitUSD = project ? env.PROJECT_USD_BUDGET_PER_USER_PER_WEEK : env.DAILY_USD_BUDGET_PER_USER;
+  const since = new Date(Date.now() - (project ? 7 * DAY_MS : DAY_MS)).toISOString();
 
-  const { data, error } = await db()
+  let query = db()
     .from('llm_usage')
     .select('cost_usd, unpriced')
     .eq('user_id', userId)
     .gte('created_at', since);
+  if (scoped) {
+    query = project ? query.like('task', PROJECT_TASKS) : query.not('task', 'like', PROJECT_TASKS);
+  }
+  const { data, error } = await query;
 
   if (error) {
     // Fail open. A metrics outage should not lock every learner out of the
     // product; the ceiling is a cost guard, not a security control.
     console.error('[budget] check failed, allowing request:', error.message);
-    return { spentUSD: 0, limitUSD: env.DAILY_USD_BUDGET_PER_USER, exceeded: false, hasUnpricedUsage: false };
+    return { spentUSD: 0, limitUSD, exceeded: false, hasUnpricedUsage: false };
   }
 
   const rows = data ?? [];
@@ -111,8 +134,8 @@ export async function checkBudget(userId: string): Promise<BudgetStatus> {
 
   return {
     spentUSD,
-    limitUSD: env.DAILY_USD_BUDGET_PER_USER,
-    exceeded: spentUSD >= env.DAILY_USD_BUDGET_PER_USER,
+    limitUSD,
+    exceeded: spentUSD >= limitUSD,
     hasUnpricedUsage: rows.some((row) => row.unpriced === true),
   };
 }

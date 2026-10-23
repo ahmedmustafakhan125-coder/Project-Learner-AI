@@ -1,9 +1,11 @@
-import type { LLMProvider } from '@ai-edu/llm';
+import { addUsage, emptyUsage } from '@ai-edu/llm';
+import type { LLMProvider, ReasoningEffort } from '@ai-edu/llm';
 
 import type { AbortSignalLike } from '../platform.js';
 import type { ProjectBlueprint } from '../schemas/project.js';
 import { ExpandedStep, type SourceFile } from '../schemas/step.js';
 import { renderProjectState } from './assemble.js';
+import type { Generated } from './blueprint.js';
 import { groundCheckpoint } from './runnable.js';
 import {
   hasSeriousViolation,
@@ -202,6 +204,12 @@ export interface ExpandStepOptions {
   priorFiles?: SourceFile[];
   /** Adjusts this step based on how the learner has been doing. */
   directive?: PacingDirective | null;
+  /**
+   * Effort and output ceiling per call, from `PROJECT_MODELS` with the flag
+   * on. Absent, a step keeps the settings it had before the flag.
+   */
+  reasoning?: ReasoningEffort;
+  maxTokens?: number;
   signal?: AbortSignalLike;
   /**
    * Told what was wrong with an expansion that broke its file manifest.
@@ -222,13 +230,15 @@ export interface ExpandStepOptions {
   onInstructionIssues?: (issues: InstructionIssue[], willRetry: boolean) => void;
 }
 
-export async function expandStep(options: ExpandStepOptions): Promise<ExpandedStep> {
+export async function expandStep(options: ExpandStepOptions): Promise<Generated<ExpandedStep>> {
   const {
     provider,
     blueprint,
     stepIndex,
     priorFiles = [],
     directive,
+    reasoning = 'high',
+    maxTokens = 16_000,
     signal,
     onViolations,
     onInstructionIssues,
@@ -248,7 +258,16 @@ export async function expandStep(options: ExpandStepOptions): Promise<ExpandedSt
         // The blueprint is identical for every step of this project, so it is
         // cached once and read by each expansion rather than re-paid for.
         // Everything below the boundary changes per step and per learner.
-        { type: 'text' as const, text: renderBlueprint(blueprint), cacheBoundary: true },
+        //
+        // Five minutes, not an hour: a step and its prefetch are written
+        // seconds apart, then the learner works for half an hour or more, so a
+        // 1h write (2x input) would usually expire unread.
+        {
+          type: 'text' as const,
+          text: renderBlueprint(blueprint),
+          cacheBoundary: true,
+          cacheTtl: '5m' as const,
+        },
         {
           type: 'text' as const,
           text: renderProjectState({
@@ -271,18 +290,22 @@ export async function expandStep(options: ExpandStepOptions): Promise<ExpandedSt
     });
   }
 
+  // Every call this step makes, retry included, so the route can bill it.
+  let usage = emptyUsage();
+
   const call = async (): Promise<ExpandedStep> => {
     const result = await provider.structured(
       {
         model: provider.modelId,
-        maxTokens: 16_000,
-        reasoning: 'high',
+        maxTokens,
+        reasoning,
         system: [{ text: SYSTEM, cacheBoundary: true }],
         messages,
         ...(signal ? { signal } : {}),
       },
       ExpandedStep,
     );
+    usage = addUsage(usage, result.usage);
     return normaliseStep(result.data, priorFiles);
   };
 
@@ -360,7 +383,7 @@ export async function expandStep(options: ExpandStepOptions): Promise<ExpandedSt
    * returned. A step is persisted exactly once, so this is the last point at
    * which the manifest can still be made true.
    */
-  return repairExpansion(step, context);
+  return { data: repairExpansion(step, context), usage };
 }
 
 /* ------------------------------------------------------------------ *
