@@ -10,13 +10,49 @@ import { z } from 'zod';
  * persistence, and no budget enforcement.
  */
 
+/**
+ * The role a Supabase key acts as, when the key says: `anon` for a publishable
+ * key, `service_role` for a secret key, the `role` claim for a JWT key. Null
+ * for anything else, such as a test placeholder.
+ */
+export function supabaseKeyRole(key: string): string | null {
+  if (key.startsWith('sb_publishable_')) return 'anon';
+  if (key.startsWith('sb_secret_')) return 'service_role';
+  const parts = key.split('.');
+  if (parts.length !== 3 || !parts[1]) return null;
+  try {
+    const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as { role?: unknown };
+    return typeof claims.role === 'string' ? claims.role : null;
+  } catch {
+    return null;
+  }
+}
+
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3001),
   WEB_ORIGIN: z.string().default('http://localhost:3000'),
 
   SUPABASE_URL: z.string().url('SUPABASE_URL must be a URL — run `npm run db:start`'),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'SUPABASE_SERVICE_ROLE_KEY is required'),
+  /*
+   * The API writes only through this key, so an anon or publishable key here
+   * boots fine, reads come back empty and every write fails Row Level
+   * Security. Refuse it at boot instead.
+   */
+  SUPABASE_SERVICE_ROLE_KEY: z
+    .string()
+    .min(1, 'SUPABASE_SERVICE_ROLE_KEY is required')
+    .refine(
+      (key) => {
+        const role = supabaseKeyRole(key);
+        return role === null || role === 'service_role';
+      },
+      (key) => ({
+        message:
+          `SUPABASE_SERVICE_ROLE_KEY acts as ${supabaseKeyRole(key)}, not service_role, so every write would fail Row ` +
+          'Level Security. Use the service_role key (or the sb_secret_ key) that `npm run db:start` prints.',
+      }),
+    ),
 
   DAILY_USD_BUDGET_PER_USER: z.coerce.number().positive().default(2),
 

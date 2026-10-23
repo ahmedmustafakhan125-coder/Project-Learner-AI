@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { loadEnv, projectLearnerBootProblem, resetEnvCache } from '../src/env.js';
+import { loadEnv, projectLearnerBootProblem, resetEnvCache, supabaseKeyRole } from '../src/env.js';
 
 /**
  * The Project Learner flags (docs/project-learner.md §4).
@@ -66,5 +66,41 @@ describe('projectLearnerBootProblem', () => {
   it('does not fail development boot with the flag on and no key', () => {
     const env = load({ PROJECT_LEARNER: 'on' });
     expect(projectLearnerBootProblem(env, {})).toBeNull();
+  });
+});
+
+/** A JWT-shaped key with the given claims. The signature is never checked here. */
+function jwt(claims: Record<string, unknown>): string {
+  const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  return `${part({ alg: 'HS256', typ: 'JWT' })}.${part(claims)}.signature`;
+}
+
+describe('SUPABASE_SERVICE_ROLE_KEY', () => {
+  it('reads the role a key acts as', () => {
+    expect(supabaseKeyRole(jwt({ role: 'service_role' }))).toBe('service_role');
+    expect(supabaseKeyRole(jwt({ role: 'anon' }))).toBe('anon');
+    expect(supabaseKeyRole('sb_publishable_abc')).toBe('anon');
+    expect(supabaseKeyRole('sb_secret_abc')).toBe('service_role');
+    expect(supabaseKeyRole('service-role')).toBeNull();
+    expect(supabaseKeyRole('a.not-json.c')).toBeNull();
+  });
+
+  it('refuses an anon or publishable key, which would fail every write', () => {
+    for (const key of [jwt({ role: 'anon' }), 'sb_publishable_abc']) {
+      expect(() => load({ SUPABASE_SERVICE_ROLE_KEY: key })).toThrow(/acts as anon, not service_role/);
+    }
+  });
+
+  it('accepts a service_role or secret key', () => {
+    for (const key of [jwt({ role: 'service_role' }), 'sb_secret_abc']) {
+      expect(load({ SUPABASE_SERVICE_ROLE_KEY: key }).SUPABASE_SERVICE_ROLE_KEY).toBe(key);
+    }
+  });
+
+  it('never puts the key in the error', () => {
+    const key = jwt({ role: 'anon', ref: 'unique-marker' });
+    expect(() => load({ SUPABASE_SERVICE_ROLE_KEY: key })).toThrow(
+      expect.objectContaining({ message: expect.not.stringContaining(key) }),
+    );
   });
 });
