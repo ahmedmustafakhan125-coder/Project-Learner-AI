@@ -41,7 +41,17 @@ export interface LLMTextPart {
    * the shorter TTL has a cheaper write premium (1.25x vs 2x).
    */
   cacheBoundary?: boolean;
+  /** Cache lifetime for this boundary. Defaults to `'5m'` on a content part. */
+  cacheTtl?: CacheTtl;
 }
+
+/**
+ * How long a cache entry should live. Pick by how it is read: a prefix read
+ * again within seconds wants `'5m'`, whose write costs 1.25x input; one shared
+ * by every learner all day wants `'1h'`, whose write costs 2x but is repaid
+ * by the second read. A 1h write read only within five minutes is waste.
+ */
+export type CacheTtl = '5m' | '1h';
 
 export interface LLMImagePart {
   type: 'image';
@@ -77,6 +87,8 @@ export interface LLMMessage {
 export interface LLMSystemBlock {
   text: string;
   cacheBoundary?: boolean;
+  /** Defaults to `'1h'`: static system prompts are shared by every learner. */
+  cacheTtl?: CacheTtl;
 }
 
 /* ------------------------------------------------------------------ *
@@ -120,7 +132,14 @@ export interface LLMUsage {
   cacheReadTokens: number;
   /** Tokens written to cache (carries a premium). 0 when not reported. */
   cacheWriteTokens: number;
+  /**
+   * The part of `cacheWriteTokens` written with the 5-minute TTL, when the
+   * provider reports the split. The rest is priced at the 1h rate.
+   */
+  cacheWrite5mTokens?: number;
   reasoningTokens?: number;
+  /** Server-side web searches run during the call. Billed per search. */
+  webSearchRequests?: number;
 }
 
 export interface LLMResponse {
@@ -298,3 +317,18 @@ export class LLMStructuredOutputError extends LLMError {
 
 /** A model id that is not in the registry, or whose API key is not configured. */
 export class LLMConfigError extends LLMError {}
+
+/**
+ * A project task with PROJECT_LEARNER on and no Claude key. Routes answer it
+ * with 503 `project_generation_unavailable`; it never falls back to another
+ * vendor in production (invariant 15).
+ */
+export class ProjectGenerationUnavailableError extends LLMConfigError {
+  readonly code = 'project_generation_unavailable';
+  constructor(task: string) {
+    super(
+      `project_generation_unavailable: ${task} runs on Claude, and ANTHROPIC_API_KEY is not set. ` +
+        'Project generation is unavailable until it is.',
+    );
+  }
+}

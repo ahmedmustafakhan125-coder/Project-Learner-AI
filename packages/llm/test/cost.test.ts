@@ -68,3 +68,38 @@ describe('usage helpers', () => {
     expect(addUsage(u, emptyUsage())).toMatchObject({ inputTokens: 7, outputTokens: 9 });
   });
 });
+
+describe('cache write TTLs and searches (docs/project-learner.md §4, §11)', () => {
+  it('prices 5-minute writes at the 5m rate and the rest at the 1h rate', () => {
+    // claude-sonnet-5-5: 5m writes $2.50/MTok, 1h writes $4/MTok.
+    const cost = computeCost(
+      'claude-sonnet-5-5',
+      usage({ cacheWriteTokens: 2_000_000, cacheWrite5mTokens: 1_000_000 }),
+    );
+    expect(cost.cacheWriteUSD).toBeCloseTo(2.5 + 4, 6);
+  });
+
+  it('prices an unsplit write at the 1h rate, so it is never understated', () => {
+    const cost = computeCost('claude-sonnet-5-5', usage({ cacheWriteTokens: 1_000_000 }));
+    expect(cost.cacheWriteUSD).toBeCloseTo(4, 6);
+  });
+
+  it('reads Claude 5.5 cache hits at 5% of input', () => {
+    expect(computeCost('claude-opus-5-5', usage({ cacheReadTokens: 1_000_000 })).totalUSD).toBeCloseTo(0.2, 6);
+    expect(computeCost('claude-sonnet-5-5', usage({ cacheReadTokens: 1_000_000 })).totalUSD).toBeCloseTo(0.1, 6);
+  });
+
+  it('addUsage sums the 5m split and web searches', () => {
+    const sum = addUsage(
+      usage({ cacheWriteTokens: 10, cacheWrite5mTokens: 4, webSearchRequests: 2 }),
+      usage({ cacheWriteTokens: 5, cacheWrite5mTokens: 5, webSearchRequests: 1 }),
+    );
+    expect(sum).toMatchObject({ cacheWriteTokens: 15, cacheWrite5mTokens: 9, webSearchRequests: 3 });
+  });
+
+  it('addUsage leaves the optional fields out when neither side had them', () => {
+    const sum = addUsage(usage({ inputTokens: 1 }), usage({ inputTokens: 2 }));
+    expect(sum).not.toHaveProperty('webSearchRequests');
+    expect(sum).not.toHaveProperty('cacheWrite5mTokens');
+  });
+});

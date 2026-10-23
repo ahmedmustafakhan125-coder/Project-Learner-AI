@@ -20,9 +20,18 @@ import {
   type ProjectArtifact,
   type SourceFile,
 } from '@ai-edu/core';
-import { createProviderForTask } from '@ai-edu/llm';
+import {
+  DEFAULT_PROJECT_TIER,
+  ProjectGenerationUnavailableError,
+  createProviderForStage,
+  createProviderForTask,
+  type LLMProvider,
+  type ProjectStage,
+  type ReasoningEffort,
+} from '@ai-edu/llm';
 
 import { requireAuth, userOf } from '../auth.js';
+import { loadEnv } from '../env.js';
 import { gatewayErrorReply, screenOrThrow } from '../gateway.js';
 import { forgetSource, memoryQueryFor, recallMemory } from '../brain.js';
 import { checkBudget, db, recordUsage } from '../db.js';
@@ -74,6 +83,110 @@ const CreateBody = z.object({
   model: z.string().optional(),
 });
 
+/** A provider for one project stage, and the settings to call it with. */
+interface StageCall {
+  provider: LLMProvider;
+  /** Absent with the flag off, so core keeps today's effort and ceilings. */
+  reasoning?: ReasoningEffort;
+  maxTokens?: number;
+}
+
+type StageResult =
+  | { ok: true; call: StageCall }
+  | { ok: false; status: 503; body: { error: string; message: string } };
+
+/**
+ * Which model writes this stage.
+ *
+ * With PROJECT_LEARNER on, the model, effort and output ceiling come from
+ * `PROJECT_MODELS` and the UI pick is ignored: plan quality must not depend on
+ * a dropdown. No tier is scored before intake exists, so these routes plan at
+ * `DEFAULT_PROJECT_TIER`. With no Claude key that is a 503, never a quiet
+ * fallback. With the flag off, the old resolution, user pick included.
+ */
+function stageProvider(stage: ProjectStage, userChoice?: string): StageResult {
+  try {
+    if (loadEnv().PROJECT_LEARNER !== 'on') {
+      return { ok: true, call: { provider: createProviderForTask('projectGen', userChoice) } };
+    }
+    return { ok: true, call: createProviderForStage(stage, DEFAULT_PROJECT_TIER) };
+  } catch (err) {
+    if (err instanceof ProjectGenerationUnavailableError) {
+      return {
+        ok: false,
+        status: 503,
+        body: {
+          error: 'project_generation_unavailable',
+          message: 'Project generation is unavailable right now. Please try again later.',
+        },
+      };
+    }
+    return {
+      ok: false,
+      status: 503,
+      body: { error: 'no_provider', message: err instanceof Error ? err.message : 'unavailable' },
+    };
+  }
+}
+
+/** Effort and ceiling to pass on, only when the stage set them. */
+function stageSettings(call: StageCall): { reasoning?: ReasoningEffort; maxTokens?: number } {
+  return {
+    ...(call.reasoning ? { reasoning: call.reasoning } : {}),
+    ...(call.maxTokens ? { maxTokens: call.maxTokens } : {}),
+  };
+}
+
+/**
+ * The refusal for an exhausted allowance, or null to go ahead.
+ *
+ * With PROJECT_LEARNER on, project calls draw on the weekly project allowance
+ * and say so; Q&A keeps its own. With it off, the daily allowance, as before.
+ */
+async function budgetRefusal(
+  userId: string,
+): Promise<{ status: 429; body: { error: string; message: string } } | null> {
+  const flagOn = loadEnv().PROJECT_LEARNER === 'on';
+  const budget = await checkBudget(userId, flagOn ? 'project' : 'qa');
+  if (!budget.exceeded) return null;
+  return flagOn
+    ? {
+        status: 429,
+        body: {
+          error: 'project_budget_exceeded',
+          message: `Weekly project allowance of $${budget.limitUSD.toFixed(2)} reached. Questions still work.`,
+        },
+      }
+    : {
+        status: 429,
+        body: {
+          error: 'budget_exceeded',
+          message: `Daily allowance of $${budget.limitUSD.toFixed(2)} reached.`,
+        },
+      };
+}
+
+/**
+ * Whether the learner has started a step: saved a draft or submitted an
+ * attempt. Step N+1 is written ahead only once this is true of step N.
+ */
+async function hasStarted(projectId: string, userId: string, stepIndex: number): Promise<boolean> {
+  const { data: step } = await db()
+    .from('project_steps')
+    .select('id')
+    .eq('project_id', projectId)
+    .eq('step_index', stepIndex)
+    .maybeSingle();
+  if (!step) return false;
+
+  const [{ data: progress }, { data: attempts }] = await Promise.all([
+    db().from('step_progress').select('files').eq('step_id', step.id).eq('user_id', userId).maybeSingle(),
+    db().from('step_attempts').select('id').eq('step_id', step.id).eq('user_id', userId).limit(1),
+  ]);
+  const drafted = Array.isArray(progress?.files) && progress.files.length > 0;
+  return drafted || (attempts ?? []).length > 0;
+}
+
 export async function projectRoutes(app: FastifyInstance): Promise<void> {
   /* ---------------- Phase A: blueprint ---------------- */
 
@@ -104,22 +217,12 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(refusal.status).send(refusal.body);
     }
 
-    const budget = await checkBudget(user.id);
-    if (budget.exceeded) {
-      return reply.code(429).send({
-        error: 'budget_exceeded',
-        message: `Daily allowance of $${budget.limitUSD.toFixed(2)} reached.`,
-      });
-    }
+    const refusal = await budgetRefusal(user.id);
+    if (refusal) return reply.code(refusal.status).send(refusal.body);
 
-    let provider;
-    try {
-      provider = createProviderForTask('projectGen', parsed.data.model);
-    } catch (err) {
-      return reply
-        .code(503)
-        .send({ error: 'no_provider', message: err instanceof Error ? err.message : 'unavailable' });
-    }
+    const stage = stageProvider('blueprint', parsed.data.model);
+    if (!stage.ok) return reply.code(stage.status).send(stage.body);
+    const { provider } = stage.call;
 
     // What the learner already holds and keeps getting wrong, so the plan is
     // pitched at them rather than at a generic learner of their stated level.
@@ -127,11 +230,12 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
 
     const started = Date.now();
     try {
-      const blueprint = await generateBlueprint({
+      const { data: blueprint, usage } = await generateBlueprint({
         provider,
         compiled: safeCompiled,
         teachDeployment: parsed.data.teachDeployment,
         memory: memory?.text ?? null,
+        ...stageSettings(stage.call),
       });
 
       void recordUsage({
@@ -139,7 +243,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         task: 'project:blueprint',
         provider: provider.id,
         model: provider.modelId,
-        usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        usage,
         latencyMs: Date.now() - started,
       });
 
@@ -517,22 +621,33 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      const budget = await checkBudget(user.id);
-      if (budget.exceeded) {
-        return reply.code(429).send({
-          error: 'budget_exceeded',
-          message: `Daily allowance of $${budget.limitUSD.toFixed(2)} reached.`,
-        });
+      /*
+       * Writing a step ahead of the frontier is a prefetch. With PROJECT_LEARNER
+       * on it waits until the learner has started the step before it, so one
+       * who opens step 1 and leaves costs one step, not two. The rule is
+       * core's; this only loads what it reasons over.
+       */
+      if (loadEnv().PROJECT_LEARNER === 'on' && stepIndex > progress.unlockedThrough) {
+        const plan = planExpansion(
+          [{ index: stepIndex, expanded: false, expanding: false }],
+          stepIndex - 1,
+          { currentStarted: await hasStarted(project.id, user.id, stepIndex - 1) },
+        );
+        if (!plan.background.includes(stepIndex)) {
+          return reply.code(403).send({
+            error: 'step_locked',
+            message: 'This step is written once you start the one before it.',
+            unlockedThrough: progress.unlockedThrough,
+          });
+        }
       }
 
-      let provider;
-      try {
-        provider = createProviderForTask('projectGen');
-      } catch (err) {
-        return reply
-          .code(503)
-          .send({ error: 'no_provider', message: err instanceof Error ? err.message : 'unavailable' });
-      }
+      const refusal = await budgetRefusal(user.id);
+      if (refusal) return reply.code(refusal.status).send(refusal.body);
+
+      const stage = stageProvider('step');
+      if (!stage.ok) return reply.code(stage.status).send(stage.body);
+      const { provider } = stage.call;
 
       // Tolerant on purpose: projects planned before file plans existed parse
       // with an empty plan and keep working, rather than 500-ing every learner
@@ -599,12 +714,13 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
 
       const started = Date.now();
       try {
-        const expansion = await expandStep({
+        const { data: expansion, usage } = await expandStep({
           provider,
           blueprint,
           stepIndex,
           priorFiles,
           directive,
+          ...stageSettings(stage.call),
           /*
            * A step that broke its file manifest is repaired either way, so
            * nothing here reaches the learner. It is logged because a silent
@@ -667,10 +783,10 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
 
         void recordUsage({
           userId: user.id,
-          task: `project:expand:${stepIndex}`,
+          task: 'project:step',
           provider: provider.id,
           model: provider.modelId,
-          usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          usage,
           latencyMs: Date.now() - started,
         });
 
@@ -817,31 +933,23 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         return reply.send({ artifact: cached, cached: true, completeness });
       }
 
-      const budget = await checkBudget(user.id);
-      if (budget.exceeded) {
-        return reply.code(429).send({
-          error: 'budget_exceeded',
-          message: `Daily allowance of $${budget.limitUSD.toFixed(2)} reached.`,
-        });
-      }
+      const refusal = await budgetRefusal(user.id);
+      if (refusal) return reply.code(refusal.status).send(refusal.body);
 
-      let provider;
-      try {
-        provider = createProviderForTask('projectGen');
-      } catch (err) {
-        return reply
-          .code(503)
-          .send({ error: 'no_provider', message: err instanceof Error ? err.message : 'unavailable' });
-      }
+      const stage = stageProvider('finish');
+      if (!stage.ok) return reply.code(stage.status).send(stage.body);
+      const { provider } = stage.call;
 
       const started = Date.now();
       let written;
+      let usage;
       try {
-        written = await finishProject({
+        ({ data: written, usage } = await finishProject({
           provider,
           blueprint,
           files: assembled.files,
-        });
+          ...stageSettings(stage.call),
+        }));
       } catch (err) {
         request.log.error({ err }, 'finish generation failed');
         return reply.code(502).send({
@@ -855,7 +963,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         task: 'project:finish',
         provider: provider.id,
         model: provider.modelId,
-        usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        usage,
         latencyMs: Date.now() - started,
       });
 

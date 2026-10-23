@@ -1,10 +1,10 @@
-import type { LLMProvider } from '@ai-edu/llm';
+import type { LLMProvider, ReasoningEffort } from '@ai-edu/llm';
 import { z } from 'zod';
 
 import type { AbortSignalLike } from '../platform.js';
 import type { ProjectBlueprint } from '../schemas/project.js';
 import { SourceFile } from '../schemas/step.js';
-import { normalisePath } from './blueprint.js';
+import { normalisePath, type Generated } from './blueprint.js';
 import { renderProjectState } from './assemble.js';
 
 /**
@@ -69,17 +69,22 @@ export interface FinishProjectOptions {
   blueprint: ProjectBlueprint;
   /** The assembled project — the learner's own code wherever they wrote it. */
   files: SourceFile[];
+  /** From `PROJECT_MODELS` with the flag on; absent keeps today's settings. */
+  reasoning?: ReasoningEffort;
+  maxTokens?: number;
   signal?: AbortSignalLike;
 }
 
-export async function finishProject(options: FinishProjectOptions): Promise<FinishResult> {
-  const { provider, blueprint, files, signal } = options;
+export async function finishProject(
+  options: FinishProjectOptions,
+): Promise<Generated<FinishResult>> {
+  const { provider, blueprint, files, reasoning = 'high', maxTokens = 12_000, signal } = options;
 
   const result = await provider.structured(
     {
       model: provider.modelId,
-      maxTokens: 12_000,
-      reasoning: 'high',
+      maxTokens,
+      reasoning,
       system: [{ text: SYSTEM, cacheBoundary: true }],
       messages: [
         {
@@ -104,7 +109,7 @@ export async function finishProject(options: FinishProjectOptions): Promise<Fini
     FinishResult,
   );
 
-  return normaliseFinish(result.data, blueprint);
+  return { data: normaliseFinish(result.data, blueprint), usage: result.usage };
 }
 
 function renderPlan(blueprint: ProjectBlueprint): string {

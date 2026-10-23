@@ -5,10 +5,10 @@
 
 import { AnthropicAdapter } from './adapters/anthropic.js';
 import { OpenAICompatibleAdapter } from './adapters/openai-compatible.js';
-import { getModel, getVendor, resolveModel } from './registry.js';
-import type { TaskKind } from './registry.js';
+import { getModel, getVendor, resolveModel, resolveProjectStage } from './registry.js';
+import type { ProjectStage, ProjectTier, TaskKind } from './registry.js';
 import { LLMConfigError } from './types.js';
-import type { LLMProvider } from './types.js';
+import type { LLMProvider, ReasoningEffort } from './types.js';
 
 export interface CreateProviderOptions {
   env?: NodeJS.ProcessEnv;
@@ -45,7 +45,8 @@ export function createProvider(
 
 /**
  * Provider for a task, honouring the user's pick when it is usable and falling
- * back to the task default. Throws only when nothing at all is configured.
+ * back to the task default. Throws when nothing at all is configured, or, with
+ * PROJECT_LEARNER on, when a project task has no Claude key.
  */
 export function createProviderForTask(
   task: TaskKind,
@@ -60,4 +61,25 @@ export function createProviderForTask(
     );
   }
   return createProvider(model.id, { env });
+}
+
+export interface StageProvider {
+  provider: LLMProvider;
+  reasoning: ReasoningEffort;
+  maxTokens: number;
+}
+
+/**
+ * Provider plus effort and output ceiling for one project stage, all read from
+ * `PROJECT_MODELS`. There is no user choice to pass: project stages are not
+ * picked in the UI. Throws `ProjectGenerationUnavailableError` when the flag is
+ * on and no Claude key is set.
+ */
+export function createProviderForStage(
+  stage: ProjectStage,
+  tier: ProjectTier,
+  { env = process.env }: CreateProviderOptions = {},
+): StageProvider {
+  const { model, reasoning, maxTokens } = resolveProjectStage(stage, tier, env);
+  return { provider: createProvider(model.id, { env }), reasoning, maxTokens };
 }

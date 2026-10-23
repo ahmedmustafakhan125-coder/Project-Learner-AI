@@ -112,11 +112,12 @@ npm run db:reset   # destroys local data and reapplies every migration
 ```
 
 The migrations in `supabase/migrations/` are applied in filename order. There
-are currently 13 migrations, covering the schema, forced RLS, step progress,
+are currently 14 migrations, covering the schema, forced RLS, step progress,
 finished-project artifacts, follow-ups, the project tutor, step timing, the
 brain (`0011_brain.sql`, and `0012_brain_forget.sql` so that deleting a
-conversation or project also removes it from the brain), and assessment
-(`0013_assessment.sql`).
+conversation or project also removes it from the brain), assessment
+(`0013_assessment.sql`), and the private storage bucket that uploaded
+attachments go into (`0014_attachments_bucket.sql`).
 For a non-destructive update, use:
 
 ```powershell
@@ -205,7 +206,7 @@ exists rather than repairing its build.
 ## 1. Supabase
 
 Create a cloud project. Apply the migrations **in order** — `0001` through
-`0013` — via the SQL editor or `supabase db push`. Order matters: `0003` makes
+`0014` — via the SQL editor or `supabase db push`. Order matters: `0003` makes
 the attempt-insert policy `RESTRICTIVE`, which only behaves correctly on top of
 the permissive owner policy `0001` creates, and `0011` revokes privileges that
 `0004`'s default grants would otherwise hand the browser.
@@ -349,6 +350,7 @@ Open a project, edit a file, run a checkpoint.
 | Questions are refused with 422 `prompt_blocked` | The safety filter blocked the prompt; the response's `reasonCodes` say which rule fired. Working as designed. |
 | Brain and assessment features fail with 404 (`Route GET:/api/brain/graph not found`) | The API is running an old build: its latest Render deploy failed or never started. Check the service's **Events**, then its settings (section 2). |
 | Brain and assessment features fail with a database error | Migrations `0011`–`0013` are missing from Supabase. See section 1. |
+| Attaching a file fails with 500 `upload_failed` ("Bucket not found") | Migration `0014` is missing from Supabase, so the `attachments` storage bucket does not exist. See section 1. |
 | Vercel reports a failed deployment for an API project on every push | A Vercel project points at `apps/api`. Delete it; the API deploys on Render. |
 | Browser CORS error on `/api/agents/ask` | `WEB_ORIGIN` does not exactly match the Vercel origin. Scheme and host must both match. |
 | Answers arrive in one lump at the end instead of streaming | nginx buffering, or `proxy_read_timeout` too low (VPS). |

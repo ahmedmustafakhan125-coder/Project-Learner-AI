@@ -28,6 +28,17 @@ export interface PrefetchPlan {
 /** How far ahead to run. One step is enough to hide the latency. */
 export const PREFETCH_DEPTH = 1;
 
+export interface PlanExpansionOptions {
+  /**
+   * Whether the learner has started the current step: saved a draft or
+   * submitted an attempt. When it is `false`, nothing is prefetched, so a
+   * learner who looks at step 1 and leaves costs one step, not two. Left
+   * undefined, the next step is prefetched as soon as this one opens, as it
+   * was before PROJECT_LEARNER.
+   */
+  currentStarted?: boolean;
+}
+
 /**
  * `currentIndex` is the step the learner is on right now.
  *
@@ -38,6 +49,7 @@ export const PREFETCH_DEPTH = 1;
 export function planExpansion(
   steps: StepExpansionState[],
   currentIndex: number,
+  options: PlanExpansionOptions = {},
 ): PrefetchPlan {
   const at = (index: number): StepExpansionState | undefined =>
     steps.find((step) => step.index === index);
@@ -46,6 +58,7 @@ export function planExpansion(
   const blocking = current && !current.expanded && !current.expanding ? currentIndex : null;
 
   const background: number[] = [];
+  if (options.currentStarted === false) return { blocking, background };
   for (let offset = 1; offset <= PREFETCH_DEPTH; offset += 1) {
     const next = at(currentIndex + offset);
     if (!next) break;

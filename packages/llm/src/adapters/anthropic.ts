@@ -17,7 +17,8 @@
  */
 
 import Anthropic, { toFile } from '@anthropic-ai/sdk';
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
+import { jsonSchemaOutputFormat } from '@anthropic-ai/sdk/helpers/json-schema';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 
 import type { ModelEntry } from '../registry.js';
 import {
@@ -31,6 +32,7 @@ import {
   LLMUnavailableError,
 } from '../types.js';
 import type {
+  CacheTtl,
   LLMEvent,
   LLMMessage,
   LLMProvider,
@@ -91,14 +93,25 @@ function mapStopReason(reason: string | null | undefined): LLMStopReason {
   }
 }
 
-function mapUsage(usage: Anthropic.Usage | undefined): LLMUsage {
+/**
+ * `cache_creation` splits writes by TTL, so 5-minute writes can be priced at
+ * their own rate; `server_tool_use` counts the web searches billed per search.
+ * Both are left out when absent rather than reported as zero.
+ */
+export function mapAnthropicUsage(usage: Anthropic.Usage | undefined): LLMUsage {
+  const fiveMinute = usage?.cache_creation?.ephemeral_5m_input_tokens;
+  const searches = usage?.server_tool_use?.web_search_requests;
   return {
     inputTokens: usage?.input_tokens ?? 0,
     outputTokens: usage?.output_tokens ?? 0,
     cacheReadTokens: usage?.cache_read_input_tokens ?? 0,
     cacheWriteTokens: usage?.cache_creation_input_tokens ?? 0,
+    ...(typeof fiveMinute === 'number' ? { cacheWrite5mTokens: fiveMinute } : {}),
+    ...(typeof searches === 'number' && searches > 0 ? { webSearchRequests: searches } : {}),
   };
 }
+
+const mapUsage = mapAnthropicUsage;
 
 export class AnthropicAdapter implements LLMProvider {
   readonly id = 'anthropic';
@@ -206,48 +219,54 @@ export class AnthropicAdapter implements LLMProvider {
 
   /**
    * Native schema enforcement. No repair loop is needed here because the API
-   * constrains generation server-side; `parsed_output` is only null when the
-   * response was truncated, which we surface as a real error rather than
+   * constrains generation server-side. The answer is still validated with the
+   * caller's schema: that applies its defaults and transforms, and a truncated
+   * response (cut off by max_tokens) surfaces as a real error rather than
    * letting `undefined` leak downstream.
    */
   async structured<Out>(req: LLMRequest, schema: OutputSchema<Out>): Promise<StructuredResult<Out>> {
     const params = this.baseParams(req, false);
     const outputConfig = {
       ...((params as Record<string, unknown>)['output_config'] as Record<string, unknown>),
-      format: zodOutputFormat(schema as never),
+      format: buildOutputFormat(schema),
     };
 
+    let message: Anthropic.Message;
     try {
-      const response = await this.client.messages.parse(
+      message = await this.client.messages.create(
         { ...params, output_config: outputConfig } as never,
         req.signal ? { signal: req.signal } : undefined,
       );
-
-      this.assertNotRefusal(response as unknown as Anthropic.Message);
-
-      const parsed = (response as { parsed_output?: Out | null }).parsed_output;
-      if (parsed === null || parsed === undefined) {
-        throw new LLMStructuredOutputError(
-          'Model returned no parseable structured output (likely truncated by max_tokens).',
-          {
-            provider: this.id,
-            model: this.modelId,
-            raw: extractText(response as unknown as Anthropic.Message),
-            issues: ['parsed_output was null'],
-          },
-        );
-      }
-
-      return {
-        data: parsed,
-        usage: mapUsage((response as unknown as Anthropic.Message).usage),
-        model: this.entry.providerModel,
-        strategy: 'native-schema',
-        repaired: false,
-      };
+      this.assertNotRefusal(message);
     } catch (err) {
       throw this.mapError(err);
     }
+
+    const raw = extractText(message);
+    const fail = (issues: string[]) =>
+      new LLMStructuredOutputError(
+        'Model returned no valid structured output (likely truncated by max_tokens).',
+        { provider: this.id, model: this.modelId, raw, issues },
+      );
+
+    let json: unknown;
+    try {
+      json = JSON.parse(raw);
+    } catch (err) {
+      throw fail([err instanceof Error ? err.message : 'not JSON']);
+    }
+    const validated = schema.safeParse(json);
+    if (!validated.success) {
+      throw fail(validated.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`));
+    }
+
+    return {
+      data: validated.data,
+      usage: mapUsage(message.usage),
+      model: this.entry.providerModel,
+      strategy: 'native-schema',
+      repaired: false,
+    };
   }
 
   /* ---------------- extras ---------------- */
@@ -345,7 +364,24 @@ export class AnthropicAdapter implements LLMProvider {
  * ------------------------------------------------------------------ */
 
 /**
- * The cache boundary becomes a `cache_control` marker with a 1h TTL.
+ * `output_config.format` for a schema.
+ *
+ * Not the SDK's `zodOutputFormat`: that takes zod v4 schemas only and throws
+ * on the v3 schemas this codebase uses, before any request is sent. The JSON
+ * schema goes through the SDK's own transform, which drops the keywords
+ * structured outputs reject. Its `parse` is removed because `messages.create`
+ * would send it as a field; the caller's schema validates the answer instead.
+ */
+export function buildOutputFormat(schema: OutputSchema<unknown>): Record<string, unknown> {
+  const json = zodToJsonSchema(schema as never, { $refStrategy: 'none', target: 'jsonSchema7' });
+  const { $schema: _ignored, ...body } = json as Record<string, unknown>;
+  const { parse: _parse, ...format } = jsonSchemaOutputFormat(body as never);
+  return format;
+}
+
+/**
+ * The cache boundary becomes a `cache_control` marker, with a 1h TTL unless the
+ * block asks for `'5m'`.
  *
  * Anthropic renders `tools → system → messages`, so a marker on the last shared
  * system block also caches everything before it. The 1h TTL is deliberate: a
@@ -360,9 +396,7 @@ export function buildSystemBlocks(
   return system.map((block) => ({
     type: 'text' as const,
     text: block.text,
-    ...(block.cacheBoundary
-      ? { cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } }
-      : {}),
+    ...(block.cacheBoundary ? { cache_control: cacheControl(block.cacheTtl ?? '1h') } : {}),
   }));
 }
 
@@ -392,6 +426,14 @@ export function buildAnthropicMessages(
   return mapped as unknown as Anthropic.MessageParam[];
 }
 
+/**
+ * Omitting `ttl` is the API's 5-minute default; `'1h'` is the only value
+ * that has to be spelled out.
+ */
+function cacheControl(ttl: CacheTtl): Anthropic.CacheControlEphemeral {
+  return ttl === '1h' ? { type: 'ephemeral', ttl: '1h' } : { type: 'ephemeral' };
+}
+
 /* ------------------------------------------------------------------ *
  * Content mapping
  * ------------------------------------------------------------------ */
@@ -409,7 +451,7 @@ function toAnthropicContent(
           text: part.text,
           // Default 5-minute TTL — this only needs to outlive the gap between
           // sibling fan-out requests, and the write premium is lower than 1h.
-          ...(part.cacheBoundary ? { cache_control: { type: 'ephemeral' as const } } : {}),
+          ...(part.cacheBoundary ? { cache_control: cacheControl(part.cacheTtl ?? '5m') } : {}),
         };
       case 'image':
         return {

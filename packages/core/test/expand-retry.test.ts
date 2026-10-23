@@ -126,6 +126,8 @@ function baseStep(overrides: Partial<ExpandedStep> = {}): ExpandedStep {
  * Records the request it was given each time, so a test can assert that the
  * retry actually told the model what was wrong rather than just asking again.
  */
+const ZERO = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+
 function scripted(answers: ExpandedStep[]) {
   const requests: Array<{ text: string }> = [];
   let call = 0;
@@ -142,7 +144,7 @@ function scripted(answers: ExpandedStep[]) {
 
       const answer = answers[Math.min(call, answers.length - 1)]!;
       call += 1;
-      return { data: answer };
+      return { data: answer, usage: ZERO };
     },
   } as unknown as LLMProvider;
 
@@ -154,7 +156,7 @@ async function expand(answers: ExpandedStep[]) {
   const seen: Array<{ violations: Violation[]; willRetry: boolean }> = [];
   const prose: Array<{ issues: InstructionIssue[]; willRetry: boolean }> = [];
 
-  const step = await expandStep({
+  const { data: step } = await expandStep({
     provider,
     blueprint: BLUEPRINT,
     stepIndex: 1,
@@ -378,11 +380,14 @@ describe('a retry that cannot be made', () => {
       async structured() {
         call += 1;
         if (call === 2) throw new Error('provider exploded');
-        return { data: baseStep({ solutionFiles: [{ path: 'app.js', contents: PRIOR_APP_JS }] }) };
+        return {
+          data: baseStep({ solutionFiles: [{ path: 'app.js', contents: PRIOR_APP_JS }] }),
+          usage: ZERO,
+        };
       },
     } as unknown as LLMProvider;
 
-    const step = await expandStep({
+    const { data: step } = await expandStep({
       provider,
       blueprint: BLUEPRINT,
       stepIndex: 1,

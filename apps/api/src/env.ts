@@ -19,9 +19,46 @@ const EnvSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'SUPABASE_SERVICE_ROLE_KEY is required'),
 
   DAILY_USD_BUDGET_PER_USER: z.coerce.number().positive().default(2),
+
+  /*
+   * Project Learner (docs/project-learner.md §4). Off by default, and everything
+   * it adds sits behind it: with the flag off the app behaves as it did.
+   *
+   * PROJECT_GEN_FALLBACK=chain lets a contributor with only a Gemini key run
+   * project generation on Flash in development. It is refused in production,
+   * where a project route with no Claude key must say so, not quietly run on
+   * another model.
+   */
+  PROJECT_LEARNER: z.enum(['on', 'off']).default('off'),
+  PROJECT_GEN_FALLBACK: z.enum(['fail', 'chain']).default('fail'),
+  /** Spend on `project:*` tasks over seven days. About three T3 projects. */
+  PROJECT_USD_BUDGET_PER_USER_PER_WEEK: z.coerce.number().positive().default(5),
+}).refine((env) => !(env.NODE_ENV === 'production' && env.PROJECT_GEN_FALLBACK === 'chain'), {
+  path: ['PROJECT_GEN_FALLBACK'],
+  message: 'chain is development-only; project generation never falls back in production',
 });
 
 export type Env = z.infer<typeof EnvSchema>;
+
+/**
+ * Why boot must stop, or null when it may go on.
+ *
+ * Only production with the flag on and no Anthropic key fails: every project
+ * route would be dead on arrival. With the flag off this returns null whatever
+ * the keys, so this code can be deployed before the Render service has a key.
+ * Development boots either way and logs the gap instead.
+ */
+export function projectLearnerBootProblem(
+  env: Env,
+  source: NodeJS.ProcessEnv = process.env,
+): string | null {
+  if (env.NODE_ENV !== 'production' || env.PROJECT_LEARNER !== 'on') return null;
+  if (source['ANTHROPIC_API_KEY']?.trim()) return null;
+  return (
+    'PROJECT_LEARNER=on needs ANTHROPIC_API_KEY: project generation runs on Claude and has no ' +
+    'fallback in production. Set the key, or set PROJECT_LEARNER=off.'
+  );
+}
 
 let cached: Env | null = null;
 

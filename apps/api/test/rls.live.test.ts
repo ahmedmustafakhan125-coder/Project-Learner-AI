@@ -83,7 +83,7 @@ beforeAll(async () => {
   // Alice creates something worth stealing.
   const { data, error } = await alice
     .from('projects')
-    .insert({ user_id: aliceId, title: `rls-probe-${stamp}`, status: 'draft' })
+    .insert({ user_id: aliceId, title: `rls-probe-${stamp}`, status: 'draft', skill_level: 'beginner' })
     .select('id')
     .single();
 
@@ -160,6 +160,7 @@ describe('every table carries an owner policy', () => {
     'brain_projection_state',
     'assessments',
     'assessment_answers',
+    'project_intakes',
   ];
 
   it('a fresh learner sees no rows they do not own', async () => {
@@ -211,6 +212,24 @@ describe('the brain and assessments are read-only to the browser', () => {
   it('the answer key is unreadable from the browser, even for the learner’s own sittings', async () => {
     const { data, error } = await alice.from('assessment_keys').select('*').limit(1);
     // Either refused outright or empty — never a row.
+    expect(error !== null || (data ?? []).length === 0).toBe(true);
+  });
+
+  it('a learner cannot write an intake, so cannot approve a brief no model wrote', async () => {
+    const { error } = await alice.from('project_intakes').insert({
+      user_id: aliceId,
+      compiled_query: { text: 'forged' },
+      project_profile: 'general',
+      profile_confidence: 1,
+      tier: 'T1',
+      status: 'approved',
+      brief: { forged: true },
+    });
+    expect(error, 'only the API may write an intake').not.toBeNull();
+  });
+
+  it('the technology dossier cache is unreadable from the browser', async () => {
+    const { data, error } = await alice.from('research_dossiers').select('*').limit(1);
     expect(error !== null || (data ?? []).length === 0).toBe(true);
   });
 

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildAnthropicMessages, buildSystemBlocks } from '../src/adapters/anthropic.js';
+import {
+  buildAnthropicMessages,
+  buildSystemBlocks,
+  mapAnthropicUsage,
+} from '../src/adapters/anthropic.js';
 import { mapUsage } from '../src/adapters/openai-compatible.js';
 
 describe('anthropic: system block mapping', () => {
@@ -110,5 +114,59 @@ describe('openai-compatible: usage normalisation', () => {
       completion_tokens_details: { reasoning_tokens: 60 },
     });
     expect(usage.reasoningTokens).toBe(60);
+  });
+});
+
+describe('anthropic: cache TTLs (docs/project-learner.md §4)', () => {
+  it('keeps the 1h default on system blocks and honours 5m when asked', () => {
+    const blocks = buildSystemBlocks([
+      { text: 'shared', cacheBoundary: true },
+      { text: 'per project', cacheBoundary: true, cacheTtl: '5m' },
+    ]) as Array<Record<string, any>>;
+    expect(blocks[0]!['cache_control']).toEqual({ type: 'ephemeral', ttl: '1h' });
+    expect(blocks[1]!['cache_control']).toEqual({ type: 'ephemeral' });
+  });
+
+  it('keeps the 5m default on content parts and honours 1h when asked', () => {
+    const mapped = buildAnthropicMessages(
+      [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'prefix', cacheBoundary: true },
+            { type: 'text', text: 'long-lived', cacheBoundary: true, cacheTtl: '1h' },
+          ],
+        },
+      ],
+      false,
+    ) as Array<{ content: Array<Record<string, any>> }>;
+    expect(mapped[0]!.content[0]!['cache_control']).toEqual({ type: 'ephemeral' });
+    expect(mapped[0]!.content[1]!['cache_control']).toEqual({ type: 'ephemeral', ttl: '1h' });
+  });
+});
+
+describe('anthropic: usage mapping', () => {
+  it('reads the 5m write split and the web search count', () => {
+    const usage = mapAnthropicUsage({
+      input_tokens: 100,
+      output_tokens: 20,
+      cache_read_input_tokens: 50,
+      cache_creation_input_tokens: 248,
+      cache_creation: { ephemeral_5m_input_tokens: 148, ephemeral_1h_input_tokens: 100 },
+      server_tool_use: { web_search_requests: 3 },
+    } as never);
+    expect(usage).toEqual({
+      inputTokens: 100,
+      outputTokens: 20,
+      cacheReadTokens: 50,
+      cacheWriteTokens: 248,
+      cacheWrite5mTokens: 148,
+      webSearchRequests: 3,
+    });
+  });
+
+  it('leaves the optional fields out when the response has none', () => {
+    const usage = mapAnthropicUsage({ input_tokens: 1, output_tokens: 2 } as never);
+    expect(usage).toEqual({ inputTokens: 1, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 });
   });
 });

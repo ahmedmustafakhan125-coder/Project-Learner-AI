@@ -321,7 +321,8 @@ export async function tutorRoutes(app: FastifyInstance): Promise<void> {
 
       let provider;
       try {
-        provider = createProviderForTask('fanout');
+        // Gemini 4 Argon with PROJECT_LEARNER on; the fan-out chain, as before, with it off.
+        provider = createProviderForTask('tutor');
       } catch (err) {
         return reply.code(503).send({
           error: 'no_provider',

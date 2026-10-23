@@ -1,4 +1,4 @@
-import type { LLMProvider } from '@ai-edu/llm';
+import type { LLMProvider, LLMUsage, ReasoningEffort } from '@ai-edu/llm';
 
 import type { AbortSignalLike } from '../platform.js';
 import type { CompiledQuery } from '../schemas/interview.js';
@@ -94,7 +94,25 @@ export interface GenerateBlueprintOptions {
   teachDeployment?: boolean;
   /** The learner's recalled history (brain/memory.ts), rendered. */
   memory?: string | null;
+  /**
+   * Effort and output ceiling, from `PROJECT_MODELS` when PROJECT_LEARNER is
+   * on. Absent, the call keeps the settings it had before the flag.
+   */
+  reasoning?: ReasoningEffort;
+  maxTokens?: number;
   signal?: AbortSignalLike;
+}
+
+/**
+ * What a generation call produced and what it cost to produce it.
+ *
+ * `usage` is summed over every call the function made, retries included, so
+ * the route records what was actually billed rather than a row of zeros the
+ * budget cannot see (invariant 16).
+ */
+export interface Generated<T> {
+  data: T;
+  usage: LLMUsage;
 }
 
 /**
@@ -116,19 +134,27 @@ If the project is a local CLI or a library, where deployment honestly means "pub
 
 export async function generateBlueprint(
   options: GenerateBlueprintOptions,
-): Promise<ProjectBlueprint> {
-  const { provider, compiled, teachDeployment = false, memory = null, signal } = options;
+): Promise<Generated<ProjectBlueprint>> {
+  const {
+    provider,
+    compiled,
+    teachDeployment = false,
+    memory = null,
+    // The file plan and per-step manifest made the blueprint substantially
+    // larger; the old 8k ceiling truncated a twelve-step plan mid-tree.
+    maxTokens = 12_000,
+    // The blueprint decides the shape of everything that follows, and it is
+    // generated once per project — the one place worth spending on depth.
+    reasoning = 'xhigh',
+    signal,
+  } = options;
   const question = teachDeployment ? compiled.text + TEACH_DEPLOYMENT : compiled.text;
 
   const result = await provider.structured(
     {
       model: provider.modelId,
-      // The file plan and per-step manifest made the blueprint substantially
-      // larger; the old 8k ceiling truncated a twelve-step plan mid-tree.
-      maxTokens: 12_000,
-      // The blueprint decides the shape of everything that follows, and it is
-      // generated once per project — the one place worth spending on depth.
-      reasoning: 'xhigh',
+      maxTokens,
+      reasoning,
       system: [{ text: SYSTEM, cacheBoundary: true }],
       messages: [
         {
@@ -158,7 +184,7 @@ export async function generateBlueprint(
     throw new Error('The plan came back without a file layout. Generating again usually fixes it.');
   }
 
-  return blueprint;
+  return { data: blueprint, usage: result.usage };
 }
 
 /**
